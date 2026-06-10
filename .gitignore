@@ -1,5 +1,7 @@
 # 依存・ビルド成果物
 node_modules
+target/
+**/*.rs.bk
 
 # --- ADDF Framework (do not remove) ---
 .claude/commands/*.exp.md

@@ -1,0 +1,22 @@
+[package]
+name = "magia-cli"
+description = "MagiaMagica command-line interface: render Rust functions as magic circles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "magia"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+magia-core = { path = "../magia-core", version = "0.1.0" }
+magia-rust = { path = "../magia-rust", version = "0.1.0" }
