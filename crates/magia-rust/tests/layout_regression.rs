@@ -56,6 +56,38 @@ fn dense_dispatch_has_no_overlaps() {
     assert!(found.is_empty(), "過密 fixture で重なり: {found:?}");
 }
 
+/// 位置共有制約 (spec v0.2 §5.4): 表示系レイヤーの有無は配置に影響しない。
+///
+/// レイアウトが参照してよいのは構造情報 (`control_flow.role` と content) のみ。
+/// type_info / concurrency 等の表示系レイヤーを剥がしても `LayoutResult` は
+/// 完全一致しなければならない (レイヤー切替 UI が位置を動かさないことの土台)。
+#[test]
+fn layout_ignores_display_layers() {
+    let source = include_str!("../../../fixtures/medium_render_doc.rs");
+    let (graph, baseline) = parsed_layout(source, "medium_render_doc");
+
+    // effects は LayerData のフィールドではなく Operation 側 (EffectSet) にあり、
+    // レイアウトは Operation の中身を見ない。LayerData で剥がせるのは
+    // control_flow (構造情報のため保持) 以外の全フィールド。
+    let mut stripped = graph;
+    for sigil in &mut stripped.modules[0].sigils {
+        sigil.layers.data_flow = None;
+        sigil.layers.type_info = None;
+        sigil.layers.lifetime = None;
+        sigil.layers.concurrency = None;
+        sigil.layers.test_coverage = None;
+        sigil.layers.profile = None;
+        sigil.layers.git_churn = None;
+        sigil.layers.security = None;
+        sigil.layers.ai_annotations.clear();
+    }
+    assert_eq!(
+        layout(&stripped),
+        baseline,
+        "表示系レイヤーを剥がしても位置は変わらない"
+    );
+}
+
 /// オーナーが「お洒落」と判定した write_document 級レイアウトのベースライン
 /// (Phase 1.8 着手前の実測値)。衝突回避の改良がこの意匠を崩していないことを
 /// 移動量の上限で保証する。

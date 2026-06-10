@@ -175,24 +175,107 @@ fn event_touches(event: &notify::Result<notify::Event>, watched_name: &std::ffi:
 
 // ===== HTTP =====
 
+// レイヤーパレット (Phase 2.2, spec v0.2 §5.5):
+// - 切替は CSS (display / opacity) のみで行い、SVG は再生成しない (spec §5.3)
+// - 状態は URL クエリ `?layers=a,b&op=a:0.5` に反映し、リロード・共有で再現できる
+// - SSE による SVG 差し替え (innerHTML) 後はスタイルが消えるため毎回再適用する
 const INDEX_HTML: &str = r#"<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><title>MagiaMagica dev-server</title>
 <style>
   body { margin: 0; font-family: system-ui, sans-serif; }
   #status { color: #d92626; padding: 4px 12px; min-height: 1.2em; font-size: 14px; white-space: pre-wrap; }
   #magia { display: flex; justify-content: center; }
-  #magia svg { max-width: 100vw; max-height: 94vh; }
+  #magia svg { max-width: 100vw; max-height: 88vh; }
+  #palette { position: fixed; top: 12px; right: 12px; background: #fffd; border: 1px solid #ccc;
+             border-radius: 8px; padding: 10px 14px; font-size: 13px; box-shadow: 0 2px 8px #0002; }
+  #palette .layer-row { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+  #palette input[type="range"] { width: 80px; }
+  #palette .buttons { display: flex; gap: 6px; margin-top: 8px; }
 </style></head>
 <body>
 <div id="status"></div>
+<div id="palette">
+  <strong>レイヤー</strong>
+  <div class="layer-row"><label><input type="checkbox" data-layer="control_flow" checked> 制御フロー</label>
+    <input type="range" data-opacity="control_flow" min="0" max="1" step="0.05" value="1"></div>
+  <div class="layer-row"><label><input type="checkbox" data-layer="effects" checked> 効果</label>
+    <input type="range" data-opacity="effects" min="0" max="1" step="0.05" value="1"></div>
+  <div class="layer-row"><label><input type="checkbox" data-layer="type_info" checked> 型情報</label>
+    <input type="range" data-opacity="type_info" min="0" max="1" step="0.05" value="1"></div>
+  <div class="buttons"><button id="all-on">全表示</button><button id="all-off">全非表示</button></div>
+</div>
 <div id="magia"></div>
 <script>
+const LAYERS = ['control_flow', 'effects', 'type_info'];
+const cssClass = (layer) => 'layer-' + layer.replace(/_/g, '-');
+// 状態: visible = 表示中レイヤーの集合、opacity = レイヤー別透明度 (既定 1)
+let visible = new Set(LAYERS);
+let opacity = {};
+
+function readQuery() {
+  const params = new URLSearchParams(location.search);
+  const layers = params.get('layers');
+  visible = layers === null ? new Set(LAYERS)
+                            : new Set(layers.split(',').filter(l => LAYERS.includes(l)));
+  opacity = {};
+  for (const pair of (params.get('op') || '').split(',').filter(Boolean)) {
+    const sep = pair.indexOf(':');
+    if (sep === -1) { continue; }
+    const layer = pair.slice(0, sep);
+    const value = parseFloat(pair.slice(sep + 1));
+    if (LAYERS.includes(layer) && !isNaN(value)) { opacity[layer] = value; }
+  }
+}
+
+function writeQuery() {
+  const params = new URLSearchParams();
+  if (visible.size < LAYERS.length) { params.set('layers', LAYERS.filter(l => visible.has(l)).join(',')); }
+  const ops = LAYERS.filter(l => opacity[l] !== undefined && Math.abs(opacity[l] - 1) > 1e-9)
+                    .map(l => l + ':' + opacity[l]).join(',');
+  if (ops) { params.set('op', ops); }
+  const query = params.toString();
+  history.replaceState(null, '', query ? '?' + query : location.pathname);
+}
+
+// SVG (差し替え後も含む) とパレット UI に状態を反映する。位置は一切変えない
+// (spec §5.4 位置共有制約: 切替は CSS のみで、レイアウトに影響しない)。
+function apply() {
+  for (const layer of LAYERS) {
+    for (const group of document.querySelectorAll('#magia g.' + cssClass(layer))) {
+      group.style.display = visible.has(layer) ? '' : 'none';
+      group.style.opacity = opacity[layer] ?? 1;
+    }
+    const checkbox = document.querySelector(`input[data-layer="${layer}"]`);
+    const slider = document.querySelector(`input[data-opacity="${layer}"]`);
+    if (checkbox) { checkbox.checked = visible.has(layer); }
+    if (slider) { slider.value = opacity[layer] ?? 1; }
+  }
+}
+
+document.getElementById('palette').addEventListener('input', (event) => {
+  const layer = event.target.dataset.layer;
+  const opacityLayer = event.target.dataset.opacity;
+  if (!layer && !opacityLayer) { return; } // 将来パレットに他の入力欄が増えても誤発火しない
+  if (layer) { event.target.checked ? visible.add(layer) : visible.delete(layer); }
+  if (opacityLayer) { opacity[opacityLayer] = parseFloat(event.target.value); }
+  writeQuery(); apply();
+});
+document.getElementById('all-on').addEventListener('click', () => { visible = new Set(LAYERS); writeQuery(); apply(); });
+document.getElementById('all-off').addEventListener('click', () => { visible = new Set(); writeQuery(); apply(); });
+
 async function refresh() {
   const response = await fetch('/state');
   const state = await response.json();
-  if (state.svg) { document.getElementById('magia').innerHTML = state.svg; }
+  if (state.svg) {
+    // innerHTML でなく DOMParser を使う: SVG 内に万一スクリプト類が混入しても
+    // 実行されない (レンダラは XML エスケープ済みだが多層防御として)。
+    const doc = new DOMParser().parseFromString(state.svg, 'image/svg+xml');
+    document.getElementById('magia').replaceChildren(doc.documentElement);
+  }
   document.getElementById('status').textContent = state.error || '';
+  apply(); // SVG 差し替えでインラインスタイルが消えるため再適用
 }
+readQuery();
 refresh();
 new EventSource('/events').onmessage = refresh;
 </script>
@@ -201,7 +284,10 @@ new EventSource('/events').onmessage = refresh;
 
 fn handle_request(request: tiny_http::Request, shared: &Shared) {
     let url = request.url().to_string();
-    let result = match (request.method(), url.as_str()) {
+    // ルーティングはパス部分のみで行う (`/?layers=...` のようにレイヤーパレットの
+    // 状態クエリが付いてもトップページを返す)。
+    let path = url.split('?').next().unwrap_or("/");
+    let result = match (request.method(), path) {
         (tiny_http::Method::Get, "/") => request.respond(
             tiny_http::Response::from_string(INDEX_HTML)
                 .with_header(header("Content-Type", "text/html; charset=utf-8")),

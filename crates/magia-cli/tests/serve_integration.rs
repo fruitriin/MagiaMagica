@@ -115,15 +115,40 @@ fn serves_html_and_initial_state() {
     assert!(index.contains(r#"<div id="magia">"#));
     assert!(index.contains("EventSource"));
 
+    // レイヤーパレット (Phase 2.2): 3レイヤーの切替 UI が配信される。
+    for layer in ["control_flow", "effects", "type_info"] {
+        assert!(
+            index.contains(&format!(r#"data-layer="{layer}""#)),
+            "{layer} のチェックボックスがある"
+        );
+        assert!(
+            index.contains(&format!(r#"data-opacity="{layer}""#)),
+            "{layer} の透明度スライダーがある"
+        );
+    }
+    assert!(index.contains(r#"id="all-on""#) && index.contains(r#"id="all-off""#));
+
     let state = body_json(server.port);
-    assert!(
-        state["svg"].as_str().unwrap().contains("<svg "),
-        "初回レンダリング済み"
-    );
+    let svg = state["svg"].as_str().unwrap();
+    assert!(svg.contains("<svg "), "初回レンダリング済み");
     assert!(state["error"].is_null());
+    // パレット JS の cssClass() 変換 (snake_case → layer-kebab-case) が、
+    // レンダラの出力する <g> クラス名と一致していることの契約テスト (spec §5.3)。
+    for class in ["layer-control-flow", "layer-effects", "layer-type-info"] {
+        assert!(
+            svg.contains(&format!(r#"<g class="{class}">"#)),
+            "SVG に {class} の <g> がある"
+        );
+    }
 
     let missing = http_get(server.port, "/no-such");
     assert!(missing.contains("404"));
+
+    // レイヤー状態のクエリ付き URL (リロード・共有) でもトップページが返る。
+    // 回帰経緯: ルート照合が完全一致だった頃 `/?layers=...` が 404 になった。
+    let with_query = http_get(server.port, "/?layers=effects&op=effects:0.5");
+    assert!(with_query.contains("200") && with_query.contains(r#"<div id="magia">"#));
+    assert!(with_query.contains("text/html"), "HTML として返る");
 }
 
 #[test]
