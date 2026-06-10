@@ -9,10 +9,10 @@
 //! 4. 線の交差を最小化する局所最適化 (オプション、決定論的)
 //!
 //! 乱数は使わない。同じ IR からは常に同一の結果が出る (Phase 2 差分表示の前提)。
-//! 座標系は数学系 (+x 右、+y 上、反時計回りが正)。SVG の y 反転は M6 レンダラの責務:
-//! 素朴に y を反転すると見た目が時計回りになるため、spec §6.1.2 の「3時起点・
-//! 反時計回り」を画面上でも保つには M6 側で y 反転 (= 角度の符号反転) を踏まえて
-//! 描画順を解釈すること。
+//! 座標系は数学系 (+x 右、+y 上、反時計回りが正)。SVG への変換は M6 レンダラの責務で、
+//! 単純な y 反転 (`y_svg = -y_math`) でよい: 数学系の反時計回り (角度増加で上へ) は
+//! 反転後も画面上で「3時起点・反時計回り」(右 → 上 → 左 → 下) に見える
+//! (spec §6.1.2 と整合。座標の符号としての向きは反転するが、視覚的な回転方向は保たれる)。
 //! `cross_module_edges` は Phase 1 (単一関数 = 単一モジュール) では配置に使わない。
 
 pub mod constants;
@@ -323,7 +323,8 @@ fn canvas_rect(placed: &BTreeMap<SigilId, PlacedSigil>) -> Rect {
     })
 }
 
-fn sigil_radius(kind: SigilKind) -> f64 {
+/// Sigil 種別ごとの描画半径。レンダラ (M6) も同じ値で円を描く。
+pub(crate) fn sigil_radius(kind: SigilKind) -> f64 {
     match kind {
         SigilKind::MainRing => MAIN_RING_RADIUS,
         SigilKind::AuxRing => AUX_RING_RADIUS,

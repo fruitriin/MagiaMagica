@@ -78,16 +78,54 @@
 
 ## 受け入れ基準
 
-- [ ] 5個の合成 fixture から SVG が出力され、insta スナップショットが確定する
-- [ ] 自己ホスティング fixture (`magia-core` 自身の関数) から SVG が出力できる (insta は任意、目視確認できればよい)
-- [ ] オーナーが自己ホスティング fixture の SVG を目視し、合格判定または調整指示を出す
-- [ ] 同じ IR から2回 render して文字列が**完全一致**する (決定論性)
-- [ ] 各効果カテゴリで色が正しく出る
-- [ ] async fn が二重線で描画される
-- [ ] `<g class="layer-*">` が3つ存在し、それぞれに対応する要素が入っている
-- [ ] 出力 SVG をブラウザで開いて崩れない (XML として valid)
-- [ ] `cargo clippy` 警告0
+- [x] 5個の合成 fixture から SVG が出力され、insta スナップショットが確定する (+ レビュー対応で for_loop を追加し計6本)
+- [x] 自己ホスティング fixture (`magia-core` 自身の関数) から SVG が出力できる (insta は任意、目視確認できればよい)
+- [ ] オーナーが自己ホスティング fixture の SVG を目視し、合格判定または調整指示を出す — **SVG 4本を送付済み、判定待ち**
+- [x] 同じ IR から2回 render して文字列が**完全一致**する (決定論性)
+- [x] 各効果カテゴリで色が正しく出る
+- [x] async fn が二重線で描画される
+- [x] `<g class="layer-*">` が3つ存在し、それぞれに対応する要素が入っている
+- [x] 出力 SVG をブラウザで開いて崩れない (xmllint で XML valid 確認、qlmanage の PNG でレイアウト破綻なしを確認)
+- [x] `cargo clippy` 警告0
 
 ## 後続
 
 - Phase 1.7 で CLI から `magia render <FILE> --fn <NAME>` で本レンダラを呼び出せるようにする
+
+## 実装結果メモ (2026-06-11)
+
+### 計画からの変更点
+
+- **insta は magia-rust の dev-deps に追加** (計画の magia-core 案から変更): E2E ゴールデンテスト
+  (parse_function → layout → render) は magia-rust が必要で、magia-core に置くと dev-dep 循環になる。
+  IR 直組みの単体テストは magia-core 側 (`tests/render_svg.rs`)、fixture E2E は magia-rust 側
+  (`tests/render_golden.rs`) に分離
+- **自己ホスティングは `examples/render_self.rs`** (`cargo run -p magia-rust --example render_self`)。
+  parse_function / collect_calls_in_stmt / layout_with / count_crossings の4関数を
+  `target/self-hosting/*.svg` に出力
+
+### 設計判断の確定
+
+- レイヤー対応: control-flow = リング・接続線・制御記号 (async 二重線含む) /
+  effects = Operation ドット (リング内周に反時計回り配置、spec §6.1.2) + 召喚記号 /
+  type-info = シグネチャ円弧 + Result/Option 分岐線 (異常パスは破線)
+- 色の優先順位 (EffectSet 複数フラグの潰し方): unsafe > network > db > filesystem > io > pure
+- `kurbo::BezPath::to_svg()` の最短浮動小数表現はノイズを含むため `normalize_path_numbers`
+  で2桁固定に後処理 (スナップショット安定性、レビュー W-1 対応)
+- palette は `pub(crate)` (公開 API に色定数を露出させない。Phase 2 で必要になったら公開判断)
+
+### レビュー対応 (Stage 2)
+
+- 修正済み: kurbo パス数値の正規化 (W-1) / palette の pub(crate) 化 (W-2) /
+  for_loop fixture 追加で sym-loop のカバレッジ空白を解消 (S-1) / コメント精緻化 (S-2〜S-4)
+- 既知の見た目課題 (オーナー目視判定の材料):
+  - AuxRing にぶら下がる glyph のファンが全周配置のため、親リング方向の glyph が
+    接続線・リングと重なることがある (layout_with.svg で確認可能)。Phase 1.5 の
+    交差最小化は線の交差のみ対象で、ノード重なりは未対応
+  - 描画定数 (`layout/constants.rs`) は仮置き。調整指示があればここだけ変える
+
+### 振り返り判断 (計画の宿題)
+
+- 深さ制限 (Phase 1.3 の宿題): 自己ホスティング4関数では入れ子3段でも視覚破綻なし。
+  深さ制限は導入しない (必要になったら再訪)
+- 意匠の精密化 (Appendix A v0.2): オーナーの目視判定待ち。判定後に必要なら独立 Plan を起こす

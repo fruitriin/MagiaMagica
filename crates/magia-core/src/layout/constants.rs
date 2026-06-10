@@ -30,3 +30,29 @@ pub const CROSSING_OPT_MAX_PASSES: usize = 50;
 
 /// 交差最小化でファン全体を回転させる角度ステップ (ラジアン)。
 pub const CROSSING_OPT_ROTATION_STEP_RAD: f64 = 0.2;
+
+// ===== 描画系 (M6 レンダラと共有する視覚定数。重複定義を避けるためここに置く) =====
+
+/// MainRing の線幅。
+pub const MAIN_RING_STROKE: f64 = 2.0;
+
+/// AuxRing の線幅。
+pub const AUX_RING_STROKE: f64 = 1.5;
+
+/// 接続線 (Edge) の線幅。
+pub const EDGE_STROKE: f64 = 1.0;
+
+/// async fn の二重線: 内側リングを外側からどれだけ内に寄せるか。
+pub const ASYNC_INNER_RING_OFFSET: f64 = 5.0;
+
+/// リング内の Operation ドットの半径。
+pub const OPERATION_DOT_RADIUS: f64 = 3.5;
+
+/// リング外周から Operation ドット列までの内側オフセット。
+pub const OPERATION_DOT_INSET: f64 = 16.0;
+
+/// シグネチャ円弧ラベルのリング外周からのオフセット。
+pub const SIGNATURE_ARC_OFFSET: f64 = 12.0;
+
+/// Result/Option 戻り値の分岐線の長さ。
+pub const RETURN_BRANCH_LENGTH: f64 = 26.0;

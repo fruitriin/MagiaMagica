@@ -8,6 +8,8 @@
 
 ## オーナーフィードバック
 
+- **判定依頼 (Phase 1.6)**: 自己ホスティング SVG 4本（parse_function / collect_calls_in_stmt / layout_with / count_crossings）を送付済み。魔法陣としての見た目の合格判定または調整指示をお待ちしています。既知の課題: AuxRing にぶら下がる召喚記号が親リング方向で重なることがある／描画定数は仮置き（`crates/magia-core/src/layout/constants.rs` で調整可能）
+
 ## 問題の記録
 
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
@@ -22,7 +24,8 @@
 - Phase 1.4 で `format!` 系マクロを io 効果に倒した (オーナー確定 2026-06-10 の様子見方針)。実コードを描画して紫/青の記号が過剰に感じられたら pure への変更を再判断する
 - Phase 1.4 時点の効果テーブルは `tokio::io` 未登録 (tokio::net / tokio::fs と非対称)。false negative が目立ったら追加 (effects.rs に TODO あり)
 
-- Phase 1.5 の `layout/constants.rs` の半径・ギャップ値は仮置き。Phase 1.6 の目視検証で調整する（交差最小化の回転ステップ 0.2 rad の粒度も同タイミングで再評価）
+- Phase 1.5 の `layout/constants.rs` の半径・ギャップ値は仮置き。Phase 1.6 の自己ホスティング SVG では破綻していないが、オーナー目視判定の結果次第で調整する（交差最小化の回転ステップ 0.2 rad、glyph 全周配置によるノード重なりも同タイミングで再評価）
+- Phase 1.6 のコントリビューション検出より: `docs/knowhow/svg-deterministic-rendering.md` は SVG を生成する Rust プロジェクト全般に通用する汎用知見。ADDF 本体への昇格候補（rust-cargo-workspace-bootstrap 等と同じ扱い、Phase 1 完了後の節目で判断）
 
 ## 改善アクション
 
