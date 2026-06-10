@@ -29,8 +29,9 @@ pub mod source;
 pub use edge::{Edge, EdgeKind, EdgeLayerData};
 pub use graph::{MagiaGraph, Module, ModuleId, ProjectMetadata};
 pub use layers::{
-    AiAnnotation, ChurnInfo, ConcurrencyInfo, ControlFlowInfo, CoverageInfo, DataFlowInfo,
-    LayerData, LifetimeInfo, ProfileInfo, SecurityInfo, TypeInfo,
+    AiAnnotation, AuxRingKind, AuxRingRole, ChurnInfo, ConcurrencyInfo, ControlFlowInfo,
+    CoverageInfo, DataFlowInfo, LayerData, LifetimeInfo, LoopKind, ProfileInfo, SecurityInfo,
+    TypeInfo,
 };
 pub use operation::{CustomEffect, EffectSet, Operation, OperationKind, OperationPayload};
 pub use sigil::{Cardinality, Sigil, SigilId, SigilKind};

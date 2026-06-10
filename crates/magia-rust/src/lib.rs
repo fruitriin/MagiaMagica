@@ -1,27 +1,25 @@
 //! MagiaMagica Rust language adapter.
 //!
 //! Phase 1.2 (M2): syn 2.x ベースで単一 Rust 関数を MagiaIR に変換する。
-//! 制御構造 (AuxRing) の切り出しは Phase 1.3、呼び出し先 (SummonGlyph) と効果判定は
-//! Phase 1.4 で追加する。
+//! Phase 1.3 (M3): 制御構造 (if/match/ループ) を AuxRing に切り出し、ControlFlow Edge で
+//! 親リングと接続する。呼び出し先 (SummonGlyph) と効果判定は Phase 1.4 で追加する。
 
 mod allocator;
 mod error;
+mod ring;
 mod signature;
 mod statement;
 
 pub use error::Error;
 
-use magia_core::ir::{
-    Cardinality, ConcurrencyInfo, LayerData, MagiaGraph, Module, ModuleId, ProjectMetadata, Sigil,
-    SigilKind, SourceSpan,
-};
-use syn::spanned::Spanned;
+use magia_core::ir::{ConcurrencyInfo, MagiaGraph, Module, ModuleId, ProjectMetadata};
 use syn::visit::Visit;
 use syn::{File, ItemFn};
 
 use crate::allocator::SigilIdAllocator;
+use crate::ring::build_rings;
 use crate::signature::extract_type_info;
-use crate::statement::{statement_line_range, statement_to_operation};
+use crate::statement::ParseContext;
 
 /// Rust ソースから関数定義の名前一覧を返す。
 ///
@@ -40,22 +38,35 @@ pub fn list_functions(source: &str) -> Result<Vec<String>, Error> {
 
 /// 指定された名前の関数を MagiaIR に変換する。
 ///
-/// Phase 1.2 の出力は `MainRing` 1個 + 本体の statement を Operation 列として持つ
-/// 最小構成。制御構造の AuxRing 化と SummonGlyph は後続マイルストーンで追加する。
+/// Phase 1.3 の出力は `MainRing` 1個 + 制御構造ごとの `AuxRing` 群 + 両者を結ぶ
+/// `ControlFlow` Edge。SummonGlyph (呼び出し先) は Phase 1.4 で追加する。
 #[must_use = "IR は呼び出し側で利用されるべき"]
 pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> {
     let file: File = syn::parse_str(source)?;
     let item_fn = find_function(&file, fn_name)?;
     let mut allocator = SigilIdAllocator::new();
-    let main_ring = build_main_ring(item_fn, &mut allocator);
+    let ctx = ParseContext {
+        fn_is_unsafe: item_fn.sig.unsafety.is_some(),
+    };
+    let mut forest = build_rings(item_fn, &mut allocator, ctx);
+
+    // 関数レベルのレイヤー (シグネチャ・並行性) は MainRing にのみ載せる。
+    // AuxRing は制御フロー情報 (`control_flow.role`) だけを持つ。
+    let main_ring = &mut forest.sigils[0];
+    main_ring.layers.type_info = Some(extract_type_info(&item_fn.sig));
+    main_ring.layers.concurrency = Some(ConcurrencyInfo {
+        is_async: item_fn.sig.asyncness.is_some(),
+        await_points: count_await_points(item_fn),
+    });
+
     // Phase 1.2 ではファイル/プロジェクト解析が無いため、`Module.name` と
     // `ProjectMetadata.name` の両方に関数名をプレースホルダーとして入れる。
     // ファイル粒度の解析 (Phase 1.5 以降) で実ファイルパス・プロジェクト名で上書きする。
     let module = Module {
         id: ModuleId(0),
         name: fn_name.to_string(),
-        sigils: vec![main_ring],
-        edges: Vec::new(),
+        sigils: forest.sigils,
+        edges: forest.edges,
     };
     Ok(MagiaGraph {
         modules: vec![module],
@@ -82,53 +93,6 @@ fn find_function<'a>(file: &'a File, fn_name: &str) -> Result<&'a ItemFn, Error>
         name: fn_name.to_string(),
         candidates: collector.all_names,
     })
-}
-
-fn build_main_ring(item_fn: &ItemFn, allocator: &mut SigilIdAllocator) -> Sigil {
-    let fn_is_unsafe = item_fn.sig.unsafety.is_some();
-    let is_async = item_fn.sig.asyncness.is_some();
-
-    let content: Vec<_> = item_fn
-        .block
-        .stmts
-        .iter()
-        .map(|stmt| statement_to_operation(stmt, fn_is_unsafe))
-        .collect();
-
-    let await_points = count_await_points(item_fn);
-    let type_info = extract_type_info(&item_fn.sig);
-
-    let layers = LayerData {
-        type_info: Some(type_info),
-        concurrency: Some(ConcurrencyInfo {
-            is_async,
-            await_points,
-        }),
-        ..LayerData::default()
-    };
-
-    let span = item_fn.span();
-    let start_line = u32::try_from(span.start().line).unwrap_or(0);
-    let end_line = item_fn
-        .block
-        .stmts
-        .last()
-        .map_or(start_line, |stmt| statement_line_range(stmt).1);
-
-    Sigil {
-        id: allocator.allocate(),
-        kind: SigilKind::MainRing,
-        content,
-        layers,
-        source_location: SourceSpan {
-            file: String::new(),
-            start_line,
-            end_line,
-            start_column: None,
-            end_column: None,
-        },
-        cardinality: Cardinality::default(),
-    }
 }
 
 /// 関数本体内の `.await` 数を数える。
@@ -186,7 +150,42 @@ impl<'ast> Visit<'ast> for FunctionRefCollector<'ast> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use magia_core::ir::OperationKind;
+    use magia_core::ir::{AuxRingKind, EdgeKind, LoopKind, OperationKind, Sigil, SigilKind};
+
+    /// モジュール内の AuxRing 一覧 (SigilId 昇順)。
+    fn aux_rings(module: &Module) -> Vec<&Sigil> {
+        module
+            .sigils
+            .iter()
+            .filter(|s| s.kind == SigilKind::AuxRing)
+            .collect()
+    }
+
+    /// 受け入れ基準の不変条件: ControlFlow Edge 数 = AuxRing 数、SigilId は一意、
+    /// 各 AuxRing にちょうど1本の Edge が入る。
+    fn assert_ring_invariants(module: &Module) {
+        let aux = aux_rings(module);
+        assert_eq!(
+            module
+                .edges
+                .iter()
+                .filter(|e| e.kind == EdgeKind::ControlFlow)
+                .count(),
+            aux.len(),
+            "ControlFlow Edge 数 = AuxRing 数"
+        );
+        let mut ids: Vec<_> = module.sigils.iter().map(|s| s.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), module.sigils.len(), "SigilId は一意");
+        for ring in &aux {
+            assert_eq!(
+                module.edges.iter().filter(|e| e.target == ring.id).count(),
+                1,
+                "各 AuxRing は親と1本の Edge を持つ"
+            );
+        }
+    }
 
     #[test]
     fn list_functions_returns_top_level_names() {
@@ -311,5 +310,313 @@ mod tests {
         let json_a = serde_json::to_string(&graph).unwrap();
         let json_b = serde_json::to_string(&graph).unwrap();
         assert_eq!(json_a, json_b);
+    }
+
+    // ===== Phase 1.3: 制御構造の AuxRing 化 =====
+
+    #[test]
+    fn if_else_yields_two_aux_rings_and_edges() {
+        let src = "fn f(a: bool) -> i32 { if a { 1 } else { 2 } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 2);
+        let roles: Vec<_> = aux
+            .iter()
+            .map(|s| {
+                s.layers
+                    .control_flow
+                    .as_ref()
+                    .unwrap()
+                    .role
+                    .as_ref()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(roles[0].kind, AuxRingKind::IfBranch);
+        assert_eq!(roles[1].kind, AuxRingKind::ElseBranch);
+        assert_eq!((roles[0].ordinal, roles[1].ordinal), (0, 1));
+
+        // MainRing 側: Branch Operation 1個、branch_count = 1 (if チェーンで1)。
+        let main = &module.sigils[0];
+        assert_eq!(main.kind, SigilKind::MainRing);
+        assert_eq!(main.content.len(), 1);
+        assert_eq!(main.content[0].kind, OperationKind::Branch);
+        let info = main.layers.control_flow.as_ref().unwrap();
+        assert_eq!(info.branch_count, 1);
+        assert!(info.role.is_none());
+    }
+
+    #[test]
+    fn match_yields_aux_ring_per_arm_with_pattern_labels() {
+        let src = "fn f(x: u8) -> u8 { match x { 1 => a(), 2 => b(), _ => c(), } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 3);
+        let labels: Vec<_> = aux
+            .iter()
+            .map(|s| {
+                let role = s
+                    .layers
+                    .control_flow
+                    .as_ref()
+                    .unwrap()
+                    .role
+                    .as_ref()
+                    .unwrap();
+                assert_eq!(role.kind, AuxRingKind::MatchArm);
+                role.label.clone().unwrap()
+            })
+            .collect();
+        assert_eq!(labels, vec!["1", "2", "_"]);
+
+        let main = &module.sigils[0];
+        assert_eq!(main.content[0].kind, OperationKind::Match);
+        // branch_count = アーム数 - 1。
+        assert_eq!(main.layers.control_flow.as_ref().unwrap().branch_count, 2);
+    }
+
+    #[test]
+    fn for_loop_yields_single_loop_aux_ring() {
+        let src = "fn f() { for i in 0..10 { use_it(i); } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 1);
+        let role = aux[0]
+            .layers
+            .control_flow
+            .as_ref()
+            .unwrap()
+            .role
+            .as_ref()
+            .unwrap();
+        assert_eq!(role.kind, AuxRingKind::LoopBody(LoopKind::For));
+        assert_eq!(role.ordinal, 0);
+
+        let main = &module.sigils[0];
+        assert_eq!(main.content[0].kind, OperationKind::Loop);
+        assert_eq!(main.layers.control_flow.as_ref().unwrap().loop_count, 1);
+    }
+
+    #[test]
+    fn if_let_yields_single_aux_ring() {
+        let src = "fn f(opt: Option<u8>) { if let Some(x) = opt { use_it(x); } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 1);
+        let role = aux[0]
+            .layers
+            .control_flow
+            .as_ref()
+            .unwrap()
+            .role
+            .as_ref()
+            .unwrap();
+        assert_eq!(role.kind, AuxRingKind::IfBranch);
+    }
+
+    #[test]
+    fn else_if_chain_yields_ring_per_branch() {
+        let src = "fn f(a: bool, b: bool) { if a { x(); } else if b { y(); } else { z(); } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 3);
+        let roles: Vec<_> = aux
+            .iter()
+            .map(|s| {
+                s.layers
+                    .control_flow
+                    .as_ref()
+                    .unwrap()
+                    .role
+                    .as_ref()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(roles[0].kind, AuxRingKind::IfBranch);
+        assert_eq!(roles[1].kind, AuxRingKind::IfBranch);
+        assert_eq!(roles[2].kind, AuxRingKind::ElseBranch);
+        assert_eq!(
+            roles.iter().map(|r| r.ordinal).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        // 連鎖全体は親リング上の同一 Operation に係留される。
+        assert!(roles.iter().all(|r| r.anchor_operation == 0));
+        // if チェーン全体で branch_count = 1。
+        let main = &module.sigils[0];
+        assert_eq!(main.layers.control_flow.as_ref().unwrap().branch_count, 1);
+    }
+
+    #[test]
+    fn nested_control_structures_nest_aux_rings() {
+        let src = "fn f(c: bool, x: u8) { if c { match x { 1 => a(), _ => b(), } } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        // MainRing + if 分岐 + match アーム2 = 4 Sigil。
+        assert_eq!(module.sigils.len(), 4);
+        let aux = aux_rings(module);
+        let if_ring = aux
+            .iter()
+            .find(|s| {
+                s.layers
+                    .control_flow
+                    .as_ref()
+                    .unwrap()
+                    .role
+                    .as_ref()
+                    .unwrap()
+                    .kind
+                    == AuxRingKind::IfBranch
+            })
+            .unwrap();
+        // if 分岐リングは MainRing から、match アームは if 分岐リングから接続される。
+        let main_id = module.sigils[0].id;
+        for edge in &module.edges {
+            if edge.target == if_ring.id {
+                assert_eq!(edge.source, main_id);
+            } else {
+                assert_eq!(edge.source, if_ring.id);
+            }
+        }
+        // if 分岐リング自身の content には match の Operation が1個。
+        assert_eq!(if_ring.content.len(), 1);
+        assert_eq!(if_ring.content[0].kind, OperationKind::Match);
+    }
+
+    #[test]
+    fn early_return_is_counted_in_owning_ring() {
+        let src = "fn f(c: bool) -> u8 { if c { return 1; } 0 }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let main_info = module.sigils[0].layers.control_flow.as_ref().unwrap();
+        assert_eq!(
+            main_info.early_return_count, 0,
+            "return は分岐リング側に計上"
+        );
+        let aux = aux_rings(module);
+        let aux_info = aux[0].layers.control_flow.as_ref().unwrap();
+        assert_eq!(aux_info.early_return_count, 1);
+    }
+
+    #[test]
+    fn unsafe_fn_propagates_into_aux_rings() {
+        let src = "unsafe fn f(c: bool) { if c { do_thing(); } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        let aux = aux_rings(module);
+        assert!(
+            aux[0].content.iter().all(|op| op.effects.unsafe_block),
+            "unsafe fn のコンテキストは AuxRing 内の Operation にも伝播する"
+        );
+    }
+
+    #[test]
+    fn if_let_with_else_yields_else_branch_ring() {
+        let src =
+            "fn f(opt: Option<u8>) { if let Some(x) = opt { use_it(x); } else { fallback(); } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 2);
+        let kinds: Vec<_> = aux
+            .iter()
+            .map(|s| {
+                s.layers
+                    .control_flow
+                    .as_ref()
+                    .unwrap()
+                    .role
+                    .as_ref()
+                    .unwrap()
+                    .kind
+            })
+            .collect();
+        assert_eq!(kinds, vec![AuxRingKind::IfBranch, AuxRingKind::ElseBranch]);
+    }
+
+    #[test]
+    fn single_arm_match_has_zero_branch_count() {
+        // マクロ生成等で現れる1アーム match: 分岐は発生しないので branch_count = 0。
+        let src = "fn f(x: u8) -> u8 { match x { _ => 0 } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+        assert_eq!(aux_rings(module).len(), 1);
+        assert_eq!(
+            module.sigils[0]
+                .layers
+                .control_flow
+                .as_ref()
+                .unwrap()
+                .branch_count,
+            0
+        );
+    }
+
+    #[test]
+    fn let_binding_with_if_stays_compute() {
+        // `let x = if ...` の式内制御構造は Phase 1.3 では意図的に切り出さない
+        // (ring::classify のスコープ判断を回帰テストとして固定する)。
+        let src = "fn f(a: bool) -> i32 { let x = if a { 1 } else { 2 }; x }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert!(aux_rings(module).is_empty());
+        assert!(
+            module.sigils[0]
+                .content
+                .iter()
+                .all(|op| op.kind == OperationKind::Compute)
+        );
+    }
+
+    #[test]
+    fn complex_function_is_deterministic_and_consistent() {
+        let src = "
+            fn f(a: bool, xs: Vec<u8>) -> u8 {
+                let mut acc = 0;
+                for x in xs {
+                    if a {
+                        acc += x;
+                    } else {
+                        match x {
+                            0 => acc += 1,
+                            _ => { while acc < 10 { acc += 2; } }
+                        }
+                    }
+                }
+                loop { break; }
+                acc
+            }
+        ";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        // 再パースしても同一 JSON (決定論的採番・決定論的順序)。
+        let again = parse_function(src, "f").unwrap();
+        assert_eq!(
+            serde_json::to_string(&graph).unwrap(),
+            serde_json::to_string(&again).unwrap()
+        );
     }
 }

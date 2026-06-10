@@ -25,6 +25,10 @@ pub struct LayerData {
 }
 
 /// 制御フロー (分岐、ループ、例外経路) (Phase 1 で値を埋める)。
+///
+/// カウント系フィールドは「そのリングの `content` に直接現れる構造」のみを数える。
+/// 入れ子の制御構造は対応する AuxRing 側の `ControlFlowInfo` に計上されるため、
+/// 関数全体の合計はリングを辿って総和を取る (二重計上を防ぐ規約)。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ControlFlowInfo {
@@ -37,6 +41,50 @@ pub struct ControlFlowInfo {
     pub loop_count: u32,
     /// 早期リターンの経路数 (`return` 文 + `?` 演算子の総数)。
     pub early_return_count: u32,
+    /// この Sigil が AuxRing のとき、親リングとの接続情報。MainRing では `None`。
+    pub role: Option<AuxRingRole>,
+}
+
+/// AuxRing が親リングに対して持つ役割 (spec §6.1.2 の補助リング)。
+///
+/// Phase 1.5 のレイアウトエンジンが「親リング上のどこに補助リングを置くか」を決める
+/// ための情報。制御構造は親リングの `content` 上で常に1個の Operation を占めるため、
+/// `anchor_operation` が入口かつ出口の位置 (spec §6.1.4 の極座標配置の基準点) になる。
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AuxRingRole {
+    /// 分岐種別・ループ種別。
+    pub kind: AuxRingKind,
+    /// 親 Sigil の `content` 内で、この制御構造に対応する Operation の添字。
+    pub anchor_operation: u32,
+    /// 同一制御構造内での序数 (if 連鎖の何番目の分岐か / match の何アーム目か)。
+    /// ループ本体は常に 0。
+    pub ordinal: u32,
+    /// 表示用ラベル (match アームのパターン等)。
+    pub label: Option<String>,
+}
+
+/// AuxRing の分岐種別 (spec §6.1.3 の制御構造記号に対応)。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AuxRingKind {
+    /// `if` / `else if` の then 節。
+    #[default]
+    IfBranch,
+    /// if 連鎖末尾の `else` 節。
+    ElseBranch,
+    /// `match` のアーム1つ。
+    MatchArm,
+    /// ループ本体。
+    LoopBody(LoopKind),
+}
+
+/// ループ種別。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LoopKind {
+    #[default]
+    For,
+    While,
+    Loop,
 }
 
 /// データフロー情報 (Phase 3 以降で値を埋める)。

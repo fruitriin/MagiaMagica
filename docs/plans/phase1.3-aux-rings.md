@@ -50,12 +50,36 @@
 
 ## 受け入れ基準
 
-- [ ] 5種類のテストケースが全て通る
-- [ ] 入れ子の制御構造で `SigilId` の衝突が起きない
-- [ ] `Edge.kind == ControlFlow` の数 = AuxRing 数 (各 AuxRing は MainRing と1本の Edge を持つ)
-- [ ] JSON 出力が決定論的
-- [ ] `cargo clippy` 警告0
+- [x] 5種類のテストケースが全て通る
+- [x] 入れ子の制御構造で `SigilId` の衝突が起きない
+- [x] `Edge.kind == ControlFlow` の数 = AuxRing 数 (各 AuxRing は MainRing と1本の Edge を持つ)
+- [x] JSON 出力が決定論的
+- [x] `cargo clippy` 警告0
 
 ## 後続
 
 - Phase 1.4 で AuxRing 内の関数呼び出しから召喚記号を生成
+
+## 実装結果メモ (2026-06-11)
+
+### 設計判断の確定
+
+- **`LayerData.control_flow` の「分岐種別・ループ種別・入口/出口の Operation 位置」**は `ControlFlowInfo.role: Option<AuxRingRole>` として実装した。`AuxRingRole { kind: AuxRingKind, anchor_operation: u32, ordinal: u32, label: Option<String> }`。制御構造は親リングの `content` 上で常に1個の Operation を占めるため、**入口と出口は `anchor_operation` の1点で表現できる** (計画の「入口/出口」は同一値に縮退)
+- **Edge の方向は 親リング → AuxRing** (source = 親)。制御フローが分岐へ流れ込む向きと一致させた。`Edge.cardinality` = AuxRing の Operation 数 (空ブロックは最低 1.0)
+- **`Sigil.cardinality.weight` = Operation 数**を MainRing にも一律適用 (Phase 1.2 では default 0.0 だった。v1.0 前の破壊的変更)
+- **`ParseContext` 導入** (Phase 1.2 持ち越し対応): `fn_is_unsafe` のみ。depth は YAGNI で見送り
+- **`OperationKind::Await`/`Yield`/`Throw` の持ち上げは見送り** (Phase 1.2 持ち越し判断): `ConcurrencyInfo.await_points` 集約を維持し、Operation 単位への展開は Phase 1.6 のレンダリングで必要になったときに判断する
+- 計画の「AuxRing 用の式単位 Operation 変換ヘルパー」は不要化: 非ブロックのアーム体 (`1 => a()`) を `Stmt::Expr(expr.clone(), None)` で statement 化し、`build_ring` の再帰経路に一本化した。これにより `_ => match ...` の入れ子も特別扱いなしで展開される
+
+### スコープの境界 (明示)
+
+- `let x = if ... { .. }` のような**式の内側**の制御構造は切り出さず Compute 1個に畳む (回帰テスト `let_binding_with_if_stays_compute` で固定)。Phase 1.6 の視覚検証で必要性を再評価
+- match の**アームガード** (`1 if cond => ...`) は通常アームと同じ扱い (ガード式は scan されない)。spec-v0.2 を起こすときに扱いを明記する
+
+### レビュー対応 (Stage 2)
+
+- 修正済み: `spawn_child` の子リング探索を `sigils.last()` + `debug_assert` に変更 (O(depth²) 回避) / `anchor` の `u32::MAX` サイレントフォールバックを `expect` に変更 (Phase 1.5 が「存在しない位置」を参照する無音バグの予防) / `if let ... else`・1アーム match・`let x = if` のテスト追加
+- 先送り (Info、Phase 1.5〜2 で確認):
+  - `AuxRingKind::LoopBody(LoopKind)` の serde 表現だけがオブジェクト形式 (`{"LoopBody":"For"}`)。Phase 2 dev-server の JSON コンシューマー実装前に `#[serde(tag)]` 等での統一を検討
+  - `anchor_operation` は Edge と親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期に注意 (Feedback.md にも記録)
+  - `source_span` の column は意図的に `None` (Phase 1.2 からの近似継続)

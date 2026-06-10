@@ -1,6 +1,6 @@
 # syn::Visit で AST から情報を集めるパターン
 
-> Phase 1.2 (syn → IR) で確立。Phase 1.3 以降の `if` / `match` / `loop` 解析、
+> Phase 1.2 (syn → IR) で確立、Phase 1.3 (AuxRing 再帰展開) で拡張。
 > Phase 1.4 の call site 抽出でも同じパターンを再利用する。
 
 ## 基本形: 単一関心の Visitor を関数スコープに閉じ込める
@@ -115,6 +115,43 @@ pub enum Error {
 - `#[error(..., expr)]` で条件分岐を埋め込める
 - `#[from] syn::Error` で `?` 演算子経由の伝播が無痛
 - ユーザー向けのエラーは**候補を載せる**だけで体感が大きく変わる (POSD: 「エラーから学べる」)
+
+## 再帰構造の展開: RingBuilder パターン (Phase 1.3)
+
+制御構造 (`if` / `match` / ループ) をネスト構造ごと別ノード (AuxRing) に切り出すときの定型。
+
+```rust
+struct RingBuilder<'a> {
+    allocator: &'a mut SigilIdAllocator,
+    ctx: ParseContext,        // fn_is_unsafe 等を1構造体に集約 (引数膨張の防止)
+    sigils: Vec<Sigil>,       // 再帰中に子から push される
+    edges: Vec<Edge>,
+}
+
+fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
+    let id = self.allocator.allocate();  // 親 ID を先に採番 (子の Edge.source に必要)
+    for stmt in stmts { /* 制御構造なら spawn_child で再帰 */ }
+    self.sigils.push(/* 親自身は最後に push */);
+    id
+}
+```
+
+ポイント:
+
+- **親 ID 先採番 → 子 push → 親 push → 最後に ID 順 sort**。再帰中の push 順は
+  「子が先」になるため、`sort_by_key(|s| s.id)` で「ソース出現順の深さ優先」を回復する。
+  ID 採番が決定論的ならソート結果も決定論的
+- **非ブロックの式体は statement 化して経路を一本化する**: match のアーム体 `1 => a()` は
+  `Stmt::Expr(expr.clone(), None)` に包んで同じ `build_ring` に流す。
+  これで `_ => match ...` のような入れ子も特別扱いなしで再帰展開される (clone は Phase 1 では許容)
+- **二重計上の防止**: 制御構造を親リング側の Operation (Branch/Match/Loop) にするとき、
+  scan するのは条件式・被検査式・イテレータ式のみ。本体ブロックは AuxRing 側が処理するため、
+  本体まで scan すると `unsafe` / `?` のフラグが親子で二重計上される
+- `clippy::too_many_arguments` 対策: `AuxRingRole` のような役割構造体を呼び出し側で組み立てて
+  渡す (anchor/ordinal/label をバラで渡さない)
+- **インデックス系の `u32::try_from(..).unwrap_or(u32::MAX)` は禁じ手** (Phase 1.3 レビュー指摘):
+  後続フェーズが「存在しない位置」を有効値として参照する無音バグになる。実用上起こらない
+  超過なら `expect` で明示的に落とす。センチネルで誤魔化さない (POSD「エラーを存在しないものとして定義」)
 
 ## クレート選定メモ
 

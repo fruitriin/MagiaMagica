@@ -1,0 +1,330 @@
+//! 関数本体を MainRing + AuxRing 群へ再帰展開する (Phase 1.3, spec §6.1.2)。
+//!
+//! 制御構造 (`if` / `match` / `for` / `while` / `loop`) は親リングの `content` に
+//! 1個の Operation (Branch/Match/Loop) として現れ、その本体は独立した AuxRing として
+//! 切り出される。親子関係は `EdgeKind::ControlFlow` の Edge で表現する (spec §4.2)。
+//! 入れ子は深さ制限なく再帰展開する (Phase 1.6 の視覚検証で破綻したら再検討)。
+
+use magia_core::ir::{
+    AuxRingKind, AuxRingRole, Cardinality, ControlFlowInfo, Edge, EdgeKind, EdgeLayerData,
+    EffectSet, LayerData, LoopKind, Operation, OperationKind, OperationPayload, Sigil, SigilId,
+    SigilKind, SourceSpan,
+};
+use quote::ToTokens;
+use syn::spanned::Spanned;
+use syn::{Block, Expr, ExprIf, ExprMatch, ItemFn, Stmt};
+
+use crate::allocator::SigilIdAllocator;
+use crate::statement::{ParseContext, scan_expression, statement_to_operation};
+
+/// `build_rings` の結果: 1関数分のリング群と接続。
+pub(crate) struct RingForest {
+    /// MainRing を先頭に、`SigilId` 昇順 (= ソース出現順の深さ優先) で並ぶ。
+    pub(crate) sigils: Vec<Sigil>,
+    /// 親リング → AuxRing の ControlFlow Edge。`target` の `SigilId` 昇順。
+    pub(crate) edges: Vec<Edge>,
+}
+
+/// 関数本体をリング群へ展開する。MainRing は必ず `sigils[0]` に置かれる。
+pub(crate) fn build_rings(
+    item_fn: &ItemFn,
+    allocator: &mut SigilIdAllocator,
+    ctx: ParseContext,
+) -> RingForest {
+    let mut builder = RingBuilder {
+        allocator,
+        ctx,
+        sigils: Vec::new(),
+        edges: Vec::new(),
+    };
+    builder.build_ring(
+        SigilKind::MainRing,
+        &item_fn.block.stmts,
+        None,
+        item_fn.span(),
+    );
+    // 再帰中は「子を先に push → 親を後で push」の順になるため、ID 順 (= ソース出現順の
+    // 深さ優先) に並べ直して決定論的な出力にする。
+    let mut sigils = builder.sigils;
+    sigils.sort_by_key(|sigil| sigil.id);
+    let mut edges = builder.edges;
+    edges.sort_by_key(|edge| edge.target);
+    RingForest { sigils, edges }
+}
+
+struct RingBuilder<'a> {
+    allocator: &'a mut SigilIdAllocator,
+    ctx: ParseContext,
+    sigils: Vec<Sigil>,
+    edges: Vec<Edge>,
+}
+
+/// statement のトップレベルに現れた制御構造の分類。
+enum ControlStmt<'ast> {
+    If(&'ast ExprIf),
+    Match(&'ast ExprMatch),
+    For(&'ast syn::ExprForLoop),
+    While(&'ast syn::ExprWhile),
+    Loop(&'ast syn::ExprLoop),
+}
+
+/// statement が制御構造そのものなら分類して返す。
+///
+/// `let x = if ... { .. }` のような式の内側の制御構造は Phase 1.3 では切り出さず、
+/// statement 全体を1個の Compute として扱う (本体の効果は visitor が拾う)。
+fn classify(stmt: &Stmt) -> Option<ControlStmt<'_>> {
+    let Stmt::Expr(expr, _) = stmt else {
+        return None;
+    };
+    match expr {
+        Expr::If(node) => Some(ControlStmt::If(node)),
+        Expr::Match(node) => Some(ControlStmt::Match(node)),
+        Expr::ForLoop(node) => Some(ControlStmt::For(node)),
+        Expr::While(node) => Some(ControlStmt::While(node)),
+        Expr::Loop(node) => Some(ControlStmt::Loop(node)),
+        _ => None,
+    }
+}
+
+impl RingBuilder<'_> {
+    /// statement 列から1個のリングを構築し、子 (AuxRing) を再帰的に生成する。
+    fn build_ring(
+        &mut self,
+        kind: SigilKind,
+        stmts: &[Stmt],
+        role: Option<AuxRingRole>,
+        span: proc_macro2::Span,
+    ) -> SigilId {
+        let id = self.allocator.allocate();
+        let mut content: Vec<Operation> = Vec::new();
+        let mut info = ControlFlowInfo {
+            role,
+            ..ControlFlowInfo::default()
+        };
+
+        for stmt in stmts {
+            // この制御構造が親リング上で占める Operation 位置 = AuxRing の anchor。
+            // u32::MAX のようなセンチネルに黙って落とすと Phase 1.5 のレイアウトが
+            // 「存在しない位置」を参照しうるため、超過時は明示的に落とす。
+            let anchor = u32::try_from(content.len())
+                .expect("1リングの Operation 数が u32 を超えることはない");
+            match classify(stmt) {
+                Some(ControlStmt::If(node)) => {
+                    let head = format!("if {}", node.cond.to_token_stream());
+                    content.push(self.control_operation(
+                        OperationKind::Branch,
+                        head,
+                        Some(&node.cond),
+                    ));
+                    // else if / else を含む連鎖全体で1分岐と数える (ControlFlowInfo の規約)。
+                    info.branch_count += 1;
+                    self.spawn_if_chain(id, node, anchor);
+                }
+                Some(ControlStmt::Match(node)) => {
+                    let head = format!("match {}", node.expr.to_token_stream());
+                    content.push(self.control_operation(
+                        OperationKind::Match,
+                        head,
+                        Some(&node.expr),
+                    ));
+                    info.branch_count +=
+                        u32::try_from(node.arms.len().saturating_sub(1)).unwrap_or(u32::MAX);
+                    self.spawn_match_arms(id, node, anchor);
+                }
+                Some(ControlStmt::For(node)) => {
+                    let head = format!(
+                        "for {} in {}",
+                        node.pat.to_token_stream(),
+                        node.expr.to_token_stream()
+                    );
+                    content.push(self.control_operation(
+                        OperationKind::Loop,
+                        head,
+                        Some(&node.expr),
+                    ));
+                    info.loop_count += 1;
+                    let role = aux_role(AuxRingKind::LoopBody(LoopKind::For), anchor, 0, None);
+                    self.spawn_block_child(id, role, &node.body);
+                }
+                Some(ControlStmt::While(node)) => {
+                    let head = format!("while {}", node.cond.to_token_stream());
+                    content.push(self.control_operation(
+                        OperationKind::Loop,
+                        head,
+                        Some(&node.cond),
+                    ));
+                    info.loop_count += 1;
+                    let role = aux_role(AuxRingKind::LoopBody(LoopKind::While), anchor, 0, None);
+                    self.spawn_block_child(id, role, &node.body);
+                }
+                Some(ControlStmt::Loop(node)) => {
+                    content.push(self.control_operation(
+                        OperationKind::Loop,
+                        "loop".to_string(),
+                        None,
+                    ));
+                    info.loop_count += 1;
+                    let role = aux_role(AuxRingKind::LoopBody(LoopKind::Loop), anchor, 0, None);
+                    self.spawn_block_child(id, role, &node.body);
+                }
+                None => content.push(statement_to_operation(stmt, self.ctx)),
+            }
+        }
+
+        // `return` 文と `?` 演算子はどちらも early_return フラグ経由で計上される。
+        info.early_return_count =
+            u32::try_from(content.iter().filter(|op| op.payload.early_return).count())
+                .unwrap_or(u32::MAX);
+
+        // Phase 1.3 の重み近似 = Operation 数。Phase 1.5 のレイアウトで直径に反映する。
+        let weight = f64::from(u32::try_from(content.len()).unwrap_or(u32::MAX));
+        self.sigils.push(Sigil {
+            id,
+            kind,
+            content,
+            layers: LayerData {
+                control_flow: Some(info),
+                ..LayerData::default()
+            },
+            source_location: source_span(span),
+            cardinality: Cardinality {
+                weight,
+                density: None,
+            },
+        });
+        id
+    }
+
+    /// `if` / `else if` / `else` の連鎖を左から順に AuxRing 化する。
+    fn spawn_if_chain(&mut self, parent: SigilId, expr_if: &ExprIf, anchor: u32) {
+        let mut ordinal = 0u32;
+        let mut current = expr_if;
+        loop {
+            let role = aux_role(AuxRingKind::IfBranch, anchor, ordinal, None);
+            self.spawn_block_child(parent, role, &current.then_branch);
+            ordinal += 1;
+            let Some((_, else_expr)) = &current.else_branch else {
+                break;
+            };
+            match else_expr.as_ref() {
+                Expr::If(next) => current = next,
+                Expr::Block(block) => {
+                    let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None);
+                    self.spawn_block_child(parent, role, &block.block);
+                    break;
+                }
+                // 文法上 else の直後は block か if のみだが、防御的に単一式リングで受ける。
+                other => {
+                    let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None);
+                    self.spawn_expr_child(parent, role, other);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// `match` のアームをそれぞれ AuxRing 化する。パターン文字列をラベルとして残す。
+    fn spawn_match_arms(&mut self, parent: SigilId, expr_match: &ExprMatch, anchor: u32) {
+        for (index, arm) in expr_match.arms.iter().enumerate() {
+            let ordinal = u32::try_from(index).unwrap_or(u32::MAX);
+            let label = Some(arm.pat.to_token_stream().to_string());
+            let role = aux_role(AuxRingKind::MatchArm, anchor, ordinal, label);
+            match arm.body.as_ref() {
+                Expr::Block(block) => self.spawn_block_child(parent, role, &block.block),
+                expr => self.spawn_expr_child(parent, role, expr),
+            }
+        }
+    }
+
+    fn spawn_block_child(&mut self, parent: SigilId, role: AuxRingRole, block: &Block) {
+        self.spawn_child(parent, role, &block.stmts, block.span());
+    }
+
+    /// 非ブロックのアーム体 (`1 => a`) も statement 化して再帰経路を一本化する。
+    /// `_ => match ...` のような入れ子の制御構造もこの経路で AuxRing 展開される。
+    fn spawn_expr_child(&mut self, parent: SigilId, role: AuxRingRole, expr: &Expr) {
+        let span = expr.span();
+        let stmts = vec![Stmt::Expr(expr.clone(), None)];
+        self.spawn_child(parent, role, &stmts, span);
+    }
+
+    /// AuxRing を構築し、親リングとの ControlFlow Edge を張る。
+    fn spawn_child(
+        &mut self,
+        parent: SigilId,
+        role: AuxRingRole,
+        stmts: &[Stmt],
+        span: proc_macro2::Span,
+    ) {
+        let child = self.build_ring(SigilKind::AuxRing, stmts, Some(role), span);
+        // 不変条件: build_ring は自身の Sigil を最後に push するため、末尾が必ず子リング。
+        debug_assert_eq!(self.sigils.last().map(|sigil| sigil.id), Some(child));
+        let weight = self
+            .sigils
+            .last()
+            .map_or(0.0, |sigil| sigil.cardinality.weight);
+        self.edges.push(Edge {
+            source: parent,
+            target: child,
+            kind: EdgeKind::ControlFlow,
+            // 空ブロックでも接続線は描くため最低 1.0 (Phase 1.5 で太さに反映)。
+            cardinality: weight.max(1.0),
+            layers: EdgeLayerData::default(),
+        });
+    }
+
+    /// 制御構造そのものを表す Operation (親リングの `content` に置く)。
+    ///
+    /// `guard` は条件式・被検査式・イテレータ式のみ。本体ブロックは AuxRing 側で
+    /// 処理されるため渡さない (二重計上の防止)。`if f()? { .. }` のように条件に
+    /// `?` がある場合は kind を Branch のまま `early_return` フラグで伝える。
+    fn control_operation(
+        &self,
+        kind: OperationKind,
+        head: String,
+        guard: Option<&Expr>,
+    ) -> Operation {
+        let scan = guard.map(scan_expression);
+        let early_return = scan.as_ref().is_some_and(|s| s.has_try);
+        let has_unsafe = scan.as_ref().is_some_and(|s| s.has_unsafe);
+        let mut effects = EffectSet::default();
+        if self.ctx.fn_is_unsafe || has_unsafe {
+            effects.unsafe_block = true;
+        }
+        Operation {
+            kind,
+            effects,
+            payload: OperationPayload {
+                source_excerpt: Some(head),
+                call_target: None,
+                early_return,
+            },
+        }
+    }
+}
+
+fn aux_role(
+    kind: AuxRingKind,
+    anchor_operation: u32,
+    ordinal: u32,
+    label: Option<String>,
+) -> AuxRingRole {
+    AuxRingRole {
+        kind,
+        anchor_operation,
+        ordinal,
+        label,
+    }
+}
+
+fn source_span(span: proc_macro2::Span) -> SourceSpan {
+    let start_line = u32::try_from(span.start().line).unwrap_or(0);
+    let end_line = u32::try_from(span.end().line).unwrap_or(start_line);
+    SourceSpan {
+        file: String::new(),
+        start_line,
+        end_line,
+        start_column: None,
+        end_column: None,
+    }
+}

@@ -6,9 +6,10 @@
 //! - Phase 1 のレイヤーのみ埋めた `MagiaGraph` の round-trip
 
 use magia_core::ir::{
-    Cardinality, ConcurrencyInfo, ControlFlowInfo, Edge, EdgeKind, EdgeLayerData, EffectSet,
-    LayerData, MagiaGraph, Module, ModuleId, Operation, OperationKind, OperationPayload,
-    ProjectMetadata, Sigil, SigilId, SigilKind, SourceSpan, TypeInfo,
+    AuxRingKind, AuxRingRole, Cardinality, ConcurrencyInfo, ControlFlowInfo, Edge, EdgeKind,
+    EdgeLayerData, EffectSet, LayerData, LoopKind, MagiaGraph, Module, ModuleId, Operation,
+    OperationKind, OperationPayload, ProjectMetadata, Sigil, SigilId, SigilKind, SourceSpan,
+    TypeInfo,
 };
 
 #[test]
@@ -74,6 +75,7 @@ fn sample_phase1_graph() -> MagiaGraph {
                 branch_count: 0,
                 loop_count: 0,
                 early_return_count: 0,
+                role: None,
             }),
             type_info: Some(TypeInfo {
                 signature: Some("fn hello()".to_string()),
@@ -101,6 +103,19 @@ fn sample_phase1_graph() -> MagiaGraph {
     let aux_ring = Sigil {
         id: SigilId(1),
         kind: SigilKind::AuxRing,
+        layers: LayerData {
+            // Phase 1.3: AuxRing は親リングとの接続情報 (role) を持つ。
+            control_flow: Some(ControlFlowInfo {
+                role: Some(AuxRingRole {
+                    kind: AuxRingKind::LoopBody(LoopKind::For),
+                    anchor_operation: 0,
+                    ordinal: 0,
+                    label: None,
+                }),
+                ..ControlFlowInfo::default()
+            }),
+            ..LayerData::default()
+        },
         ..Sigil::default()
     };
 
