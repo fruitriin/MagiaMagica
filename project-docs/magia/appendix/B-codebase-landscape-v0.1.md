@@ -1,7 +1,7 @@
-# Mystical CI Appendix B: コードベース景観とモジュール結合 v0.1
+# MagiaMagica Appendix B: コードベース景観とモジュール結合 v0.1
 
 > **本文書の位置づけ**
-> 本文書は『Mystical CI 仕様書 v0.1』、『Mystical CI Phase 2 以降の議論ノート v0.1』、『Mystical CI Appendix A: 描画様式カタログ v0.1』に続く補遺 B である。
+> 本文書は『MagiaMagica 仕様書 v0.1』、『MagiaMagica Phase 2 以降の議論ノート v0.1』、『MagiaMagica Appendix A: 描画様式カタログ v0.1』に続く補遺 B である。
 >
 > Appendix A で確立した「式 (RenderStyle)」の体系を、関数単位からモジュール単位・コードベース全体へとスケールアップさせる議論を集約する。本ツールの最終形態として想定される「魔導都市的可視化」の基礎理論と実装方針を記述する。
 
@@ -450,7 +450,7 @@ LandscapeScore = w1 * StyleConsistency
 Phase 1 仕様書 §4.2 の IR スキーマを、本文書の議論に対応するように拡張する。
 
 ```rust
-struct MysticalGraph {
+struct MagiaGraph {
     modules: Vec<Module>,
     cross_module_edges: Vec<Edge>,
     junction_glyphs: Vec<JunctionGlyph>,        // 新規

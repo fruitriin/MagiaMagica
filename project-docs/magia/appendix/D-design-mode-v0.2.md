@@ -1,4 +1,4 @@
-# Mystical CI Appendix D: 設計支援モードと式駆動設計 v0.2
+# MagiaMagica Appendix D: 設計支援モードと式駆動設計 v0.2
 
 > **本文書の位置づけ**
 > 本ツールの双方向性 (Analyzer / Designer の両モード) を確立する文書。
@@ -23,13 +23,13 @@
 
 ```bash
 # Analyzer Mode
-$ mystical render src/state/reducer.rs::update
+$ magia render src/state/reducer.rs::update
 
 # Designer Mode
-$ mystical design --property fault-tolerance --domain api-handler
-$ mystical design --style alchemy --output-skeleton src/skeleton/
-$ mystical design --recipe "state machine with refinement types"
-$ mystical design --book "Clean Architecture" --language rust  # ★v0.2: Appendix E 連携
+$ magia design --property fault-tolerance --domain api-handler
+$ magia design --style alchemy --output-skeleton src/skeleton/
+$ magia design --recipe "state machine with refinement types"
+$ magia design --book "Clean Architecture" --language rust  # ★v0.2: Appendix E 連携
 ```
 
 ### 1.3 価値の乗算
@@ -291,13 +291,13 @@ zoom_level_specific_checks:
 
 レシピ集はコミュニティで継続的に育てる:
 
-- `mystical-recipe-microservices`
-- `mystical-recipe-game-engine`
-- `mystical-recipe-ml-pipeline`
-- `mystical-recipe-embedded`
-- `mystical-recipe-ddd-tactical` ★v0.2 追加候補
-- `mystical-recipe-event-sourcing` ★v0.2 追加候補
-- `mystical-recipe-functional-core` ★v0.2 追加候補
+- `magia-recipe-microservices`
+- `magia-recipe-game-engine`
+- `magia-recipe-ml-pipeline`
+- `magia-recipe-embedded`
+- `magia-recipe-ddd-tactical` ★v0.2 追加候補
+- `magia-recipe-event-sourcing` ★v0.2 追加候補
+- `magia-recipe-functional-core` ★v0.2 追加候補
 
 クレートとして配布。
 
@@ -355,7 +355,7 @@ zoom_level_specific_checks:
 ### 6.1 対話的なコマンド
 
 ```bash
-$ mystical design --interactive
+$ magia design --interactive
 
 ? どんな性質を求めますか? (複数選択可)
   ❯ ◉ fault-tolerance
@@ -384,23 +384,23 @@ $ mystical design --interactive
 
 ```bash
 # レシピを直接指定
-$ mystical design --recipe fault-tolerance-via-fractal --lang rust
+$ magia design --recipe fault-tolerance-via-fractal --lang rust
 
 # 書籍を直接指定 (★v0.2: Appendix E 連携)
-$ mystical design --book "POSD" --domain "library-design"
-$ mystical design --book "Clean Architecture" --stance enforcer
+$ magia design --book "POSD" --domain "library-design"
+$ magia design --book "Clean Architecture" --stance enforcer
 
 # 性質を指定
-$ mystical design --property "type safety, immutability"
+$ magia design --property "type safety, immutability"
 
 # 異質適用を試す
-$ mystical design --domain state-management --force-style alchemy
+$ magia design --domain state-management --force-style alchemy
 
 # 既存コードを別の式で再設計
-$ mystical refactor --from src/state/reducer.rs --to-style alchemy
+$ magia refactor --from src/state/reducer.rs --to-style alchemy
 
 # ★v0.2 追加: 複数書籍の比較
-$ mystical compare --books "POSD,Clean Architecture" --domain "module design"
+$ magia compare --books "POSD,Clean Architecture" --domain "module design"
 ```
 
 ### 6.3 出力形式
@@ -475,11 +475,11 @@ Designer Mode の出力:
 ```
 [人間] → 求める性質を言語化
     ↓
-[Mystical Designer] → 性質に対応する式を選択、骨格を生成
+[MagiaMagica Designer] → 性質に対応する式を選択、骨格を生成
     ↓
 [AI Code Assistant] → 骨格を埋める詳細コードを生成
     ↓
-[Mystical Analyzer] → 生成されたコードが意図通りの式になっているか検証
+[MagiaMagica Analyzer] → 生成されたコードが意図通りの式になっているか検証
 ```
 
 本ツールは設計レベルの意図と実装レベルの現実を繋ぐ装置として、AI と補完関係に立つ。
@@ -516,7 +516,7 @@ Hybrid Mode   ← 中間
 Enforcer Mode ← 規範重視
 ```
 
-スタンスは設定ファイル `mystical.toml` で宣言され、ツール全体の挙動を決定する。
+スタンスは設定ファイル `magia.toml` で宣言され、ツール全体の挙動を決定する。
 
 ### 11.2 Advisor Mode (アドバイザーモード)
 
@@ -531,7 +531,7 @@ Enforcer Mode ← 規範重視
 
 **設定例**:
 ```toml
-# mystical.toml
+# magia.toml
 [stance]
 mode = "advisor"
 
@@ -710,8 +710,8 @@ enforcement = "advisory"  # Generic は裁量
 スタンスは以下の階層で設定可能 (上ほど優先):
 
 1. CLI フラグ (`--stance enforcer`) — 一時的な上書き
-2. プロジェクトの `mystical.toml` — プロジェクト規約
-3. ユーザーの `~/.mystical/config.toml` — 個人のデフォルト
+2. プロジェクトの `magia.toml` — プロジェクト規約
+3. ユーザーの `~/.magia/config.toml` — 個人のデフォルト
 4. システムのデフォルト = Advisor Mode
 
 これにより、組織のプロジェクトでは Enforcer を強制しつつ、開発者個人は実験中に CLI フラグで一時的に Advisor に切り替える、といった柔軟性が得られる。

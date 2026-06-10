@@ -1,4 +1,4 @@
-# Mystical CI Appendix E: 設計哲学カタログ v0.2
+# MagiaMagica Appendix E: 設計哲学カタログ v0.2
 
 > **本文書の位置づけ**
 > 歴史的に重要な設計哲学・設計書を、本ツールの「式 (RenderStyle)」体系に翻訳して分類・分析する。
@@ -153,7 +153,7 @@ ExpressionMode::CatalogCollection  (新規)
 - ライブラリ的な性格を持つ (各機能が独立)
 
 **カタログ式の独自の限界**:
-カタログ式は構造的に一貫した全体図を持たないため、Mystical CI の「景観可視化」の対象としては難しい。各パターンを個別に描画することはできるが、それらを統合した一枚の図にはなりにくい。
+カタログ式は構造的に一貫した全体図を持たないため、MagiaMagica の「景観可視化」の対象としては難しい。各パターンを個別に描画することはできるが、それらを統合した一枚の図にはなりにくい。
 
 これは「カタログ式は本来全体図を持たない」という性質を反映している。GoF を採用するということは、全体構造ではなく**個別の解の引き出し**を選ぶということ。
 
@@ -697,7 +697,7 @@ Pragmatic Programmer → Mythical Man-Month → Programming Pearls
 ### 5.3 比較モード ★v0.2 拡張
 
 ```bash
-$ mystical compare --books "POSD,GoF" --domain "library design"
+$ magia compare --books "POSD,GoF" --domain "library design"
 
 POSD のアプローチ (単一哲学型):
   - 深層式 (Profundus) で各機能を deep module 化
@@ -746,7 +746,7 @@ GoF のアプローチ (パターン集型):
        POSD (単一哲学型) - 裁量の再評価
        Domain Modeling Made Functional (単一哲学型)
        
-2020s: ★ Mystical CI (記号体系) - 視覚的設計言語の提案
+2020s: ★ MagiaMagica (記号体系) - 視覚的設計言語の提案
        ★ AI-augmented design - メタタイプの境界が曖昧化?
 ```
 
