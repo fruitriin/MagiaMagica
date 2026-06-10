@@ -26,7 +26,6 @@
 
 - Phase 1.5 の `layout/constants.rs` の半径・ギャップ値は仮置き。Phase 1.6 の自己ホスティング SVG では破綻していないが、オーナー目視判定の結果次第で調整する（交差最小化の回転ステップ 0.2 rad、glyph 全周配置によるノード重なりも同タイミングで再評価）
 - Phase 1.6 のコントリビューション検出より: `docs/knowhow/svg-deterministic-rendering.md` は SVG を生成する Rust プロジェクト全般に通用する汎用知見。ADDF 本体への昇格候補（rust-cargo-workspace-bootstrap 等と同じ扱い、Phase 1 完了後の節目で判断）
-- Phase 2.1 より: spec §7 に監視エラー時の挙動（「変化したかもしれない」側に倒して再レンダリング）が未記載。spec v0.3 起票時に追記する
 - Phase 2.1 のコントリビューション検出より: `.claude/launch.json`（preview サーバ定義）と `minimal-dev-server-pattern.md` は ADDF scaffold テンプレート（launch.json.example）/ ADDF knowhow への昇格候補。既存の昇格候補群と合わせて一括 PR を検討
 - Phase 1.7 のコントリビューション検出より: `docs/knowhow/clap-cli-integration-pattern.md` の汎用部分（予約語フラグ・value_delimiter・assert_cmd・エラー責務分担）も ADDF 昇格候補。**Phase 1 が完了したため、昇格候補 4 件（cargo-workspace-bootstrap / syn-visitor-patterns / svg-deterministic-rendering / clap-cli-integration）の一括昇格を「品質向上計画」の一部として Phase 2 計画立案時に検討する**
 
