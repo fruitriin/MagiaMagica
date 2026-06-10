@@ -20,6 +20,17 @@ pub const FILESYSTEM: &str = "#7a4a1c";
 /// Unsafe: 赤 (Rust のみ)。
 pub const UNSAFE: &str = "#d92626";
 
+// ===== 差分強調チャネル (Phase 3.2, spec v0.3 §8) =====
+// 効果カテゴリの色相規約 (上記6色) と衝突しない色を選ぶ。強調は記号の塗り替えでなく
+// 輪郭ハロー/ゴーストで表現するため、面積の大きい縁取りでも視認できる彩度にする。
+
+/// 追加された術式: 金 (新たに刻まれた印)。
+pub const DIFF_ADDED: &str = "#d4a017";
+/// 変更された術式: シアン (書き換えられた印)。
+pub const DIFF_CHANGED: &str = "#00a0c0";
+/// 削除された術式のゴースト: 灰 (消えた術式の残滓)。
+pub const DIFF_REMOVED: &str = "#909090";
+
 /// `EffectSet` → 表示カテゴリ。分類の実体は語彙の持ち主である
 /// `filter::EffectCategory::of` (レンダラ外からも使う共有ロジック)。
 pub(crate) fn category_of(effects: &EffectSet) -> EffectCategory {

@@ -12,24 +12,83 @@
 //! - 出力は1行1要素。レイヤー `<g>` の内側に `<g>` は入れ子にせず、閉じタグは
 //!   `</g>` 単独行とする (magia-cli の `--layers` フィルタが行単位でこの規約に依存)
 
+use std::collections::BTreeMap;
 use std::f64::consts::{PI, TAU};
 use std::fmt::Write;
 
-use kurbo::{Arc, Point, Shape, Vec2};
+use kurbo::{Arc, Point, Rect, Shape, Vec2};
 
+use crate::diff::SpellDiff;
 use crate::filter::{EffectCategory, FilterSpec, LayerName};
 use crate::ir::{AuxRingKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::layout::constants::{
-    ASYNC_INNER_RING_OFFSET, AUX_RING_STROKE, EDGE_STROKE, MAIN_RING_STROKE, OPERATION_DOT_INSET,
-    OPERATION_DOT_RADIUS, RETURN_BRANCH_LENGTH, SIGNATURE_ARC_OFFSET, SIGNATURE_BAND_HALF,
+    ASYNC_INNER_RING_OFFSET, AUX_RING_STROKE, DIFF_GHOST_OPACITY, DIFF_HALO_OFFSET,
+    DIFF_HALO_STROKE, EDGE_STROKE, MAIN_RING_STROKE, OPERATION_DOT_INSET, OPERATION_DOT_RADIUS,
+    RETURN_BRANCH_LENGTH, SIGNATURE_ARC_OFFSET, SIGNATURE_BAND_HALF,
 };
-use crate::layout::{LayoutResult, sigil_radius};
+use crate::layout::{LayoutResult, layout, sigil_radius};
 use crate::render::palette;
 
 pub(crate) fn render(graph: &MagiaGraph, layout: &LayoutResult, filter: &FilterSpec) -> String {
     let mut out = String::new();
-    write_document(&mut out, graph, layout, filter).expect("String への SVG 書き込みは失敗しない");
+    write_document(&mut out, graph, layout, filter, None)
+        .expect("String への SVG 書き込みは失敗しない");
     out
+}
+
+/// 差分強調つきレンダリング (Phase 3.2, spec v0.3 §8)。
+///
+/// after を基準に描画し、`<g class="overlay-diff">` を最上層に重ねる:
+/// added / changed は after レイアウトの位置にハロー輪郭、removed は
+/// **before レイアウトの位置**に半透明破線のゴーストを描く。
+/// レイアウトは内部で両リビジョン分を計算する (決定論的で安価なため、
+/// 呼び出し側に2つのレイアウトを正しく対応付けて渡す責任を負わせない)。
+pub(crate) fn render_diff(
+    before: &MagiaGraph,
+    after: &MagiaGraph,
+    diff: &SpellDiff,
+    filter: &FilterSpec,
+) -> String {
+    let before_layout = layout(before);
+    let mut after_layout = layout(after);
+    // ゴーストは before の座標に描くため、after のキャンバスからはみ出しうる。
+    // viewBox を必要分だけ広げる (diff なしの出力には影響しない経路)。
+    let before_kinds = kind_map(before);
+    for node in &diff.removed {
+        let Some(kind) = before_kinds.get(&node.sigil).copied() else {
+            continue;
+        };
+        let Some(center) = before_layout.positions.get(&node.sigil) else {
+            continue;
+        };
+        // ゴースト本体は sigil_radius で描く (write_overlay_diff)。reach はその外側に
+        // ハロー級の余白を確保する値で、viewBox が線幅分でも欠けないよう広めに取る。
+        let reach = sigil_radius(kind) + DIFF_HALO_OFFSET + DIFF_HALO_STROKE;
+        let bounds = Rect::new(
+            center.x - reach,
+            center.y - reach,
+            center.x + reach,
+            center.y + reach,
+        );
+        after_layout.canvas = after_layout.canvas.union(bounds);
+    }
+
+    let overlay = OverlayContext {
+        before,
+        before_layout: &before_layout,
+        diff,
+    };
+    let mut out = String::new();
+    write_document(&mut out, after, &after_layout, filter, Some(&overlay))
+        .expect("String への SVG 書き込みは失敗しない");
+    out
+}
+
+/// overlay-diff チャネルの描画に必要な before 側の文脈。
+struct OverlayContext<'a> {
+    before: &'a MagiaGraph,
+    before_layout: &'a LayoutResult,
+    diff: &'a SpellDiff,
 }
 
 fn write_document(
@@ -37,6 +96,7 @@ fn write_document(
     graph: &MagiaGraph,
     layout: &LayoutResult,
     filter: &FilterSpec,
+    overlay: Option<&OverlayContext<'_>>,
 ) -> std::fmt::Result {
     let canvas = layout.canvas;
     writeln!(
@@ -77,7 +137,98 @@ fn write_document(
         writeln!(out, "</g>")?;
     }
 
+    // 強調チャネルはレイヤーと独立 (spec v0.3 §8): show/hide のゲートを通さず最上層に描く。
+    if let Some(context) = overlay {
+        write_overlay_diff(out, graph, layout, context)?;
+    }
+
     writeln!(out, "</svg>")
+}
+
+// ===== overlay-diff (Phase 3.2) =====
+
+/// 差分強調チャネル。描画順はゴースト (背景) → 変更 → 追加 (最前面、注目度順)。
+///
+/// 各ノードは「kind と position の両方が引けたときだけ」描く: 存在性の確認ソースを
+/// `overlay_anchor` に一本化し、片方だけ見つかる壊れた入力で原点に無言描画しない。
+fn write_overlay_diff(
+    out: &mut String,
+    after: &MagiaGraph,
+    after_layout: &LayoutResult,
+    context: &OverlayContext<'_>,
+) -> std::fmt::Result {
+    // diff ノードごとの線形探索 (O(diff × sigil)) を避け、kind 表を先に1回で引く。
+    let before_kinds = kind_map(context.before);
+    let after_kinds = kind_map(after);
+
+    writeln!(out, r#"<g class="overlay-diff">"#)?;
+    for node in &context.diff.removed {
+        let Some((center, kind)) = overlay_anchor(&before_kinds, context.before_layout, node.sigil)
+        else {
+            continue; // diff と graph の不整合 (壊れた入力) は黙って飛ばす
+        };
+        // ゴーストは「そこに在った」輪郭そのもの: ハローでなく本体半径で描く。
+        writeln!(
+            out,
+            r#"<circle class="diff-removed" cx="{}" cy="{}" r="{}" fill="none" stroke="{}" stroke-width="{}" stroke-opacity="{}" stroke-dasharray="5 4"/>"#,
+            num(center.x),
+            num(center.y),
+            num(sigil_radius(kind)),
+            palette::DIFF_REMOVED,
+            num(DIFF_HALO_STROKE),
+            num(DIFF_GHOST_OPACITY),
+        )?;
+    }
+    for change in &context.diff.changed {
+        if let Some((center, kind)) = overlay_anchor(&after_kinds, after_layout, change.after) {
+            halo(out, center, kind, "diff-changed", palette::DIFF_CHANGED)?;
+        }
+    }
+    for node in &context.diff.added {
+        if let Some((center, kind)) = overlay_anchor(&after_kinds, after_layout, node.sigil) {
+            halo(out, center, kind, "diff-added", palette::DIFF_ADDED)?;
+        }
+    }
+    writeln!(out, "</g>")
+}
+
+/// 強調ハロー: 対象の輪郭の少し外側に描く同心円。
+/// 記号の色 (効果カテゴリの色相規約) には触れない (計画の設計判断)。
+fn halo(
+    out: &mut String,
+    center: Point,
+    kind: SigilKind,
+    class: &str,
+    color: &str,
+) -> std::fmt::Result {
+    writeln!(
+        out,
+        r#"<circle class="{class}" cx="{}" cy="{}" r="{}" fill="none" stroke="{color}" stroke-width="{}"/>"#,
+        num(center.x),
+        num(center.y),
+        num(sigil_radius(kind) + DIFF_HALO_OFFSET),
+        num(DIFF_HALO_STROKE),
+    )
+}
+
+/// overlay 描画の足場: 画面座標の中心と kind を、両方引けたときだけ返す。
+fn overlay_anchor(
+    kinds: &BTreeMap<SigilId, SigilKind>,
+    layout: &LayoutResult,
+    id: SigilId,
+) -> Option<(Point, SigilKind)> {
+    let kind = *kinds.get(&id)?;
+    let position = layout.positions.get(&id)?;
+    Some((Point::new(position.x, -position.y), kind))
+}
+
+fn kind_map(graph: &MagiaGraph) -> BTreeMap<SigilId, SigilKind> {
+    graph
+        .modules
+        .iter()
+        .flat_map(|m| &m.sigils)
+        .map(|s| (s.id, s.kind))
+        .collect()
 }
 
 /// シグネチャ円弧ラベル用の `<path>` を `<defs>` に出す。

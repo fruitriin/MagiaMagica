@@ -14,16 +14,29 @@ use crate::ir::{AuxRingKind, LoopKind, MagiaGraph, Module, Sigil, SigilId, Sigil
 use crate::metrics::{Metrics, measure};
 
 /// 差分の結果 (spec v0.3 §9.2 の契約)。
+///
+/// `SigilId` はリビジョン間で不安定なため外部契約 (JSON / レポート) には出さないが、
+/// **同一リビジョンのレイアウトと突き合わせる**用途 (Phase 3.2 の overlay 描画) のために
+/// 各ノードは出自側の ID を保持する: added は after 側、removed は before 側。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SpellDiff {
-    /// 追加されたノードの経路 (人間可読、決定論的順序)。
-    pub added: Vec<String>,
-    /// 削除されたノードの経路。
-    pub removed: Vec<String>,
+    /// 追加されたノード (after 側の ID と人間可読経路、決定論的順序)。
+    pub added: Vec<NodeRef>,
+    /// 削除されたノード (before 側の ID と経路)。
+    pub removed: Vec<NodeRef>,
     /// 変更されたノードの経路と変更内容。
     pub changed: Vec<NodeChange>,
     /// メトリクス変化。
     pub metrics: MetricsDelta,
+}
+
+/// 差分に現れたノード1件への参照。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeRef {
+    /// 人間可読の経路 (例: "main > if分岐(anchor 1, #0) > 召喚 audit")。
+    pub path: String,
+    /// 出自リビジョン内での ID (added: after / removed: before)。
+    pub sigil: SigilId,
 }
 
 /// 変更されたノード1件。
@@ -32,6 +45,10 @@ pub struct NodeChange {
     pub path: String,
     /// 変更内容の日本語記述 (例: "操作数 3 → 5")。
     pub details: Vec<String>,
+    /// before リビジョン内での ID。
+    pub before: SigilId,
+    /// after リビジョン内での ID (overlay はこちらの位置に強調を描く)。
+    pub after: SigilId,
 }
 
 /// メトリクスの before / after (差分は表示時に計算する)。
@@ -58,11 +75,11 @@ impl SpellDiff {
         if self.is_empty() {
             let _ = writeln!(out, "  構造の変化なし。");
         }
-        for path in &self.added {
-            let _ = writeln!(out, "  追加: {path}");
+        for node in &self.added {
+            let _ = writeln!(out, "  追加: {}", node.path);
         }
-        for path in &self.removed {
-            let _ = writeln!(out, "  削除: {path}");
+        for node in &self.removed {
+            let _ = writeln!(out, "  削除: {}", node.path);
         }
         for change in &self.changed {
             let _ = writeln!(
@@ -269,6 +286,8 @@ fn match_nodes(before: &Tree, after: &Tree, path: &str, result: &mut SpellDiff) 
         result.changed.push(NodeChange {
             path: path.to_string(),
             details,
+            before: before.sigil.id,
+            after: after.sigil.id,
         });
     }
 
@@ -315,8 +334,11 @@ fn group_children<'t, 'a>(tree: &'t Tree<'a>) -> BTreeMap<NodeKey, Vec<&'t Tree<
 }
 
 /// 部分木全体を追加/削除リストへ平坦化する。
-fn collect_subtree(tree: &Tree, path: &str, sink: &mut Vec<String>) {
-    sink.push(path.to_string());
+fn collect_subtree(tree: &Tree, path: &str, sink: &mut Vec<NodeRef>) {
+    sink.push(NodeRef {
+        path: path.to_string(),
+        sigil: tree.sigil.id,
+    });
     for child in &tree.children {
         collect_subtree(
             child,

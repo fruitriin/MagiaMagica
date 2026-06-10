@@ -363,6 +363,91 @@ fn diff_of_identical_files_is_empty() {
 }
 
 #[test]
+fn diff_svg_writes_overlay_channel() {
+    let dir = std::env::temp_dir().join("magia-cli-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("diff_overlay.svg");
+    magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("diff/after.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .arg("--svg")
+        .arg("-o")
+        .arg(&out)
+        .assert()
+        .success();
+    let svg = std::fs::read_to_string(&out).expect("出力ファイルが存在する");
+    assert!(svg.contains(r#"<g class="overlay-diff">"#));
+    assert!(svg.contains("diff-added") && svg.contains("diff-removed"));
+    assert!(svg.contains("</svg>"));
+}
+
+#[test]
+fn diff_svg_accepts_highlight_changed_filter() {
+    let dir = std::env::temp_dir().join("magia-cli-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let filter = dir.join("highlight.magia");
+    std::fs::write(&filter, "show: control_flow\nhighlight: changed\n").unwrap();
+    let output = magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("diff/after.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .arg("--svg")
+        .arg("--filter")
+        .arg(&filter)
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let svg = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        svg.contains("overlay-diff"),
+        "diff 文脈では highlight: changed が機能する"
+    );
+}
+
+#[test]
+fn render_rejects_highlight_without_diff_context() {
+    let dir = std::env::temp_dir().join("magia-cli-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let filter = dir.join("highlight-only.magia");
+    std::fs::write(&filter, "highlight: changed\n").unwrap();
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("simple_compute.rs"))
+        .arg("--fn")
+        .arg("simple_compute")
+        .arg("--filter")
+        .arg(&filter)
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("diff 文脈がありません"));
+    assert!(
+        stderr.contains("magia diff --svg"),
+        "使うべきコマンドを案内する"
+    );
+}
+
+#[test]
+fn diff_svg_conflicts_with_json() {
+    magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("diff/after.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .arg("--svg")
+        .arg("--json")
+        .assert()
+        .failure();
+}
+
+#[test]
 fn diff_missing_function_names_the_offending_file() {
     let output = magia()
         .arg("diff")

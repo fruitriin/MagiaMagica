@@ -39,11 +39,31 @@
 
 ## 受け入れ基準
 
-- [ ] 変更前後 fixture で added/removed/changed の強調が SVG に現れる
-- [ ] `highlight: changed` が diff 文脈で機能し、文脈なしでは案内エラー
-- [ ] 決定論性・既存スナップショット不変 (diff なし時の出力は従来どおり)
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] 変更前後 fixture で added/removed/changed の強調が SVG に現れる
+- [x] `highlight: changed` が diff 文脈で機能し、文脈なしでは案内エラー
+- [x] 決定論性・既存スナップショット不変 (diff なし時の出力は従来どおり)
+- [x] `cargo test --workspace` / clippy 警告0
 
 ## 後続
 
 - 3.3 が PR コメントにこの SVG を貼る
+
+## 実装結果メモ (2026-06-11)
+
+- `SpellDiff` を構造拡張 (v1.0 前の破壊的変更): added/removed は `Vec<NodeRef>`
+  (経路 + 出自側 SigilId)、NodeChange に before/after の SigilId。overlay が layout
+  位置と突き合わせるための内部運搬で、JSON 契約には引き続き経路文字列のみを出す
+- レンダラは `write_document` に `Option<&OverlayContext>` を1引数足す形に抑え、
+  diff なし経路の出力を完全不変にした (既存スナップショット全部無変更で通過)
+- 強調の意匠: 金ハロー=追加 / シアンハロー=変更 / 灰破線ゴースト=削除 (本体半径)。
+  ゴーストが after キャンバスをはみ出す分は `Rect::union` で viewBox を拡張
+- `--svg` は `--json` と排他、`--filter` と `-o` は `requires = "svg"`。
+  `magia render` で highlight 指定時は「diff 文脈がありません (magia diff --svg で
+  使用してください)」の案内エラー (spec v0.3 §8 の黙って無視しない原則)
+- 目視素材2点をオーナー送付済み (fixture + **自己ホスティング実例**: Phase 3.1 の
+  metrics_sentence リファクタ実コミット diff — 入れ子ループ群がゴーストとして消える図)。
+  **意匠判定待ち**
+- レビュー (Stage 2): Critical 0 / Warning 2 / Suggestion 5 → 全件対応。
+  存在性確認を `overlay_anchor` に一本化 (kind と position の片方だけ見つかる入力で
+  原点に無言描画しない)、kind 表の O(diff×sigil) 線形探索を BTreeMap 一括構築に、
+  ゴースト不透明度を定数化、メッセージ・doc の表現統一

@@ -10,6 +10,7 @@ mod midchilda;
 // 外部から色を参照したくなったら (Phase 2 dev-server 等) そのとき公開を判断する。
 pub(crate) mod palette;
 
+use crate::diff::SpellDiff;
 use crate::filter::FilterSpec;
 use crate::ir::MagiaGraph;
 use crate::layout::LayoutResult;
@@ -61,6 +62,34 @@ pub fn render_with(
 ) -> String {
     match style {
         RenderStyle::MidchildaConcentric => midchilda::render(graph, layout, filter),
+        RenderStyle::Belka | RenderStyle::Yagami => {
+            unimplemented!("not implemented in Phase 1")
+        }
+    }
+}
+
+/// 差分強調つきで描画する (Phase 3.2, spec v0.3 §8)。
+///
+/// after を基準に描画し、`SpellDiff` の追加/変更ノードにハロー輪郭、削除ノードに
+/// before 位置のゴースト (半透明破線) を `<g class="overlay-diff">` として重ねる。
+/// 強調チャネルはレイヤーの show/hide の影響を受けない。
+/// レイアウトは内部で before / after 両方を計算する (呼び出し側は IR と diff を
+/// 渡すだけでよい — 2つのレイアウトの対応付けという複雑さを下に畳む)。
+///
+/// # Panics
+///
+/// Phase 3 時点で未実装の式 (`Belka` / `Yagami`) を指定すると panic する
+/// (`render` / `render_with` と同じ規約)。
+#[must_use = "SVG 文字列は出力先に書き込まれるべき"]
+pub fn render_diff(
+    before: &MagiaGraph,
+    after: &MagiaGraph,
+    diff: &SpellDiff,
+    style: RenderStyle,
+    filter: &FilterSpec,
+) -> String {
+    match style {
+        RenderStyle::MidchildaConcentric => midchilda::render_diff(before, after, diff, filter),
         RenderStyle::Belka | RenderStyle::Yagami => {
             unimplemented!("not implemented in Phase 1")
         }

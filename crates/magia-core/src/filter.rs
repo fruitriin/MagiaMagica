@@ -8,9 +8,10 @@
 //! hide: type_info
 //! ```
 //!
-//! - ディレクティブは `show:` / `hide:` の2種。`hide` が `show` に優先する
+//! - ディレクティブは `show:` / `hide:` / `highlight:` の3種。`hide` が `show` に優先する
 //! - `effects[カテゴリ, ...]` で効果カテゴリの絞り込みができる (effects レイヤーのみ)
-//! - `highlight:` / `filter:` は Phase 3 の予約語 (現状は専用エラーで案内する)
+//! - `highlight: changed` は diff 文脈での差分強調 (Phase 3.2, spec v0.3 §8)。
+//!   その他の `highlight:` 値と `filter:` は引き続き予約語 (専用エラーで案内する)
 //! - 未知のレイヤー名・カテゴリ名はタイポ防止のため行番号つきエラーにする
 
 use std::fmt;
@@ -159,6 +160,12 @@ pub struct FilterSpec {
     pub show: Option<Vec<LayerSelector>>,
     /// `hide:` で列挙されたレイヤー (show より優先)。
     pub hide: Vec<LayerName>,
+    /// `highlight: changed` — diff 文脈での差分強調 (spec v0.3 §8)。
+    /// diff 文脈なしで指定された場合のエラー化は呼び出し側 (CLI) の責務:
+    /// パーサは文脈を知らないため、ここでは真偽だけを運ぶ。
+    /// レンダラはこのフィールドを**参照しない** (overlay の有無は `SpellDiff` を
+    /// 渡すかどうかで決まる)。本フィールドは文脈バリデーション専用のマーカー。
+    pub highlight_changed: bool,
 }
 
 impl FilterSpec {
@@ -178,6 +185,7 @@ impl FilterSpec {
                     .collect(),
             ),
             hide: Vec::new(),
+            highlight_changed: false,
         }
     }
 
@@ -247,13 +255,23 @@ impl FilterSpec {
                     }
                     spec.hide.push(selector.layer);
                 }
-            } else if line.starts_with("highlight:") || line.starts_with("filter:") {
+            } else if let Some(rest) = line.strip_prefix("highlight:") {
+                // spec v0.3 §8: 解禁は `changed` のみ。その他の値は引き続き予約語。
+                let value = rest.trim();
+                if value == "changed" {
+                    spec.highlight_changed = true;
+                } else {
+                    return Err(error(format!(
+                        "highlight: の値 `{value}` は予約されています (現在使用可能: changed)"
+                    )));
+                }
+            } else if line.starts_with("filter:") {
                 return Err(error(
-                    "highlight: / filter: は Phase 3 で導入予定の予約語です".to_string(),
+                    "filter: は Phase 3 以降で導入予定の予約語です".to_string(),
                 ));
             } else {
                 return Err(error(format!(
-                    "不明なディレクティブです (show: / hide: のみ使用可能): {line}"
+                    "不明なディレクティブです (show: / hide: / highlight: のみ使用可能): {line}"
                 )));
             }
         }
@@ -378,8 +396,24 @@ mod tests {
 
     #[test]
     fn reserved_directives_are_guided() {
+        // notes の旧称 changed_in_pr は spec v0.3 §8 で changed に名称統合された。
+        // 旧称で書かれた場合も「changed が使える」案内が出る。
         let error = FilterSpec::parse("highlight: changed_in_pr\n").unwrap_err();
-        assert!(error.message.contains("Phase 3"));
+        assert!(error.message.contains("予約"));
+        assert!(error.message.contains("changed"), "解禁済みの値を案内する");
+        let error = FilterSpec::parse("filter: complexity > 5\n").unwrap_err();
+        assert!(error.message.contains("予約語"));
+    }
+
+    #[test]
+    fn highlight_changed_is_accepted() {
+        let spec = FilterSpec::parse("highlight: changed\n").unwrap();
+        assert!(spec.highlight_changed);
+        // レイヤー指定と独立して機能する (overlay はレイヤー show/hide の影響を受けない)。
+        let spec = FilterSpec::parse("show: control_flow\nhighlight: changed\n").unwrap();
+        assert!(spec.highlight_changed);
+        assert!(!spec.is_visible(LayerName::Effects));
+        assert!(!FilterSpec::default().highlight_changed);
     }
 
     #[test]

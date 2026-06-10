@@ -63,3 +63,13 @@ pub const SIGNATURE_ARC_OFFSET: f64 = 12.0;
 
 /// Result/Option 戻り値の分岐線の長さ。
 pub const RETURN_BRANCH_LENGTH: f64 = 26.0;
+
+/// 差分強調ハロー (Phase 3.2) の対象輪郭からのオフセット。
+/// 本体のストロークに重ならず、かつ隣接要素 (RING_MARGIN = 8) を侵さない値。
+pub const DIFF_HALO_OFFSET: f64 = 5.0;
+
+/// 差分強調ハローの線幅。
+pub const DIFF_HALO_STROKE: f64 = 2.5;
+
+/// 削除ゴーストの線の不透明度 (「残滓」の見え方)。
+pub const DIFF_GHOST_OPACITY: f64 = 0.6;

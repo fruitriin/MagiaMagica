@@ -8,6 +8,7 @@
 
 ## オーナーフィードバック
 
+- **意匠判定依頼 (Phase 3.2, 2026-06-11)**: 視覚的 Spell Diff の素材2点を送付済み — ①合成 fixture (process_order)、②自己ホスティング実例 (Phase 3.1 の metrics_sentence リファクタ実 diff)。意匠規約: 金ハロー=追加 / シアンハロー=変更 / 灰破線ゴースト=削除。色・線幅・破線パターンの調整指示があれば `render/palette.rs` の `DIFF_*` と `layout/constants.rs` の `DIFF_HALO_*` で対応
 - **意匠判定 (Phase 1.8 で対応済み・再判定待ち)**: Phase 1.6 の判定で「write_document 級はお洒落・write_control_flow 級は破綻」と確定 → Phase 1.8 で衝突回避を実装。**write_document の見た目はほぼ不変**（重なっていた青記号1個が 1.6px 退避したのみ、8px 閾値の回帰テストで固定）、**write_control_flow はリング重なり解消**。再判定素材3本（write_control_flow / write_document / dense_dispatch）を送付済み。次の調整指示があれば `layout/constants.rs` の定数または新規計画で対応
 - **報告 (Phase 1.7)**: Phase 1 (M1〜M7) が完了し、`cargo install --path crates/magia-cli` で配布可能な状態です。リリース（バージョン採番・チェンジログ）を行う場合は `/addf-release` を実行してください
 - **確認依頼 (Phase 3 計画立案 2026-06-11)**: notes §12 のロードマップから Phase 3 計画 6 本 (3.0 仕様 v0.3 / 3.1 差分エンジン / 3.2 視覚 Spell Diff / 3.3 CI 統合 / 3.4 データフロー IR / 3.5 ベルカ式) を起こし、暫定優先度で TODO に登録しました。**優先度の変更・計画への注文があればお知らせください**。「ベルカ式を先に見たい」なら 3.4 → 3.5 を先頭にもできます (Spell Diff 系と独立)。リリース (/addf-release) の指示も引き続き受け付けています
@@ -18,7 +19,8 @@
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
 - Phase 1.0 で「rust-cargo-workspace-bootstrap」ノウハウは現状プロジェクト固有 (`docs/knowhow/`) に置いたが、内容は ADDF 利用 Rust プロジェクト全般に役立つ。将来 `docs/knowhow/ADDF/` または ADDF 本体への昇格を検討
 - Phase 1.3 のコントリビューション検出より: `addf-knowhow.exp.md` に記録した「統合先ファイルの冒頭メタコメントも実態に合わせて更新する」「INDEX は reindex を待たず手動同期してよい」は汎用的な教訓。ADDF 本体の `addf-knowhow.md` Phase 3 チェックリストへの追記 PR 候補
-- Phase 3.1 のコントリビューション検出より: `addf-knowhow.exp.md` の「関心が別なら新規ファイル、検索性を失わない統合なら既存ファイルに追記」という分割 vs 統合の判断軸も `addf-knowhow.md` への追記候補。上記 Phase 1.3 候補と**同一 PR に同梱**できる
+- Phase 3.1 のコントリビューション検出より: `addf-knowhow.exp.md` の「関心が別なら新規ファイル、検索性を失わない統合なら既存ファイルに追記」という分割 vs 統合の判断軸も `addf-knowhow.md` への追記候補。上記 Phase 1.3 候補と**同一 PR に同梱**できる (Phase 3.2 で「冒頭メタコメントの更新」教訓が再確認された — 同 PR に追記事例として含める)
+- Phase 3.2 のコントリビューション検出より: `structural-diff-pattern.md` の overlay 節（強調チャネル独立性・Option 引数1つで既存出力不変・ID を外部契約に出さない情報隠蔽）は「ID 不安定な IR の差分を SVG overlay で重ねる」Rust ツール全般に通用する。既存の昇格候補4件に5件目として追加し、Phase 3 完了の節目で一括判断
 - Phase 1.3 の `AuxRingRole.anchor_operation` は親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期が必要。Phase 1.5/1.8 では問題にならなかったが、content を並び替える変更を入れるときは再確認
 - ~~spec 宿題 4 件 (Phase 1.1 補完型 / Phase 1.3 補完型・アームガード / LoopBody serde 不統一 / EdgeLayerData 非対称)~~ → **Phase 2.0 の spec-v0.2.md で解消** (§4.2 追補・§4.4 JSON 規約・§4.3 Phase 3 方針)
 
