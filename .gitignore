@@ -8,6 +8,6 @@ target/
 .claude/.turn-count
 .claude/logs/
 CLAUDE.local.md
-CLAUDE.repo.md
+# CLAUDE.repo.md は本プロジェクトでは設計指針 (POSD など) をチーム共有するためコミット対象とする
 .claude/skills/addf-gui-test.md
 # --- /ADDF Framework ---
