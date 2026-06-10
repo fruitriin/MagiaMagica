@@ -1,9 +1,15 @@
-//! 関数本体を MainRing + AuxRing 群へ再帰展開する (Phase 1.3, spec §6.1.2)。
+//! 関数本体を MainRing + AuxRing + SummonGlyph 群へ再帰展開する
+//! (Phase 1.3〜1.4, spec §6.1.2)。
 //!
 //! 制御構造 (`if` / `match` / `for` / `while` / `loop`) は親リングの `content` に
 //! 1個の Operation (Branch/Match/Loop) として現れ、その本体は独立した AuxRing として
 //! 切り出される。親子関係は `EdgeKind::ControlFlow` の Edge で表現する (spec §4.2)。
 //! 入れ子は深さ制限なく再帰展開する (Phase 1.6 の視覚検証で破綻したら再検討)。
+//!
+//! call site は所属リング (statement を直接持つリング) から SummonGlyph として
+//! ぶら下がる。制御構造のガード式中の call は親リング側、本体中の call は AuxRing 側
+//! に係留される (二重計上なし)。同一関数の複数回呼び出しは呼び出しごとに別 glyph
+//! とする (merge は Phase 1.5 のレイアウトに余地を残す)。
 
 use magia_core::ir::{
     AuxRingKind, AuxRingRole, Cardinality, ControlFlowInfo, Edge, EdgeKind, EdgeLayerData,
@@ -16,12 +22,13 @@ use syn::{Block, Expr, ExprIf, ExprMatch, ItemFn, Stmt};
 
 use crate::allocator::SigilIdAllocator;
 use crate::statement::{ParseContext, scan_expression, statement_to_operation};
+use crate::summon::{CallSite, UseMap, collect_calls_in_expr, collect_calls_in_stmt};
 
-/// `build_rings` の結果: 1関数分のリング群と接続。
+/// `build_rings` の結果: 1関数分のリング・記号群と接続。
 pub(crate) struct RingForest {
     /// MainRing を先頭に、`SigilId` 昇順 (= ソース出現順の深さ優先) で並ぶ。
     pub(crate) sigils: Vec<Sigil>,
-    /// 親リング → AuxRing の ControlFlow Edge。`target` の `SigilId` 昇順。
+    /// 親リング → AuxRing / SummonGlyph の ControlFlow Edge。`target` の `SigilId` 昇順。
     pub(crate) edges: Vec<Edge>,
 }
 
@@ -30,10 +37,12 @@ pub(crate) fn build_rings(
     item_fn: &ItemFn,
     allocator: &mut SigilIdAllocator,
     ctx: ParseContext,
+    uses: &UseMap,
 ) -> RingForest {
     let mut builder = RingBuilder {
         allocator,
         ctx,
+        uses,
         sigils: Vec::new(),
         edges: Vec::new(),
     };
@@ -55,6 +64,7 @@ pub(crate) fn build_rings(
 struct RingBuilder<'a> {
     allocator: &'a mut SigilIdAllocator,
     ctx: ParseContext,
+    uses: &'a UseMap,
     sigils: Vec<Sigil>,
     edges: Vec<Edge>,
 }
@@ -118,6 +128,8 @@ impl RingBuilder<'_> {
                     ));
                     // else if / else を含む連鎖全体で1分岐と数える (ControlFlowInfo の規約)。
                     info.branch_count += 1;
+                    // ガード式中の call は本リング側に係留する (本体は AuxRing 側)。
+                    self.spawn_glyphs(id, collect_calls_in_expr(&node.cond, self.uses));
                     self.spawn_if_chain(id, node, anchor);
                 }
                 Some(ControlStmt::Match(node)) => {
@@ -127,8 +139,9 @@ impl RingBuilder<'_> {
                         head,
                         Some(&node.expr),
                     ));
-                    info.branch_count +=
-                        u32::try_from(node.arms.len().saturating_sub(1)).unwrap_or(u32::MAX);
+                    info.branch_count += u32::try_from(node.arms.len().saturating_sub(1))
+                        .expect("match のアーム数が u32 を超えることはない");
+                    self.spawn_glyphs(id, collect_calls_in_expr(&node.expr, self.uses));
                     self.spawn_match_arms(id, node, anchor);
                 }
                 Some(ControlStmt::For(node)) => {
@@ -143,6 +156,7 @@ impl RingBuilder<'_> {
                         Some(&node.expr),
                     ));
                     info.loop_count += 1;
+                    self.spawn_glyphs(id, collect_calls_in_expr(&node.expr, self.uses));
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::For), anchor, 0, None);
                     self.spawn_block_child(id, role, &node.body);
                 }
@@ -154,6 +168,7 @@ impl RingBuilder<'_> {
                         Some(&node.cond),
                     ));
                     info.loop_count += 1;
+                    self.spawn_glyphs(id, collect_calls_in_expr(&node.cond, self.uses));
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::While), anchor, 0, None);
                     self.spawn_block_child(id, role, &node.body);
                 }
@@ -167,17 +182,22 @@ impl RingBuilder<'_> {
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::Loop), anchor, 0, None);
                     self.spawn_block_child(id, role, &node.body);
                 }
-                None => content.push(statement_to_operation(stmt, self.ctx)),
+                None => {
+                    content.push(statement_to_operation(stmt, self.ctx));
+                    self.spawn_glyphs(id, collect_calls_in_stmt(stmt, self.uses));
+                }
             }
         }
 
         // `return` 文と `?` 演算子はどちらも early_return フラグ経由で計上される。
         info.early_return_count =
             u32::try_from(content.iter().filter(|op| op.payload.early_return).count())
-                .unwrap_or(u32::MAX);
+                .expect("early_return 数は content 長以下で u32 を超えることはない");
 
         // Phase 1.3 の重み近似 = Operation 数。Phase 1.5 のレイアウトで直径に反映する。
-        let weight = f64::from(u32::try_from(content.len()).unwrap_or(u32::MAX));
+        let weight = f64::from(
+            u32::try_from(content.len()).expect("1リングの Operation 数が u32 を超えることはない"),
+        );
         self.sigils.push(Sigil {
             id,
             kind,
@@ -226,7 +246,12 @@ impl RingBuilder<'_> {
     /// `match` のアームをそれぞれ AuxRing 化する。パターン文字列をラベルとして残す。
     fn spawn_match_arms(&mut self, parent: SigilId, expr_match: &ExprMatch, anchor: u32) {
         for (index, arm) in expr_match.arms.iter().enumerate() {
-            let ordinal = u32::try_from(index).unwrap_or(u32::MAX);
+            let ordinal = u32::try_from(index).expect("match のアーム数が u32 を超えることはない");
+            // アームガード (`pat if cond =>`) は親スコープで評価されるため、
+            // ガード式中の call は被検査式と同様に親リング側へ係留する。
+            if let Some((_, guard)) = &arm.guard {
+                self.spawn_glyphs(parent, collect_calls_in_expr(guard, self.uses));
+            }
             let label = Some(arm.pat.to_token_stream().to_string());
             let role = aux_role(AuxRingKind::MatchArm, anchor, ordinal, label);
             match arm.body.as_ref() {
@@ -271,6 +296,49 @@ impl RingBuilder<'_> {
             cardinality: weight.max(1.0),
             layers: EdgeLayerData::default(),
         });
+    }
+
+    /// call site 群を SummonGlyph として生成し、所属リングとの ControlFlow Edge を張る。
+    ///
+    /// glyph は「呼び出し1件 = Call Operation 1個」を content に持つ。呼び出し先パスと
+    /// 効果カテゴリは Operation 側 (`call_target` / `EffectSet`) に載せ、Sigil の layers
+    /// はリング専用の `control_flow` を持たない。
+    fn spawn_glyphs(&mut self, parent: SigilId, calls: Vec<CallSite>) {
+        for call in calls {
+            let mut effects = call.effects;
+            // unsafe fn のコンテキストは召喚記号にも伝播する (色相規約 spec §6.1.3 の赤)。
+            // `unsafe { ... }` ブロック単位の文脈追跡は Phase 1 ではしない。
+            if self.ctx.fn_is_unsafe {
+                effects.unsafe_block = true;
+            }
+            let glyph = self.allocator.allocate();
+            self.sigils.push(Sigil {
+                id: glyph,
+                kind: SigilKind::SummonGlyph,
+                content: vec![Operation {
+                    kind: OperationKind::Call,
+                    effects,
+                    payload: OperationPayload {
+                        source_excerpt: Some(call.excerpt),
+                        call_target: Some(call.target),
+                        early_return: false,
+                    },
+                }],
+                layers: LayerData::default(),
+                source_location: source_span(call.span),
+                cardinality: Cardinality {
+                    weight: 1.0,
+                    density: None,
+                },
+            });
+            self.edges.push(Edge {
+                source: parent,
+                target: glyph,
+                kind: EdgeKind::ControlFlow,
+                cardinality: 1.0,
+                layers: EdgeLayerData::default(),
+            });
+        }
     }
 
     /// 制御構造そのものを表す Operation (親リングの `content` に置く)。

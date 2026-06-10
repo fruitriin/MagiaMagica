@@ -1,7 +1,7 @@
 # syn::Visit で AST から情報を集めるパターン
 
-> Phase 1.2 (syn → IR) で確立、Phase 1.3 (AuxRing 再帰展開) で拡張。
-> Phase 1.4 の call site 抽出でも同じパターンを再利用する。
+> Phase 1.2 (syn → IR) で確立、Phase 1.3 (AuxRing 再帰展開)・
+> Phase 1.4 (call site 抽出と効果判定) で拡張。
 
 ## 基本形: 単一関心の Visitor を関数スコープに閉じ込める
 
@@ -152,6 +152,25 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
 - **インデックス系の `u32::try_from(..).unwrap_or(u32::MAX)` は禁じ手** (Phase 1.3 レビュー指摘):
   後続フェーズが「存在しない位置」を有効値として参照する無音バグになる。実用上起こらない
   超過なら `expect` で明示的に落とす。センチネルで誤魔化さない (POSD「エラーを存在しないものとして定義」)
+
+## call site 抽出と近似パス解決 (Phase 1.4)
+
+意味解決なし (Phase 1a) で call site を拾うときの定型と落とし穴。
+
+- **`visit_macro` は `Stmt::Macro` と `Expr::Macro` の両方を1フックで捕捉する**。
+  `visit_expr_macro` だけだと statement 位置のマクロ (`println!("x");`) を取り逃がす。
+  マクロ呼び出しを拾うなら `visit_macro` 一択
+- **マクロのトークン列内部は走査されない**: `println!("{}", foo())` の `foo()` は
+  syn の visitor が式として降りないため call 抽出から漏れる。マクロは名前ベースの
+  白リスト判定 (展開しない) が Phase 1 の割り切り
+- **パス前方一致はセグメント境界つきにする**: `path.strip_prefix(prefix)` 後に
+  `rest.is_empty() || rest.starts_with("::")` を要求。素の `starts_with` だと
+  `std::io` が `std::iox::fake` に誤一致する
+- **use 文の機械的展開 (UseMap)**: `UseTree` の Path/Name/Rename/Group を再帰 walk、
+  Glob は無視。先頭セグメント名 → フルパスの HashMap を作り、call パスの先頭だけ
+  置換する。モジュール境界は無視 (同名 use は後勝ち) で Phase 1a には十分
+- **メソッド呼び出しはレシーバ型が分からない**ため解決不能。`.method` 形式で保持して
+  pure 扱いに倒す (Phase 1b の ra_ap_hir 導入で再訪)
 
 ## クレート選定メモ
 

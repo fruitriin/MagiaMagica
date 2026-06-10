@@ -2,13 +2,17 @@
 //!
 //! Phase 1.2 (M2): syn 2.x ベースで単一 Rust 関数を MagiaIR に変換する。
 //! Phase 1.3 (M3): 制御構造 (if/match/ループ) を AuxRing に切り出し、ControlFlow Edge で
-//! 親リングと接続する。呼び出し先 (SummonGlyph) と効果判定は Phase 1.4 で追加する。
+//! 親リングと接続する。
+//! Phase 1.4 (M4): call site を SummonGlyph として抽出し、crate 名先頭セグメントの
+//! ヒューリスティック (tech-selection §2.1 Phase 1a) で EffectSet を付与する。
 
 mod allocator;
+mod effects;
 mod error;
 mod ring;
 mod signature;
 mod statement;
+mod summon;
 
 pub use error::Error;
 
@@ -20,6 +24,7 @@ use crate::allocator::SigilIdAllocator;
 use crate::ring::build_rings;
 use crate::signature::extract_type_info;
 use crate::statement::ParseContext;
+use crate::summon::UseMap;
 
 /// Rust ソースから関数定義の名前一覧を返す。
 ///
@@ -38,8 +43,8 @@ pub fn list_functions(source: &str) -> Result<Vec<String>, Error> {
 
 /// 指定された名前の関数を MagiaIR に変換する。
 ///
-/// Phase 1.3 の出力は `MainRing` 1個 + 制御構造ごとの `AuxRing` 群 + 両者を結ぶ
-/// `ControlFlow` Edge。SummonGlyph (呼び出し先) は Phase 1.4 で追加する。
+/// 出力は `MainRing` 1個 + 制御構造ごとの `AuxRing` 群 + call site ごとの
+/// `SummonGlyph` 群 + それらを結ぶ `ControlFlow` Edge。
 #[must_use = "IR は呼び出し側で利用されるべき"]
 pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> {
     let file: File = syn::parse_str(source)?;
@@ -48,10 +53,17 @@ pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> 
     let ctx = ParseContext {
         fn_is_unsafe: item_fn.sig.unsafety.is_some(),
     };
-    let mut forest = build_rings(item_fn, &mut allocator, ctx);
+    // 同ファイル内の use 文で call site のパスを近似解決する (Phase 1a)。
+    let uses = UseMap::from_file(&file);
+    let mut forest = build_rings(item_fn, &mut allocator, ctx, &uses);
 
     // 関数レベルのレイヤー (シグネチャ・並行性) は MainRing にのみ載せる。
     // AuxRing は制御フロー情報 (`control_flow.role`) だけを持つ。
+    debug_assert_eq!(
+        forest.sigils.first().map(|s| s.kind),
+        Some(magia_core::ir::SigilKind::MainRing),
+        "build_rings は MainRing を先頭に置く規約"
+    );
     let main_ring = &mut forest.sigils[0];
     main_ring.layers.type_info = Some(extract_type_info(&item_fn.sig));
     main_ring.layers.concurrency = Some(ConcurrencyInfo {
@@ -161,28 +173,38 @@ mod tests {
             .collect()
     }
 
-    /// 受け入れ基準の不変条件: ControlFlow Edge 数 = AuxRing 数、SigilId は一意、
-    /// 各 AuxRing にちょうど1本の Edge が入る。
+    /// モジュール内の SummonGlyph 一覧 (SigilId 昇順)。
+    fn summon_glyphs(module: &Module) -> Vec<&Sigil> {
+        module
+            .sigils
+            .iter()
+            .filter(|s| s.kind == SigilKind::SummonGlyph)
+            .collect()
+    }
+
+    /// 受け入れ基準の不変条件: ControlFlow Edge 数 = AuxRing 数 + SummonGlyph 数、
+    /// SigilId は一意、各 AuxRing / SummonGlyph にちょうど1本の Edge が入る。
     fn assert_ring_invariants(module: &Module) {
         let aux = aux_rings(module);
+        let glyphs = summon_glyphs(module);
         assert_eq!(
             module
                 .edges
                 .iter()
                 .filter(|e| e.kind == EdgeKind::ControlFlow)
                 .count(),
-            aux.len(),
-            "ControlFlow Edge 数 = AuxRing 数"
+            aux.len() + glyphs.len(),
+            "ControlFlow Edge 数 = AuxRing 数 + SummonGlyph 数"
         );
         let mut ids: Vec<_> = module.sigils.iter().map(|s| s.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), module.sigils.len(), "SigilId は一意");
-        for ring in &aux {
+        for sigil in aux.iter().chain(&glyphs) {
             assert_eq!(
-                module.edges.iter().filter(|e| e.target == ring.id).count(),
+                module.edges.iter().filter(|e| e.target == sigil.id).count(),
                 1,
-                "各 AuxRing は親と1本の Edge を持つ"
+                "各 AuxRing / SummonGlyph は親と1本の Edge を持つ"
             );
         }
     }
@@ -468,8 +490,8 @@ mod tests {
         let module = &graph.modules[0];
         assert_ring_invariants(module);
 
-        // MainRing + if 分岐 + match アーム2 = 4 Sigil。
-        assert_eq!(module.sigils.len(), 4);
+        // MainRing + if 分岐 + match アーム2 + 召喚記号2 (a, b) = 6 Sigil。
+        assert_eq!(module.sigils.len(), 6);
         let aux = aux_rings(module);
         let if_ring = aux
             .iter()
@@ -485,14 +507,39 @@ mod tests {
                     == AuxRingKind::IfBranch
             })
             .unwrap();
-        // if 分岐リングは MainRing から、match アームは if 分岐リングから接続される。
+        // if 分岐リングは MainRing から、match アームは if 分岐リングから、
+        // 召喚記号 (a, b) は各アームリングから接続される。
         let main_id = module.sigils[0].id;
-        for edge in &module.edges {
-            if edge.target == if_ring.id {
-                assert_eq!(edge.source, main_id);
-            } else {
-                assert_eq!(edge.source, if_ring.id);
-            }
+        let edge_source = |target: magia_core::ir::SigilId| {
+            module
+                .edges
+                .iter()
+                .find(|e| e.target == target)
+                .map(|e| e.source)
+                .unwrap()
+        };
+        assert_eq!(edge_source(if_ring.id), main_id);
+        let arm_ids: Vec<_> = aux
+            .iter()
+            .filter(|s| {
+                s.layers
+                    .control_flow
+                    .as_ref()
+                    .unwrap()
+                    .role
+                    .as_ref()
+                    .unwrap()
+                    .kind
+                    == AuxRingKind::MatchArm
+            })
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(arm_ids.len(), 2);
+        for arm_id in &arm_ids {
+            assert_eq!(edge_source(*arm_id), if_ring.id);
+        }
+        for glyph in summon_glyphs(module) {
+            assert!(arm_ids.contains(&edge_source(glyph.id)));
         }
         // if 分岐リング自身の content には match の Operation が1個。
         assert_eq!(if_ring.content.len(), 1);
@@ -587,6 +634,172 @@ mod tests {
                 .iter()
                 .all(|op| op.kind == OperationKind::Compute)
         );
+    }
+
+    // ===== Phase 1.4: 召喚記号と効果判定 =====
+
+    #[test]
+    fn println_macro_yields_io_glyph() {
+        let src = "fn f() { println!(\"x\"); }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let glyphs = summon_glyphs(module);
+        assert_eq!(glyphs.len(), 1);
+        let op = &glyphs[0].content[0];
+        assert_eq!(op.kind, OperationKind::Call);
+        assert_eq!(op.payload.call_target.as_deref(), Some("println!"));
+        assert!(op.effects.io);
+        assert!(!op.effects.pure);
+        // 召喚記号は MainRing からぶら下がる。
+        let edge = module
+            .edges
+            .iter()
+            .find(|e| e.target == glyphs[0].id)
+            .unwrap();
+        assert_eq!(edge.source, module.sigils[0].id);
+    }
+
+    #[test]
+    fn std_fs_call_yields_filesystem_glyph() {
+        let src = "fn f() { std::fs::read_to_string(\"p\"); }";
+        let graph = parse_function(src, "f").unwrap();
+        let glyphs = summon_glyphs(&graph.modules[0]);
+        assert_eq!(glyphs.len(), 1);
+        let op = &glyphs[0].content[0];
+        assert_eq!(
+            op.payload.call_target.as_deref(),
+            Some("std::fs::read_to_string")
+        );
+        assert!(op.effects.filesystem);
+    }
+
+    #[test]
+    fn reqwest_call_yields_network_glyph() {
+        let src = "fn f() { reqwest::get(\"u\"); }";
+        let graph = parse_function(src, "f").unwrap();
+        let glyphs = summon_glyphs(&graph.modules[0]);
+        assert!(glyphs[0].content[0].effects.network);
+    }
+
+    #[test]
+    fn unknown_call_yields_pure_glyph() {
+        let src = "fn f() { my_helper(); }";
+        let graph = parse_function(src, "f").unwrap();
+        let glyphs = summon_glyphs(&graph.modules[0]);
+        assert_eq!(glyphs.len(), 1);
+        let op = &glyphs[0].content[0];
+        assert_eq!(op.payload.call_target.as_deref(), Some("my_helper"));
+        assert!(op.effects.pure);
+    }
+
+    #[test]
+    fn duplicate_calls_yield_separate_glyphs() {
+        // IR 段階では呼び出しごとに glyph を重複生成する (merge は Phase 1.5 の余地)。
+        let src = "fn f() { my_helper(); my_helper(); }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+        let glyphs = summon_glyphs(module);
+        assert_eq!(glyphs.len(), 2);
+        assert_ne!(glyphs[0].id, glyphs[1].id);
+    }
+
+    #[test]
+    fn use_statement_expands_call_target() {
+        let src = "
+            use std::collections::HashMap;
+            fn f() { let m: HashMap<u8, u8> = HashMap::new(); let _ = m; }
+        ";
+        let graph = parse_function(src, "f").unwrap();
+        let glyphs = summon_glyphs(&graph.modules[0]);
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(
+            glyphs[0].content[0].payload.call_target.as_deref(),
+            Some("std::collections::HashMap::new")
+        );
+    }
+
+    #[test]
+    fn use_expansion_feeds_effect_heuristics() {
+        let src = "use std::fs; fn f() { fs::read_to_string(\"p\"); }";
+        let graph = parse_function(src, "f").unwrap();
+        let glyphs = summon_glyphs(&graph.modules[0]);
+        assert!(
+            glyphs[0].content[0].effects.filesystem,
+            "use 展開後のパスで効果判定される"
+        );
+    }
+
+    #[test]
+    fn aux_ring_calls_attach_to_aux_ring() {
+        let src = "fn f(c: bool) { if c { my_helper(); } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let aux = aux_rings(module);
+        let glyphs = summon_glyphs(module);
+        assert_eq!((aux.len(), glyphs.len()), (1, 1));
+        let edge = module
+            .edges
+            .iter()
+            .find(|e| e.target == glyphs[0].id)
+            .unwrap();
+        assert_eq!(edge.source, aux[0].id, "本体中の call は AuxRing 側に係留");
+    }
+
+    #[test]
+    fn guard_calls_attach_to_parent_ring() {
+        let src = "fn f() { if check() { } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let glyphs = summon_glyphs(module);
+        assert_eq!(glyphs.len(), 1);
+        let edge = module
+            .edges
+            .iter()
+            .find(|e| e.target == glyphs[0].id)
+            .unwrap();
+        assert_eq!(
+            edge.source, module.sigils[0].id,
+            "ガード式中の call は親リング側に係留"
+        );
+    }
+
+    #[test]
+    fn match_arm_guard_calls_attach_to_parent_ring() {
+        let src = "fn f(x: u8) { match x { n if check(n) => {} _ => {} } }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+
+        let glyphs = summon_glyphs(module);
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(
+            glyphs[0].content[0].payload.call_target.as_deref(),
+            Some("check")
+        );
+        let edge = module
+            .edges
+            .iter()
+            .find(|e| e.target == glyphs[0].id)
+            .unwrap();
+        assert_eq!(
+            edge.source, module.sigils[0].id,
+            "アームガード中の call は親リング側に係留"
+        );
+    }
+
+    #[test]
+    fn unsafe_fn_propagates_to_glyphs() {
+        let src = "unsafe fn f() { my_helper(); }";
+        let graph = parse_function(src, "f").unwrap();
+        let glyphs = summon_glyphs(&graph.modules[0]);
+        assert!(glyphs[0].content[0].effects.unsafe_block);
     }
 
     #[test]
