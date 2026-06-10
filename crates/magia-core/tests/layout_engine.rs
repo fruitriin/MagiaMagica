@@ -229,3 +229,132 @@ fn module_without_main_ring_falls_back_to_origin() {
     let result = layout(&graph);
     assert_eq!(result.positions[&SigilId(0)], kurbo::Point::ZERO);
 }
+
+// ===== Phase 1.8: 衝突回避 =====
+
+fn radius_of(kind: SigilKind) -> f64 {
+    match kind {
+        SigilKind::MainRing => MAIN_RING_RADIUS,
+        SigilKind::AuxRing => AUX_RING_RADIUS,
+        SigilKind::SummonGlyph | SigilKind::GateGlyph => SUMMON_GLYPH_RADIUS,
+    }
+}
+
+type KindFilter = fn(SigilKind) -> bool;
+
+/// 重なっている (中心間距離 < 半径和) Sigil ペアを列挙する。
+fn overlapping_pairs(
+    graph: &MagiaGraph,
+    result: &magia_core::layout::LayoutResult,
+    kinds: (KindFilter, KindFilter),
+) -> Vec<(SigilId, SigilId)> {
+    let sigils = &graph.modules[0].sigils;
+    let mut pairs = Vec::new();
+    for (i, a) in sigils.iter().enumerate() {
+        for b in &sigils[i + 1..] {
+            let matches =
+                (kinds.0(a.kind) && kinds.1(b.kind)) || (kinds.1(a.kind) && kinds.0(b.kind));
+            if !matches {
+                continue;
+            }
+            let pa = result.positions[&a.id];
+            let pb = result.positions[&b.id];
+            let dist = ((pa.x - pb.x).powi(2) + (pa.y - pb.y).powi(2)).sqrt();
+            if dist + 1e-6 < radius_of(a.kind) + radius_of(b.kind) {
+                pairs.push((a.id, b.id));
+            }
+        }
+    }
+    pairs
+}
+
+fn is_ring(kind: SigilKind) -> bool {
+    matches!(kind, SigilKind::MainRing | SigilKind::AuxRing)
+}
+
+fn is_glyph(kind: SigilKind) -> bool {
+    matches!(kind, SigilKind::SummonGlyph | SigilKind::GateGlyph)
+}
+
+/// match 6アーム級の過密グラフ: main(content 6) + 同一 anchor のアーム6個
+/// (各アームに入れ子1個 + glyph 1個) + main 直下の glyph 4個。
+fn dense_graph() -> MagiaGraph {
+    let mut sigils = vec![ring(0, SigilKind::MainRing, 6)];
+    let mut edges = Vec::new();
+    let mut next_id = 1u32;
+    for ordinal in 0..6u32 {
+        let arm = next_id;
+        sigils.push(aux_ring(arm, 2, 0, ordinal));
+        edges.push(edge(0, arm));
+        next_id += 1;
+        // 入れ子
+        sigils.push(aux_ring(next_id, 1, 0, 0));
+        edges.push(edge(arm, next_id));
+        next_id += 1;
+        // アームの glyph
+        sigils.push(ring(next_id, SigilKind::SummonGlyph, 1));
+        edges.push(edge(arm, next_id));
+        next_id += 1;
+    }
+    for _ in 0..4 {
+        sigils.push(ring(next_id, SigilKind::SummonGlyph, 1));
+        edges.push(edge(0, next_id));
+        next_id += 1;
+    }
+    graph_of(sigils, edges)
+}
+
+#[test]
+fn dense_graph_has_no_ring_ring_overlaps() {
+    let graph = dense_graph();
+    let result = layout(&graph);
+    let pairs = overlapping_pairs(&graph, &result, (is_ring, is_ring));
+    assert!(pairs.is_empty(), "リング重なり: {pairs:?}");
+}
+
+#[test]
+fn dense_graph_has_no_glyph_ring_overlaps() {
+    let graph = dense_graph();
+    let result = layout(&graph);
+    let pairs = overlapping_pairs(&graph, &result, (is_glyph, is_ring));
+    assert!(pairs.is_empty(), "glyph とリングの重なり: {pairs:?}");
+}
+
+#[test]
+fn dense_graph_layout_is_deterministic() {
+    let graph = dense_graph();
+    let first = layout(&graph);
+    for _ in 0..9 {
+        assert_eq!(layout(&graph), first);
+    }
+}
+
+#[test]
+fn overflowing_children_move_to_second_orbit() {
+    // 軌道容量を超える数の子は距離を伸ばした第2軌道に送られる。
+    let mut sigils = vec![ring(0, SigilKind::MainRing, 14)];
+    let mut edges = Vec::new();
+    for i in 0..14u32 {
+        sigils.push(aux_ring(i + 1, 1, i, 0));
+        edges.push(edge(0, i + 1));
+    }
+    let graph = graph_of(sigils, edges);
+    let result = layout(&graph);
+
+    let first_orbit = MAIN_RING_RADIUS + RING_GAP + AUX_RING_RADIUS;
+    let origin = result.positions[&SigilId(0)];
+    let mut beyond_first = 0;
+    for i in 1..=14u32 {
+        let p = result.positions[&SigilId(i)];
+        let d = ((p.x - origin.x).powi(2) + (p.y - origin.y).powi(2)).sqrt();
+        if d > first_orbit + 1.0 {
+            beyond_first += 1;
+        }
+    }
+    assert!(beyond_first > 0, "容量超過分が第2軌道に送られる");
+    // 重なりも起きない。
+    assert!(
+        overlapping_pairs(&graph, &result, (is_ring, is_ring)).is_empty(),
+        "第2軌道送り後もリング重なりなし"
+    );
+}

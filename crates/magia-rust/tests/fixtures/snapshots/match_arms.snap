@@ -2,31 +2,31 @@
 source: crates/magia-rust/tests/render_golden.rs
 expression: svg
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-144.00 -227.40 458.18 371.40">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-144.00 -193.21 476.00 372.91">
 <defs>
 <path id="sig-arc-0-0" d="M-132.00,0.00 C-132.00,-72.90 -72.90,-132.00 0.00,-132.00 C72.90,-132.00 132.00,-72.90 132.00,0.00" fill="none"/>
 </defs>
 <g class="layer-control-flow">
+<line class="edge-control-flow" x1="101.91" y1="63.35" x2="132.49" y2="82.36" stroke="#000000" stroke-width="1.00"/>
 <line class="edge-control-flow" x1="120.00" y1="0.00" x2="156.00" y2="0.00" stroke="#000000" stroke-width="1.00"/>
-<line class="edge-control-flow" x1="112.72" y1="-41.15" x2="146.54" y2="-53.49" stroke="#000000" stroke-width="1.00"/>
-<line class="edge-control-flow" x1="236.72" y1="-86.41" x2="263.02" y2="-96.01" stroke="#000000" stroke-width="1.00"/>
-<line class="edge-control-flow" x1="91.78" y1="-77.31" x2="119.32" y2="-100.50" stroke="#000000" stroke-width="1.00"/>
-<line class="edge-control-flow" x1="192.74" y1="-162.34" x2="214.16" y2="-180.38" stroke="#000000" stroke-width="1.00"/>
+<line class="edge-control-flow" x1="252.00" y1="0.00" x2="280.00" y2="0.00" stroke="#000000" stroke-width="1.00"/>
+<line class="edge-control-flow" x1="101.91" y1="-63.35" x2="132.49" y2="-82.36" stroke="#000000" stroke-width="1.00"/>
+<line class="edge-control-flow" x1="214.02" y1="-133.04" x2="237.80" y2="-147.82" stroke="#000000" stroke-width="1.00"/>
 <circle class="main-ring" cx="0.00" cy="0.00" r="120.00" fill="none" stroke="#000000" stroke-width="2.00"/>
+<circle class="aux-ring" cx="173.25" cy="107.70" r="48.00" fill="none" stroke="#000000" stroke-width="1.50"/>
+<path class="sym-branch" d="M173.25 116.70 L173.25 107.70 M173.25 107.70 L166.25 99.70 M173.25 107.70 L180.25 99.70" stroke="#000000" stroke-width="1" fill="none"/>
 <circle class="aux-ring" cx="204.00" cy="0.00" r="48.00" fill="none" stroke="#000000" stroke-width="1.50"/>
 <path class="sym-branch" d="M204.00 9.00 L204.00 0.00 M204.00 0.00 L197.00 -8.00 M204.00 0.00 L211.00 -8.00" stroke="#000000" stroke-width="1" fill="none"/>
-<circle class="aux-ring" cx="191.63" cy="-69.95" r="48.00" fill="none" stroke="#000000" stroke-width="1.50"/>
-<path class="sym-branch" d="M191.63 -60.95 L191.63 -69.95 M191.63 -69.95 L184.63 -77.95 M191.63 -69.95 L198.63 -77.95" stroke="#000000" stroke-width="1" fill="none"/>
-<circle class="aux-ring" cx="156.03" cy="-131.42" r="48.00" fill="none" stroke="#000000" stroke-width="1.50"/>
-<path class="sym-branch" d="M156.03 -122.42 L156.03 -131.42 M156.03 -131.42 L149.03 -139.42 M156.03 -131.42 L163.03 -139.42" stroke="#000000" stroke-width="1" fill="none"/>
+<circle class="aux-ring" cx="173.25" cy="-107.70" r="48.00" fill="none" stroke="#000000" stroke-width="1.50"/>
+<path class="sym-branch" d="M173.25 -98.70 L173.25 -107.70 M173.25 -107.70 L166.25 -115.70 M173.25 -107.70 L180.25 -115.70" stroke="#000000" stroke-width="1" fill="none"/>
 </g>
 <g class="layer-effects">
 <circle class="op-dot" cx="104.00" cy="0.00" r="3.50" fill="#000000"/>
+<circle class="op-dot" cx="205.25" cy="107.70" r="3.50" fill="#000000"/>
 <circle class="op-dot" cx="236.00" cy="0.00" r="3.50" fill="#000000"/>
-<circle class="op-dot" cx="223.63" cy="-69.95" r="3.50" fill="#000000"/>
-<circle class="summon-glyph" cx="276.18" cy="-100.81" r="14.00" fill="#000000"/>
-<circle class="op-dot" cx="188.03" cy="-131.42" r="3.50" fill="#000000"/>
-<circle class="summon-glyph" cx="224.86" cy="-189.40" r="14.00" fill="#000000"/>
+<circle class="summon-glyph" cx="294.00" cy="0.00" r="14.00" fill="#000000"/>
+<circle class="op-dot" cx="205.25" cy="-107.70" r="3.50" fill="#000000"/>
+<circle class="summon-glyph" cx="249.69" cy="-155.21" r="14.00" fill="#000000"/>
 </g>
 <g class="layer-type-info">
 <text class="signature" font-size="11" fill="#000000"><textPath href="#sig-arc-0-0" startOffset="50%" text-anchor="middle">fn match_arms (code : u8) -&gt; &amp; 'static str</textPath></text>

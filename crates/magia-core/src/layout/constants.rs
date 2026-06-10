@@ -18,9 +18,16 @@ pub const SUMMON_GLYPH_RADIUS: f64 = 14.0;
 /// リング外周から SummonGlyph 外周までの隙間。
 pub const GLYPH_GAP: f64 = 28.0;
 
-/// 同一 anchor に複数の AuxRing が並ぶとき (if 連鎖・match アーム) の
-/// 扇状の角度ステップ (ラジアン)。
-pub const SIBLING_FAN_STEP_RAD: f64 = 0.35;
+/// リングどうしの角度配分に使う最小隙間 (Phase 1.8)。
+/// 兄弟 AuxRing の必要角度幅 `2*asin((半径+この値)/軌道距離)` に効く。
+pub const RING_MARGIN: f64 = 8.0;
+
+/// SummonGlyph どうしの最小隙間 (Phase 1.8 の衝突回避)。
+pub const GLYPH_MARGIN: f64 = 6.0;
+
+/// シグネチャ円弧ラベルの帯の半幅 (Phase 1.8 の衝突判定用)。
+/// この帯に他要素が半径方向で食い込む場合のみ円弧を外側へ広げる。
+pub const SIGNATURE_BAND_HALF: f64 = 10.0;
 
 /// キャンバス bounding box に足すマージン。
 pub const CANVAS_MARGIN: f64 = 24.0;

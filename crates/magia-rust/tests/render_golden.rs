@@ -70,6 +70,16 @@ fn golden_unsafe_block() {
 }
 
 #[test]
+fn golden_dense_dispatch() {
+    // Phase 1.8 の衝突回避を通った過密ケースのスナップショット。
+    let svg = render_fixture(
+        include_str!("../../../fixtures/dense_dispatch.rs"),
+        "dense_dispatch",
+    );
+    assert_svg_snapshot("dense_dispatch", &svg);
+}
+
+#[test]
 fn golden_render_is_deterministic_end_to_end() {
     let source = include_str!("fixtures/async_io.rs");
     let first = render_fixture(source, "async_io");

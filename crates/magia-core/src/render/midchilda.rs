@@ -20,7 +20,7 @@ use kurbo::{Arc, Point, Shape, Vec2};
 use crate::ir::{AuxRingKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::layout::constants::{
     ASYNC_INNER_RING_OFFSET, AUX_RING_STROKE, EDGE_STROKE, MAIN_RING_STROKE, OPERATION_DOT_INSET,
-    OPERATION_DOT_RADIUS, RETURN_BRANCH_LENGTH, SIGNATURE_ARC_OFFSET,
+    OPERATION_DOT_RADIUS, RETURN_BRANCH_LENGTH, SIGNATURE_ARC_OFFSET, SIGNATURE_BAND_HALF,
 };
 use crate::layout::{LayoutResult, sigil_radius};
 use crate::render::palette;
@@ -87,7 +87,7 @@ fn write_defs(out: &mut String, graph: &MagiaGraph, layout: &LayoutResult) -> st
                 continue;
             }
             let center = screen_position(layout, sigil.id);
-            let radius = sigil_radius(sigil.kind) + SIGNATURE_ARC_OFFSET;
+            let radius = signature_arc_radius(module, layout, sigil.id, center);
             // 画面座標で start=π (左) から +π 掃引すると中点が 3π/2 = 真上を通る。
             let arc = Arc::new(center, Vec2::new(radius, radius), PI, PI, 0.0);
             // to_svg() は最短浮動小数表現でノイズ (1.6e-14 等) を含むため、
@@ -101,6 +101,45 @@ fn write_defs(out: &mut String, graph: &MagiaGraph, layout: &LayoutResult) -> st
         }
     }
     writeln!(out, "</defs>")
+}
+
+/// シグネチャ円弧の半径 (Phase 1.8: 衝突回避つき)。
+///
+/// 既定値はリング半径 + オフセット。上半分 (画面上方) の要素がラベル帯
+/// (半径 ± `SIGNATURE_BAND_HALF`) に半径方向で食い込む場合のみ、その要素の
+/// 外側まで広げる。広げた先でさらに別の要素と食い込む場合があるため、
+/// 安定するまで反復する (要素数で有界、決定論的)。
+/// 帯に食い込む要素がなければ既定値のまま = 既存の見た目を変えない。
+fn signature_arc_radius(
+    module: &Module,
+    layout: &LayoutResult,
+    main_id: SigilId,
+    center: Point,
+) -> f64 {
+    let mut radius = sigil_radius(SigilKind::MainRing) + SIGNATURE_ARC_OFFSET;
+    for _ in 0..module.sigils.len() {
+        let mut extended = false;
+        for other in &module.sigils {
+            if other.id == main_id {
+                continue;
+            }
+            let position = screen_position(layout, other.id);
+            if position.y >= center.y {
+                continue; // 下半分は円弧と交差しない
+            }
+            let distance = (position - center).hypot();
+            let other_radius = sigil_radius(other.kind);
+            let (low, high) = (distance - other_radius, distance + other_radius);
+            if low < radius + SIGNATURE_BAND_HALF && high > radius - SIGNATURE_BAND_HALF {
+                radius = high + SIGNATURE_ARC_OFFSET;
+                extended = true;
+            }
+        }
+        if !extended {
+            break;
+        }
+    }
+    radius
 }
 
 // ===== layer-control-flow =====
