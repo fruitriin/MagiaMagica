@@ -127,6 +127,8 @@ fn serves_html_and_initial_state() {
         );
     }
     assert!(index.contains(r#"id="all-on""#) && index.contains(r#"id="all-off""#));
+    // .magia エクスポート/適用 UI (Phase 2.3)。
+    assert!(index.contains(r#"id="dsl""#) && index.contains(r#"id="dsl-apply""#));
 
     let state = body_json(server.port);
     let svg = state["svg"].as_str().unwrap();

@@ -170,6 +170,90 @@ fn unknown_layer_name_is_rejected() {
 }
 
 #[test]
+fn filter_file_shows_only_selected_layer() {
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("io_print.rs"))
+        .arg("--fn")
+        .arg("io_print")
+        .arg("--filter")
+        .arg(fixtures_dir().join("filters/effects-only.magia"))
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let svg = String::from_utf8_lossy(&output.stdout);
+    assert!(svg.contains(r#"<g class="layer-effects">"#));
+    assert!(!svg.contains(r#"<g class="layer-control-flow">"#));
+    assert!(!svg.contains(r#"<g class="layer-type-info">"#));
+}
+
+#[test]
+fn filter_effect_categories_drop_other_symbols() {
+    // db_query は rusqlite (db/緑) + 未知 helper (pure/黒) を呼ぶ。
+    // effects[network, db] では pure の記号が消え、db の緑だけ残る。
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("db_query.rs"))
+        .arg("--fn")
+        .arg("db_query")
+        .arg("--filter")
+        .arg(fixtures_dir().join("filters/network-db.magia"))
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let svg = String::from_utf8_lossy(&output.stdout);
+    assert!(svg.contains("#1fa341"), "db の緑が残る");
+    // pure カテゴリの記号 (op-dot / summon-glyph) だけが消えることを確認する。
+    // control_flow 層の黒 (ループ矢印等) は対象外なので、effects 層の要素に絞って見る。
+    assert!(
+        !svg.lines().any(
+            |line| (line.contains("op-dot") || line.contains("summon-glyph"))
+                && line.contains("#000000")
+        ),
+        "effects 層に pure (黒) の記号が残っていない"
+    );
+}
+
+#[test]
+fn filter_and_layers_conflict() {
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("io_print.rs"))
+        .arg("--fn")
+        .arg("io_print")
+        .arg("--layers")
+        .arg("effects")
+        .arg("--filter")
+        .arg(fixtures_dir().join("filters/effects-only.magia"))
+        .output()
+        .expect("CLI を起動できる");
+    assert!(
+        !output.status.success(),
+        "--layers と --filter は同時指定不可"
+    );
+}
+
+#[test]
+fn broken_filter_file_reports_line() {
+    let dir = std::env::temp_dir().join("magia-cli-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("broken.magia");
+    std::fs::write(&path, "show: effects\nshow: nope\n").unwrap();
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("io_print.rs"))
+        .arg("--fn")
+        .arg("io_print")
+        .arg("--filter")
+        .arg(&path)
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("2行目") && stderr.contains("未知のレイヤー名"));
+}
+
+#[test]
 fn emit_ir_outputs_valid_json() {
     let output = magia()
         .arg("emit-ir")

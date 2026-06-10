@@ -115,6 +115,8 @@ pub(crate) fn run(file: &Path, fn_name: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
+// serve は常にフィルタなしで描き、レイヤー切替はブラウザ側 CSS で行う (spec §5.3)。
+// 将来 serve が `--filter` を受けるときは render_with に切り替える (Phase 3 拡張点)。
 fn render_once(file: &Path, fn_name: &str) -> Result<String, String> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("ファイルを読み込めません: {}: {e}", file.display()))?;
@@ -191,6 +193,9 @@ const INDEX_HTML: &str = r#"<!doctype html>
   #palette .layer-row { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
   #palette input[type="range"] { width: 80px; }
   #palette .buttons { display: flex; gap: 6px; margin-top: 8px; }
+  #palette textarea { width: 200px; font-family: ui-monospace, monospace; font-size: 12px; }
+  #dsl-note { color: #7a4a1c; font-size: 11px; min-height: 1em; white-space: pre-wrap; }
+  #dsl-box { margin-top: 8px; }
 </style></head>
 <body>
 <div id="status"></div>
@@ -203,6 +208,11 @@ const INDEX_HTML: &str = r#"<!doctype html>
   <div class="layer-row"><label><input type="checkbox" data-layer="type_info" checked> 型情報</label>
     <input type="range" data-opacity="type_info" min="0" max="1" step="0.05" value="1"></div>
   <div class="buttons"><button id="all-on">全表示</button><button id="all-off">全非表示</button></div>
+  <details id="dsl-box"><summary>.magia (spec §8)</summary>
+    <textarea id="dsl" rows="3" spellcheck="false"></textarea>
+    <div class="buttons"><button id="dsl-export">エクスポート</button><button id="dsl-apply">適用</button></div>
+    <div id="dsl-note"></div>
+  </details>
 </div>
 <div id="magia"></div>
 <script>
@@ -262,6 +272,38 @@ document.getElementById('palette').addEventListener('input', (event) => {
 });
 document.getElementById('all-on').addEventListener('click', () => { visible = new Set(LAYERS); writeQuery(); apply(); });
 document.getElementById('all-off').addEventListener('click', () => { visible = new Set(); writeQuery(); apply(); });
+
+// .magia (spec §8) との往復。パレットが扱うのは可視性のみで、effects[カテゴリ] の
+// 絞り込みは render 時適用のため CLI (`magia render --filter`) を案内する。
+document.getElementById('dsl-export').addEventListener('click', () => {
+  const shown = LAYERS.filter(l => visible.has(l));
+  document.getElementById('dsl').value =
+    shown.length ? 'show: ' + shown.join(' + ') : '# 全レイヤー非表示\nhide: ' + LAYERS.join(' + ');
+  document.getElementById('dsl-note').textContent = '';
+});
+document.getElementById('dsl-apply').addEventListener('click', () => {
+  const note = document.getElementById('dsl-note');
+  note.textContent = '';
+  let show = null; const hide = new Set(); let hasCategories = false;
+  for (const [i, raw] of document.getElementById('dsl').value.split('\n').entries()) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) { continue; }
+    const directive = line.startsWith('show:') ? 'show' : line.startsWith('hide:') ? 'hide' : null;
+    if (!directive) { note.textContent = (i + 1) + '行目: show: / hide: のみ使用できます'; return; }
+    for (const part of line.slice(5).split('+').map(s => s.trim()).filter(Boolean)) {
+      if (part.includes('[')) {
+        if (directive === 'hide') { note.textContent = (i + 1) + '行目: hide にカテゴリ指定 [...] はできません'; return; }
+        hasCategories = true;
+      }
+      const name = part.split('[')[0].trim();
+      if (!LAYERS.includes(name)) { note.textContent = (i + 1) + '行目: 未知のレイヤー名 `' + name + '`'; return; }
+      if (directive === 'show') { (show ??= new Set()).add(name); } else { hide.add(name); }
+    }
+  }
+  visible = new Set((show ? [...show] : LAYERS).filter(l => !hide.has(l)));
+  if (hasCategories) { note.textContent = 'effects[カテゴリ] の絞り込みは magia render --filter で適用されます'; }
+  writeQuery(); apply();
+});
 
 async function refresh() {
   const response = await fetch('/state');

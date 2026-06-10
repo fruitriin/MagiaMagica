@@ -10,6 +10,7 @@ mod midchilda;
 // 外部から色を参照したくなったら (Phase 2 dev-server 等) そのとき公開を判断する。
 pub(crate) mod palette;
 
+use crate::filter::FilterSpec;
 use crate::ir::MagiaGraph;
 use crate::layout::LayoutResult;
 
@@ -39,8 +40,27 @@ pub enum RenderStyle {
 /// Phase 1 で未実装の式 (`Belka` / `Yagami`) を指定すると panic する。
 #[must_use = "SVG 文字列は出力先に書き込まれるべき"]
 pub fn render(graph: &MagiaGraph, layout: &LayoutResult, style: RenderStyle) -> String {
+    render_with(graph, layout, style, &FilterSpec::default())
+}
+
+/// フィルター (spec v0.2 §8) を適用して描画する。
+///
+/// `show` に含まれないレイヤーは `<g>` ごと出力されず、`effects[...]` の
+/// カテゴリ絞り込みは Operation ドット・召喚記号の単位で適用される
+/// (CSS では色相による絞り込みが表現できないため render 時に行う)。
+///
+/// # Panics
+///
+/// Phase 1 で未実装の式 (`Belka` / `Yagami`) を指定すると panic する。
+#[must_use = "SVG 文字列は出力先に書き込まれるべき"]
+pub fn render_with(
+    graph: &MagiaGraph,
+    layout: &LayoutResult,
+    style: RenderStyle,
+    filter: &FilterSpec,
+) -> String {
     match style {
-        RenderStyle::MidchildaConcentric => midchilda::render(graph, layout),
+        RenderStyle::MidchildaConcentric => midchilda::render(graph, layout, filter),
         RenderStyle::Belka | RenderStyle::Yagami => {
             unimplemented!("not implemented in Phase 1")
         }

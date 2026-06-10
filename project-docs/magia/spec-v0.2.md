@@ -199,7 +199,10 @@ show: control_flow + effects[network, db]
 hide: type_info
 ```
 
-- ディレクティブは `show:` / `hide:` の2種。`hide` が `show` に優先する
+- ディレクティブは `show:` / `hide:` の2種。`hide` が `show` に優先する。
+  `hide` のみを書いた場合は「全レイヤー表示」を基準に hide を適用する。
+  `hide` にカテゴリ指定 `[...]` は付けられない。同一レイヤーを `show` に
+  重複指定するとエラー (後続カテゴリの無言マージはしない)
 - レイヤー名は §5 の語彙 (CLI `--layers` と共通)。`effects[カテゴリ, ...]` で
   効果カテゴリの絞り込みができる (該当カテゴリの記号のみ残す)
 - `highlight:` / `filter:` (メトリクス条件) は**予約語**とし、Phase 3 で導入する

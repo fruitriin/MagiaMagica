@@ -1,0 +1,3 @@
+# セキュリティレビュー断面の最小例 (spec v0.2 §8 の構文例)
+show: control_flow + effects[network, db]
+hide: type_info

@@ -17,6 +17,7 @@ use std::fmt::Write;
 
 use kurbo::{Arc, Point, Shape, Vec2};
 
+use crate::filter::{EffectCategory, FilterSpec, LayerName};
 use crate::ir::{AuxRingKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::layout::constants::{
     ASYNC_INNER_RING_OFFSET, AUX_RING_STROKE, EDGE_STROKE, MAIN_RING_STROKE, OPERATION_DOT_INSET,
@@ -25,13 +26,18 @@ use crate::layout::constants::{
 use crate::layout::{LayoutResult, sigil_radius};
 use crate::render::palette;
 
-pub(crate) fn render(graph: &MagiaGraph, layout: &LayoutResult) -> String {
+pub(crate) fn render(graph: &MagiaGraph, layout: &LayoutResult, filter: &FilterSpec) -> String {
     let mut out = String::new();
-    write_document(&mut out, graph, layout).expect("String への SVG 書き込みは失敗しない");
+    write_document(&mut out, graph, layout, filter).expect("String への SVG 書き込みは失敗しない");
     out
 }
 
-fn write_document(out: &mut String, graph: &MagiaGraph, layout: &LayoutResult) -> std::fmt::Result {
+fn write_document(
+    out: &mut String,
+    graph: &MagiaGraph,
+    layout: &LayoutResult,
+    filter: &FilterSpec,
+) -> std::fmt::Result {
     let canvas = layout.canvas;
     writeln!(
         out,
@@ -41,25 +47,35 @@ fn write_document(out: &mut String, graph: &MagiaGraph, layout: &LayoutResult) -
         num(canvas.width()),
         num(canvas.height()),
     )?;
-    write_defs(out, graph, layout)?;
-
-    writeln!(out, r#"<g class="layer-control-flow">"#)?;
-    for module in &graph.modules {
-        write_control_flow(out, module, layout)?;
+    // フィルター (spec v0.2 §8): show に無いレイヤーは <g> ごと出力しない。
+    // defs はシグネチャ円弧 (type-info 層) 専用なので同じ条件でゲートする。
+    if filter.is_visible(LayerName::TypeInfo) {
+        write_defs(out, graph, layout)?;
     }
-    writeln!(out, "</g>")?;
 
-    writeln!(out, r#"<g class="layer-effects">"#)?;
-    for module in &graph.modules {
-        write_effects(out, module, layout)?;
+    if filter.is_visible(LayerName::ControlFlow) {
+        writeln!(out, r#"<g class="layer-control-flow">"#)?;
+        for module in &graph.modules {
+            write_control_flow(out, module, layout)?;
+        }
+        writeln!(out, "</g>")?;
     }
-    writeln!(out, "</g>")?;
 
-    writeln!(out, r#"<g class="layer-type-info">"#)?;
-    for module in &graph.modules {
-        write_type_info(out, module, layout)?;
+    if filter.is_visible(LayerName::Effects) {
+        writeln!(out, r#"<g class="layer-effects">"#)?;
+        for module in &graph.modules {
+            write_effects(out, module, layout, filter.effect_categories())?;
+        }
+        writeln!(out, "</g>")?;
     }
-    writeln!(out, "</g>")?;
+
+    if filter.is_visible(LayerName::TypeInfo) {
+        writeln!(out, r#"<g class="layer-type-info">"#)?;
+        for module in &graph.modules {
+            write_type_info(out, module, layout)?;
+        }
+        writeln!(out, "</g>")?;
+    }
 
     writeln!(out, "</svg>")
 }
@@ -294,7 +310,18 @@ fn early_return_arrow(out: &mut String, c: Point, unit: Vec2, radius: f64) -> st
 
 // ===== layer-effects =====
 
-fn write_effects(out: &mut String, module: &Module, layout: &LayoutResult) -> std::fmt::Result {
+/// `categories` が `Some` のとき、効果カテゴリがそれに含まれる記号だけを描く
+/// (spec §8 の effects[...] 絞り込み)。
+fn write_effects(
+    out: &mut String,
+    module: &Module,
+    layout: &LayoutResult,
+    categories: Option<&[EffectCategory]>,
+) -> std::fmt::Result {
+    let category_selected = |category: EffectCategory| match categories {
+        None => true,
+        Some(list) => list.contains(&category),
+    };
     for sigil in &module.sigils {
         let center = screen_position(layout, sigil.id);
         match sigil.kind {
@@ -305,6 +332,10 @@ fn write_effects(out: &mut String, module: &Module, layout: &LayoutResult) -> st
                 let track = (ring_radius - OPERATION_DOT_INSET).max(6.0);
                 let count = sigil.content.len();
                 for (index, op) in sigil.content.iter().enumerate() {
+                    let category = palette::category_of(&op.effects);
+                    if !category_selected(category) {
+                        continue; // 絞り込み対象外のカテゴリは描かない (位置は欠番のまま)
+                    }
                     let angle = TAU * usize_to_f64(index) / usize_to_f64(count.max(1));
                     // y 反転済み画面座標で反時計回りに見える向き。
                     let dot = Point::new(
@@ -317,17 +348,21 @@ fn write_effects(out: &mut String, module: &Module, layout: &LayoutResult) -> st
                         num(dot.x),
                         num(dot.y),
                         num(OPERATION_DOT_RADIUS),
-                        palette::effect_color(&op.effects),
+                        palette::color_of(category),
                     )?;
                 }
             }
             // 召喚記号: 効果カテゴリ色で塗った小円 (spec §6.1.2 / §6.1.3)。
             SigilKind::SummonGlyph | SigilKind::GateGlyph => {
-                let radius = sigil_radius(sigil.kind);
-                let color = sigil
+                let category = sigil
                     .content
                     .first()
-                    .map_or(palette::PURE, |op| palette::effect_color(&op.effects));
+                    .map_or(EffectCategory::Pure, |op| palette::category_of(&op.effects));
+                if !category_selected(category) {
+                    continue;
+                }
+                let radius = sigil_radius(sigil.kind);
+                let color = palette::color_of(category);
                 writeln!(
                     out,
                     r#"<circle class="summon-glyph" cx="{}" cy="{}" r="{}" fill="{color}"/>"#,

@@ -43,11 +43,35 @@ notes §3.3 の「実行可能なチーム知識」の最小形。
 
 ## 受け入れ基準
 
-- [ ] `.magia` ファイルで show/hide + effects 絞り込みが効く (CLI / dev-server 両方)
-- [ ] パースエラーが行番号つきで報告される
-- [ ] `--layers` の既存挙動が変わらない (回帰テスト)
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] `.magia` ファイルで show/hide + effects 絞り込みが効く (CLI は render 時適用、dev-server は可視性を往復し effects[] は CLI 案内 — 計画どおり)
+- [x] パースエラーが行番号つきで報告される (Rust / JS 両側、preview で実機確認)
+- [x] `--layers` の既存挙動が変わらない (回帰テスト維持。実装は後処理から render 時ゲートに置換)
+- [x] `cargo test --workspace` (141本) / clippy 警告0
 
 ## 後続
 
 - Phase 3 で `highlight: changed_in_pr` / `filter: complexity > 7` などメトリクス条件を拡張
+
+## 実装結果メモ (2026-06-11)
+
+### 設計判断の確定
+
+- 語彙 (LayerName / EffectCategory) は enum + FromStr (候補一覧つきエラー) で
+  CLI / DSL / serve UI の三者共有。palette は category_of / color_of に分離し、
+  フィルタは「色」でなく「分類」で絞る
+- API は `render_with(graph, layout, style, &FilterSpec)` (layout_with の前例踏襲)。
+  `--layers` は `FilterSpec::show_only` の糖衣となり、Phase 1.7 の SVG 行単位
+  後処理 (filter_layers) は廃止
+- 予約語 (highlight:/filter:) は「Phase 3 で導入予定」と明示エラーで案内
+- serve の DSL ボックスは可視性のみ適用し、effects[] があれば
+  「CLI --filter で適用される」旨を表示 (spec §5.3 の CSS 切替原則と整合)
+
+### レビュー対応 (Stage 2)
+
+- 修正: show の同一レイヤー重複をエラー化 (H1、後続カテゴリの無言ドロップ防止 →
+  spec §8 にも明記) / 空ブラケット・末尾カンマの専用エラー (M1) /
+  カテゴリ絞り込みテストを effects 層要素に限定 (M2、control_flow の黒との誤判定防止) /
+  JS 側でも hide のカテゴリ指定を拒否 (M3、Rust とのセマンティクス一致) /
+  `FilterSpec::show_only` コンストラクタ (L1) / serve の拡張点コメント (L3)
+- 受理: LayerName::ALL の要素数ハードコード (L2、enum 追加時に型と両方更新する
+  Rust の制約。コメント済み)

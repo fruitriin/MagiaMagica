@@ -1,7 +1,10 @@
 //! 効果カテゴリの色相規約 (spec §6.1.3)。
 //!
 //! 色の変更はこのモジュールだけで完結させる (計画の設計判断)。
+//! カテゴリの語彙は `filter::EffectCategory` と共有する (Phase 2.3 でフィルターが
+//! 同じ分類で記号を絞り込むため、分類ロジックを一元化する)。
 
+use crate::filter::EffectCategory;
 use crate::ir::EffectSet;
 
 /// 純粋計算: 黒。
@@ -17,26 +20,37 @@ pub const FILESYSTEM: &str = "#7a4a1c";
 /// Unsafe: 赤 (Rust のみ)。
 pub const UNSAFE: &str = "#d92626";
 
-/// `EffectSet` から表示色を1つ選ぶ。
+/// `EffectSet` を表示カテゴリ1つに潰す。
 ///
 /// `EffectSet` は直交フラグの集合で複数同時に立ちうる (`operation.rs` の規約:
 /// 「矛盾の解消はレンダラの色相規約に委ねる」)。ここでの優先順位は
 /// **危険度・希少度の高い順**: unsafe > network > db > filesystem > io > pure。
 /// unsafe を最優先するのは赤が警告色として最も伝達価値が高いため。
-#[must_use]
-pub fn effect_color(effects: &EffectSet) -> &'static str {
+pub(crate) fn category_of(effects: &EffectSet) -> EffectCategory {
     if effects.unsafe_block {
-        UNSAFE
+        EffectCategory::Unsafe
     } else if effects.network {
-        NETWORK
+        EffectCategory::Network
     } else if effects.db {
-        DB
+        EffectCategory::Db
     } else if effects.filesystem {
-        FILESYSTEM
+        EffectCategory::Filesystem
     } else if effects.io {
-        IO
+        EffectCategory::Io
     } else {
-        PURE
+        EffectCategory::Pure
+    }
+}
+
+/// カテゴリ → 表示色。
+pub(crate) fn color_of(category: EffectCategory) -> &'static str {
+    match category {
+        EffectCategory::Pure => PURE,
+        EffectCategory::Io => IO,
+        EffectCategory::Network => NETWORK,
+        EffectCategory::Db => DB,
+        EffectCategory::Filesystem => FILESYSTEM,
+        EffectCategory::Unsafe => UNSAFE,
     }
 }
 
@@ -52,12 +66,14 @@ mod tests {
             network: true,
             ..EffectSet::default()
         };
-        assert_eq!(effect_color(&effects), UNSAFE);
+        assert_eq!(category_of(&effects), EffectCategory::Unsafe);
+        assert_eq!(color_of(category_of(&effects)), UNSAFE);
     }
 
     #[test]
     fn default_is_pure_black() {
-        assert_eq!(effect_color(&EffectSet::default()), PURE);
+        assert_eq!(category_of(&EffectSet::default()), EffectCategory::Pure);
+        assert_eq!(color_of(category_of(&EffectSet::default())), PURE);
     }
 
     #[test]
@@ -68,6 +84,7 @@ mod tests {
                     io: true,
                     ..EffectSet::default()
                 },
+                EffectCategory::Io,
                 IO,
             ),
             (
@@ -75,6 +92,7 @@ mod tests {
                     network: true,
                     ..EffectSet::default()
                 },
+                EffectCategory::Network,
                 NETWORK,
             ),
             (
@@ -82,6 +100,7 @@ mod tests {
                     db: true,
                     ..EffectSet::default()
                 },
+                EffectCategory::Db,
                 DB,
             ),
             (
@@ -89,11 +108,13 @@ mod tests {
                     filesystem: true,
                     ..EffectSet::default()
                 },
+                EffectCategory::Filesystem,
                 FILESYSTEM,
             ),
         ];
-        for (effects, expected) in cases {
-            assert_eq!(effect_color(&effects), expected);
+        for (effects, expected_category, expected_color) in cases {
+            assert_eq!(category_of(&effects), expected_category);
+            assert_eq!(color_of(category_of(&effects)), expected_color);
         }
     }
 }

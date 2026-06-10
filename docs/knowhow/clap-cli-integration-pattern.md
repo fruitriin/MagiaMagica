@@ -16,10 +16,13 @@
 - **assert_cmd**: `Command::cargo_bin("magia")` は `[[bin]] name` を参照する
   (クレート名ではない)。統合テストの `CARGO_MANIFEST_DIR` はクレートルートなので、
   workspace ルートの資産 (fixtures/) へは `../../` で到達する
-- **構造化出力の後処理フィルタ**: SVG のレイヤーフィルタ (`--layers`) は
-  「1行1要素・レイヤー `<g>` は入れ子なし」というレンダラの出力規約に依存した
-  行単位スキップで十分。**規約依存の処理は、依存元と依存先の双方のコメントで
-  相互参照させる** (片方だけ変更される事故の防止)
+- **規約依存の処理は、依存元と依存先の双方のコメントで相互参照させる**
+  (片方だけ変更される事故の防止)。なお Phase 1.7 の `--layers` は SVG の行単位
+  後処理フィルタだったが、Phase 2.3 で render 時の FilterSpec 適用に置き換えられて
+  後処理は廃止された (出力規約依存の処理は寿命が短い、という追加の教訓)
+- **排他オプションは `conflicts_with` 属性**: 手書きの `bail!` 検証でなく
+  `#[arg(conflicts_with = "other")]` を使うと、ヘルプとエラーメッセージに自動反映される
+  (Phase 2.3 の `--layers` vs `--filter` で確立)
 - exit code: `main` で `run()?` を受けて `eprintln!("エラー: {error:#}")` +
   `std::process::exit(1)`。anyhow の `{:#}` で Context チェーンが1行に繋がる
 
