@@ -1,9 +1,12 @@
-//! MagiaMagica CLI — Rust 関数を魔法陣として描画する (Phase 1.7, M7)。
+//! MagiaMagica CLI — Rust 関数を魔法陣として描画する (Phase 1.7, M7 / Phase 2.1)。
 //!
 //! サブコマンド:
 //! - `magia render <FILE> --fn <NAME>` — SVG を出力
 //! - `magia list <FILE>` — 関数一覧
 //! - `magia emit-ir <FILE> --fn <NAME>` — MagiaIR を JSON で出力 (デバッグ用)
+//! - `magia serve <FILE> --fn <NAME>` — dev-server (保存のたびにブラウザを自動更新)
+
+mod serve;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -51,6 +54,17 @@ enum Command {
         /// 対象の関数名
         #[arg(long = "fn", value_name = "NAME")]
         fn_name: String,
+    },
+    /// dev-server を起動する (ファイル保存のたびにブラウザの魔法陣を自動更新)
+    Serve {
+        /// 入力 Rust ソースファイル
+        file: PathBuf,
+        /// 描画する関数名
+        #[arg(long = "fn", value_name = "NAME")]
+        fn_name: String,
+        /// 待ち受けポート (0 で空きポートを自動割当)
+        #[arg(long, default_value_t = 4747)]
+        port: u16,
     },
 }
 
@@ -114,6 +128,21 @@ fn run(cli: Cli) -> Result<()> {
                 serde_json::to_string_pretty(&graph).context("IR の JSON 変換に失敗しました")?;
             println!("{json}");
             Ok(())
+        }
+        Command::Serve {
+            file,
+            fn_name,
+            port,
+        } => {
+            // serve は起動時にファイルが読めなくても立ち上がり、画面にエラーを出す
+            // (会話を切らない方針)。拡張子警告だけはここで出す。
+            if file.extension().and_then(|e| e.to_str()) != Some("rs") {
+                eprintln!(
+                    "警告: `{}` は .rs ファイルではありません (Phase 1 の解析対象は Rust のみ)",
+                    file.display()
+                );
+            }
+            serve::run(&file, &fn_name, port)
         }
     }
 }

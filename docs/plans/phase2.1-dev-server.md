@@ -36,11 +36,45 @@
 
 ## 受け入れ基準
 
-- [ ] `magia serve fixtures/io_print.rs --fn io_print` でブラウザに魔法陣が表示される
-- [ ] ファイルを保存すると 1 秒以内に表示が更新される (手動確認 + 統合テスト)
-- [ ] 構文エラー中も画面が白紙にならない (エラー表示 + 直前の図を保持)
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] `magia serve` でブラウザに魔法陣が表示される (preview スクリーンショットで実機確認)
+- [x] ファイルを保存すると 1 秒以内に表示が更新される (統合テスト: version 増加 + SVG 変化)
+- [x] 構文エラー中も画面が白紙にならない (エラー表示 + 直前の図を保持 + 復帰も検証)
+- [x] `cargo test --workspace` (121本) / clippy 警告0
 
 ## 後続
 
 - Phase 2.2 でこの HTML にレイヤーパレット UI を載せる
+
+## 実装結果メモ (2026-06-11)
+
+### 依存の実値 (計画の axum 第一候補から変更)
+
+- **tiny_http 0.12 + notify 8.2 + SSE** を採用。tokio/axum 一式を持ち込まずに
+  live-reload が完結する (SSE は mpsc::Receiver を包む Read アダプタで実装、
+  tiny_http の長さ不定 Response がチャンク転送)。spec §7 の「WebSocket または SSE」の
+  範囲内。多接続が必要になったら (Phase 2 後半の多関数対応) async 化を再評価
+
+### 設計判断の確定
+
+- ルートは `/` (完全静的 HTML、初回も /state フェッチで描画) / `/state` (JSON:
+  svg・error・version) / `/events` (SSE) の3つ
+- 監視は親ディレクトリ非再帰 + ファイル名照合 (エディタの rename 保存対応)、
+  120ms デバウンス。監視エラーは「変化したかもしれない」側に倒す
+- Mutex は poisoning 回復つきロック (`lock_or_recover`): 一部スレッドの
+  パニック後も最後の正常状態で応答し続ける (クラッシュループ回避)
+- SSE クライアントの掃除は publish 時 + 新規接続時の二系統 (リーク防止)
+
+### レビュー対応 (Stage 2)
+
+- 修正: Mutex poisoning 回復 (H-1) / SSE Sender リークの接続時掃除 (H-2) /
+  テストのエラーメッセージ文言非依存化 (M-1) / fixture のテスト別ディレクトリ分離
+  + 毎回クリーン作成 (M-2、並列実行時の notify イベント混入によるフレーク防止)
+- 既知の制約 (ドキュメント化): リクエスト/SSE はスレッド占有 (M-4、ローカル
+  dev ツールの同時接続数では問題ない)。launch.json は Claude preview 用の定義で
+  VS Code の launch.json とは別物 (L-1)
+- spec v0.3 への持ち越し: 監視エラー時挙動の明文化 (L-3) → Feedback に記録
+
+### 動作確認
+
+統合テスト3本 (配信 / 変更検知 / エラー保持・復帰) + preview スクリーンショットで
+write_document の魔法陣表示を実機確認。`.claude/launch.json` に preview 定義を常設
