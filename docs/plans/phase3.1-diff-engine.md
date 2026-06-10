@@ -42,11 +42,29 @@
 
 ## 受け入れ基準
 
-- [ ] 追加/削除/変更/不変の4象限テストが通る
-- [ ] 同一入力で空 diff、決定論性 (5回一致)
-- [ ] `magia diff` がテキストと `--json` で動く
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] 追加/削除/変更/不変の4象限テストが通る
+- [x] 同一入力で空 diff、決定論性 (5回一致)
+- [x] `magia diff` がテキストと `--json` で動く
+- [x] `cargo test --workspace` / clippy 警告0
 
 ## 後続
 
 - 3.2 が SpellDiff を SVG 強調に、3.3 が PR コメントに変換する
+
+## 実装結果メモ (2026-06-11)
+
+- 計画どおり `metrics` モジュール抽出を含めて実装。transcript の `metrics_sentence` も
+  `metrics::measure` に委譲し、書き起こしと diff が同じ数字を報告する
+- 構造マッチングは `enum NodeKey` (Ord derive) + BTreeMap で実装。同キー内は
+  構築時 (キー, SigilId) ソート → min(len) 貪欲対応。詳細は
+  `docs/knowhow/structural-diff-pattern.md`
+- **テストの置き場所が計画と差分**: fixture のパースに magia-rust が要るため、
+  構造テストは magia-core でなく `crates/magia-rust/tests/spell_diff.rs` に置いた
+  (依存方向の制約。core → rust の dev-dependency 循環を避けた)
+- fixture は `fixtures/diff/before.rs` / `after.rs` の1ペアで4象限を全て踏む設計
+  (fixture 冒頭コメントに意図を明記)
+- `--json` は core 型に Serialize を生やさず CLI 側 `diff_to_json` で明示構築
+  (内部表現と外部契約の分離)
+- レビュー (Stage 2): Critical/High 0、W-1 `unwrap_or(u32::MAX)` 再発 (3度目) を
+  expect に修正。Edge 差分は Phase 3.4 の EdgeLayerData 再設計後に対応 (spec §9.2 の
+  Edge 変化は現状全フィールド空のため実質欠損なし)

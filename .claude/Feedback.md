@@ -18,6 +18,7 @@
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
 - Phase 1.0 で「rust-cargo-workspace-bootstrap」ノウハウは現状プロジェクト固有 (`docs/knowhow/`) に置いたが、内容は ADDF 利用 Rust プロジェクト全般に役立つ。将来 `docs/knowhow/ADDF/` または ADDF 本体への昇格を検討
 - Phase 1.3 のコントリビューション検出より: `addf-knowhow.exp.md` に記録した「統合先ファイルの冒頭メタコメントも実態に合わせて更新する」「INDEX は reindex を待たず手動同期してよい」は汎用的な教訓。ADDF 本体の `addf-knowhow.md` Phase 3 チェックリストへの追記 PR 候補
+- Phase 3.1 のコントリビューション検出より: `addf-knowhow.exp.md` の「関心が別なら新規ファイル、検索性を失わない統合なら既存ファイルに追記」という分割 vs 統合の判断軸も `addf-knowhow.md` への追記候補。上記 Phase 1.3 候補と**同一 PR に同梱**できる
 - Phase 1.3 の `AuxRingRole.anchor_operation` は親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期が必要。Phase 1.5/1.8 では問題にならなかったが、content を並び替える変更を入れるときは再確認
 - ~~spec 宿題 4 件 (Phase 1.1 補完型 / Phase 1.3 補完型・アームガード / LoopBody serde 不統一 / EdgeLayerData 非対称)~~ → **Phase 2.0 の spec-v0.2.md で解消** (§4.2 追補・§4.4 JSON 規約・§4.3 Phase 3 方針)
 
@@ -32,6 +33,7 @@
 ## 改善アクション
 
 - Phase 1.3 のレビュー指摘「`unwrap_or(u32::MAX)` センチネル禁止」が anchor 1箇所だけ修正され、同型の4箇所が Phase 1.4 レビューで再指摘された。**レビュー指摘を受けたパターンは修正時に `grep` で同型箇所を全て掃く**こと（パターン名で knowhow 化済みでも、既存コードの残留掃除は別作業として明示する）
+- 同パターンが Phase 3.1 の新規コード (metrics.rs) で**3度目の再発**。残留掃除でなく新規執筆時の再発であり、規約の置き場所が `syn-visitor-patterns.md`（magia-rust 固有文書）だったため magia-core 執筆時に参照されなかったのが要因。`structural-diff-pattern.md` にも明記して文書を跨いで冗長化した。プロジェクト横断規約が増えてきたら CLAUDE.repo.md への昇格を検討
 - 計画書の依存バージョン世代ずれが Phase 1.5 でも発生（petgraph 0.6→0.8、kurbo 0.11→0.13）。`cargo add --dry-run` で実値確認 → 計画書を実値で上書きする運用が機能した。Phase 1.6 以降も継続
 
 - 計画書に「実装結果メモ」セクションを追記する形が機能した。テンプレ化候補

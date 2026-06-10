@@ -14,7 +14,7 @@ Phase 3 計画 6 本を立案した。**優先度はオーナー確認待ち** (
 | 優先度 | Phase | 計画ファイル | 状態 |
 |---|---|---|---|
 | 1 | 3.0 | [docs/plans/phase3.0-spec-v0.3.md](docs/plans/phase3.0-spec-v0.3.md) | 完了 |
-| 2 | 3.1 | [docs/plans/phase3.1-diff-engine.md](docs/plans/phase3.1-diff-engine.md) | 未着手 |
+| 2 | 3.1 | [docs/plans/phase3.1-diff-engine.md](docs/plans/phase3.1-diff-engine.md) | 完了 |
 | 3 | 3.2 | [docs/plans/phase3.2-spell-diff.md](docs/plans/phase3.2-spell-diff.md) | 未着手 |
 | 4 | 3.3 | [docs/plans/phase3.3-ci-integration.md](docs/plans/phase3.3-ci-integration.md) | 未着手 |
 | 5 | 3.4 | [docs/plans/phase3.4-dataflow-ir.md](docs/plans/phase3.4-dataflow-ir.md) | 未着手 |

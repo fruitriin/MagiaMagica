@@ -170,26 +170,12 @@ fn async_sentence(main: &Sigil) -> Option<String> {
 }
 
 /// Phase 1 メトリクス (notes §9.1 の「複雑度4、副作用カテゴリ2種」相当)。
-///
-/// 複雑度は循環的複雑度の近似: 1 + 全リングの分岐数 + ループ数。
-/// 副作用カテゴリ数は記号 (Operation・召喚記号) に現れた純粋以外のカテゴリの種類数。
+/// 集計の実体は `metrics::measure` (diff エンジンと同じ数字を報告する共有集計)。
 fn metrics_sentence(module: &Module) -> String {
-    let mut complexity: u32 = 1;
-    let mut categories: Vec<EffectCategory> = Vec::new();
-    for sigil in &module.sigils {
-        if let Some(info) = sigil.layers.control_flow.as_ref() {
-            complexity += info.branch_count + info.loop_count;
-        }
-        for op in &sigil.content {
-            let category = EffectCategory::of(&op.effects);
-            if category != EffectCategory::Pure && !categories.contains(&category) {
-                categories.push(category);
-            }
-        }
-    }
+    let metrics = crate::metrics::measure(module);
     format!(
-        "Phase 1 メトリクス: 複雑度{complexity}、副作用カテゴリ{}種。",
-        categories.len()
+        "Phase 1 メトリクス: 複雑度{}、副作用カテゴリ{}種。",
+        metrics.complexity, metrics.effect_categories
     )
 }
 

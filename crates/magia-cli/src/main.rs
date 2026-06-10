@@ -6,6 +6,7 @@
 //! - `magia emit-ir <FILE> --fn <NAME>` — MagiaIR を JSON で出力 (デバッグ用)
 //! - `magia serve <FILE> --fn <NAME>` — dev-server (保存のたびにブラウザを自動更新)
 //! - `magia transcribe <FILE> --fn <NAME>` — 呪文書き起こし (アクセシビリティ用テキスト)
+//! - `magia diff <BEFORE> <AFTER> --fn <NAME>` — 同一関数の2リビジョンの構造差分 (Spell Diff)
 
 mod serve;
 
@@ -72,6 +73,19 @@ enum Command {
         /// 対象の関数名
         #[arg(long = "fn", value_name = "NAME")]
         fn_name: String,
+    },
+    /// 同一関数の2リビジョンを構造比較する — Spell Diff (spec v0.3 §9.2)
+    Diff {
+        /// 変更前の Rust ソースファイル
+        before: PathBuf,
+        /// 変更後の Rust ソースファイル
+        after: PathBuf,
+        /// 比較する関数名 (両ファイルに存在すること)
+        #[arg(long = "fn", value_name = "NAME")]
+        fn_name: String,
+        /// JSON で出力する (CI 連携用)
+        #[arg(long)]
+        json: bool,
     },
     /// dev-server を起動する (ファイル保存のたびにブラウザの魔法陣を自動更新)
     Serve {
@@ -143,6 +157,24 @@ fn run(cli: Cli) -> Result<()> {
             print!("{}", magia_core::transcript::transcribe(&graph));
             Ok(())
         }
+        Command::Diff {
+            before,
+            after,
+            fn_name,
+            json,
+        } => {
+            let before_graph = parse_source(&read_source(&before)?, &fn_name)
+                .with_context(|| format!("変更前 ({})", before.display()))?;
+            let after_graph = parse_source(&read_source(&after)?, &fn_name)
+                .with_context(|| format!("変更後 ({})", after.display()))?;
+            let spell_diff = magia_core::diff::diff(&before_graph, &after_graph);
+            if json {
+                println!("{}", diff_to_json(&spell_diff, &fn_name)?);
+            } else {
+                print!("{}", spell_diff.to_report(&fn_name));
+            }
+            Ok(())
+        }
         Command::Serve {
             file,
             fn_name,
@@ -192,6 +224,38 @@ fn prettify_parse_error(error: &magia_rust::Error) -> anyhow::Error {
         }
         magia_rust::Error::FunctionNotFound { .. } => anyhow::anyhow!("{error}"),
     }
+}
+
+/// SpellDiff を CI 連携用の JSON に整形する。
+/// IR と違い diff 型は Serialize を持たない (公開スキーマは CLI 出力だけに限定し、
+/// core の内部表現を JSON 契約から切り離す) ため、ここで明示的に組み立てる。
+fn diff_to_json(spell_diff: &magia_core::diff::SpellDiff, fn_name: &str) -> Result<String> {
+    let metrics_json = |m: &magia_core::metrics::Metrics| {
+        serde_json::json!({
+            "complexity": m.complexity,
+            "effect_categories": m.effect_categories,
+            "rings": m.rings,
+            "glyphs": m.glyphs,
+            "early_returns": m.early_returns,
+            "main_operations": m.main_operations,
+        })
+    };
+    let value = serde_json::json!({
+        "function": fn_name,
+        "is_empty": spell_diff.is_empty(),
+        "added": spell_diff.added,
+        "removed": spell_diff.removed,
+        "changed": spell_diff
+            .changed
+            .iter()
+            .map(|c| serde_json::json!({ "path": c.path, "details": c.details }))
+            .collect::<Vec<_>>(),
+        "metrics": {
+            "before": metrics_json(&spell_diff.metrics.before),
+            "after": metrics_json(&spell_diff.metrics.after),
+        },
+    });
+    serde_json::to_string_pretty(&value).context("diff の JSON 変換に失敗しました")
 }
 
 /// `--layers` (show 単独の糖衣) と `--filter <FILE.magia>` から FilterSpec を作る。

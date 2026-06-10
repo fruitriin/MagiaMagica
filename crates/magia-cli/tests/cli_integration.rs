@@ -309,6 +309,76 @@ fn transcribe_outputs_summary() {
 }
 
 #[test]
+fn diff_reports_structural_changes_as_text() {
+    let output = magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("diff/after.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("SpellDiff (関数 process_order):"));
+    assert!(text.contains("追加: main > else分岐"));
+    assert!(text.contains("削除: main > 召喚 notify"));
+    assert!(text.contains("メトリクス変化"));
+}
+
+#[test]
+fn diff_json_is_valid_and_carries_metrics() {
+    let output = magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("diff/after.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .arg("--json")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("diff --json は有効な JSON を出す");
+    assert_eq!(json["function"], "process_order");
+    assert_eq!(json["is_empty"], false);
+    assert!(json["added"].as_array().is_some_and(|a| !a.is_empty()));
+    assert_eq!(json["metrics"]["before"]["rings"], 3);
+    assert_eq!(json["metrics"]["after"]["rings"], 4);
+}
+
+#[test]
+fn diff_of_identical_files_is_empty() {
+    let output = magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("構造の変化なし"));
+}
+
+#[test]
+fn diff_missing_function_names_the_offending_file() {
+    let output = magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg(fixtures_dir().join("simple_compute.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // どちら側のファイルで関数が見つからなかったかを案内する。
+    assert!(stderr.contains("変更後") && stderr.contains("simple_compute.rs"));
+}
+
+#[test]
 fn version_and_help_work() {
     magia().arg("--version").assert().success();
     magia().arg("--help").assert().success();
