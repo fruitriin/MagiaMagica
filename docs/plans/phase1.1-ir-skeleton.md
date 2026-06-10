@@ -51,11 +51,25 @@
 
 ## 受け入れ基準
 
-- [ ] spec §4.2 の全型が定義されている
-- [ ] `LayerData` の Phase 1 で未使用フィールドも `Option` または空コレクションで存在する
-- [ ] `cargo test -p magia-core` が round-trip テストを含めて通る
-- [ ] `cargo clippy` が警告0
-- [ ] `MagiaGraph` のドキュメントコメントが各型の役割を1行で説明している
+- [x] spec §4.2 の全型が定義されている
+- [x] `LayerData` の Phase 1 で未使用フィールドも `Option` または空コレクションで存在する
+- [x] `cargo test -p magia-core` が round-trip テストを含めて通る (5 テスト)
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` が警告0
+- [x] `MagiaGraph` のドキュメントコメントが各型の役割を1行で説明している
+
+## 実装結果メモ (2026-06-10)
+
+- IR は `magia-core/src/ir/` 配下のサブモジュール分割で実装 (graph / sigil / operation / edge / layers / source の 6 ファイル)
+- spec §4.2 に擬似 Rust 構文として記載のない `OperationPayload` / `Cardinality` / `EdgeLayerData` / `ProjectMetadata` を補完。spec バックポートは Phase 1.2 計画書に持ち越し
+- `f64` を含む型 (`Edge`, `EdgeLayerData`, `CoverageInfo`, `ProfileInfo`, `Cardinality`) は `PartialEq` のみ派生 (`Eq` は派生しない)
+- `EffectSet` は spec §4.2 直結の直交フラグ集合のため `#[allow(clippy::struct_excessive_bools)]` を局所適用
+- レビュー指摘で取り込んだ改善:
+  - `SourceSpan.start_column/end_column` を `u32` (0=未取得センチネル) から `Option<u32>` に変更
+  - `ControlFlowInfo.branch_count` の集計単位コメントを具体化
+  - `deny_unknown_fields` を意図的に付けない旨を `ir/mod.rs` に明記
+  - テスト名 `round_trip_is_deterministic` を `same_value_serializes_twice_identically` にリネーム (実質を反映)
+- Phase 1.2 に持ち越した Info: ID 採番の一元管理、`ProjectMetadata.root_path` の `PathBuf` 化、ファクトリ関数の `#[must_use]`、spec §4.2 への `OperationPayload` バックポート (phase1.2-syn-to-ir.md に追記済み)
+- 持ち越し未スケジュール: `EdgeLayerData` のレイヤー設計が `LayerData` と非対称な件 → Phase 3 でデータフロー解析を導入する際に再設計 (`Feedback.md` に記録)
 
 ## 後続
 

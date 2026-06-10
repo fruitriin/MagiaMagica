@@ -45,9 +45,18 @@
 
 - tech-selection §2.1 の Phase 1a に従い、**syn 単体**で進める。`rust-analyzer` (`ra_ap_*`) は導入しない
 - syn の features は `["full", "visit", "extra-traits"]`
-- `SourceSpan` は `proc_macro2::Span` から行/列を取得して埋める
-- `SigilId` の採番は `parse_function` 内で 0 から決定論的に増やす (乱数禁止)
+- `SourceSpan` は `proc_macro2::Span` から行/列を取得して埋める。列情報が取れないケースは `Option<u32>` の `None` で表現する (Phase 1.1 で `SourceSpan.start_column/end_column` を `Option<u32>` に変更済み)
+- `SigilId` の採番は `parse_function` 内で 0 から決定論的に増やす (乱数禁止)。フィールド `pub u32` への直接代入で採番を破壊しないよう、内部に `SigilIdAllocator { next: u32 }` を用意し採番を一箇所に集約する
 - エラーは `thiserror` で `magia_rust::Error` を定義 (構文エラー / 関数未発見 など)
+
+## Phase 1.1 レビューからの持ち越し事項 (Info)
+
+Phase 1.2 着手時に検討すべきメモ:
+
+- **ID 採番の一元管理**: `SigilId(pub u32)` / `ModuleId(pub u32)` のフィールドが `pub` なので直接構築が可能。M2 着手時に `Allocator` パターンを導入する判断をする
+- **`ProjectMetadata.root_path` の `PathBuf` 化**: 現状 `String`。Phase 1.2 で実ファイルパスを書き込み始めるタイミングで `PathBuf` への移行を検討
+- **ファクトリ関数の `#[must_use]`**: `parse_function` 等は戻り値が必ず使われるので `#[must_use]` を付ける
+- **spec §4.2 への `OperationPayload` バックポート**: `OperationPayload` は仕様書の擬似 Rust 構文に未記載。Phase 1.2 着手時に spec-v0.1.md (またはバージョン上げ) へ追記する候補
 
 ## 依存ライブラリの追加
 

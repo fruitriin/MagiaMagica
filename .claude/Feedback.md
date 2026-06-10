@@ -12,6 +12,8 @@
 
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
 - Phase 1.0 で「rust-cargo-workspace-bootstrap」ノウハウは現状プロジェクト固有 (`docs/knowhow/`) に置いたが、内容は ADDF 利用 Rust プロジェクト全般に役立つ。将来 `docs/knowhow/ADDF/` または ADDF 本体への昇格を検討
+- Phase 1.1 で `EdgeLayerData` のレイヤー設計が `LayerData` (Option<XxxInfo> による Z 軸的拡張) と非対称 (フラットな data_volume / call_frequency 直値) になっている。Phase 3 でデータフロー解析が入るときに破壊的変更になりうるため、Phase 2/3 計画書を起こすタイミングで方針を明記する
+- Phase 1.1 で spec §4.2 に未記載の補助型 (`OperationPayload`, `Cardinality`, `EdgeLayerData`, `ProjectMetadata`) を実装側で補完した。`project-docs/magia/spec-v0.2.md` を起こすときに正式追記する
 
 ## 改善アクション
 
