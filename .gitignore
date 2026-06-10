@@ -11,3 +11,9 @@ CLAUDE.local.md
 # CLAUDE.repo.md は本プロジェクトでは設計指針 (POSD など) をチーム共有するためコミット対象とする
 .claude/skills/addf-gui-test.md
 # --- /ADDF Framework ---
+
+# OS 由来
+.DS_Store
+
+# README の使用例などで生成されるルート直下の SVG
+/*.svg
