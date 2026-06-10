@@ -1,6 +1,9 @@
 //! MagiaMagica core: IR, analysis, layout, and SVG rendering.
 //!
-//! Phase 1.1 では IR スケルトンのみを提供する。解析・レイアウト・レンダラは
-//! 後続マイルストーン (Phase 1.2 以降) で順次追加する。
+//! - [`ir`][ir]: 言語非依存の中間表現 (Phase 1.1)
+//! - [`layout`][layout]: 決定論的レイアウトエンジン (Phase 1.5)
+//!
+//! SVG レンダラは Phase 1.6 で追加する。
 
 pub mod ir;
+pub mod layout;

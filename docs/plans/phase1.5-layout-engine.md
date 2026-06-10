@@ -53,18 +53,50 @@
 
 ## 依存ライブラリの追加
 
-`magia-core/Cargo.toml`:
-- `petgraph = "0.6"`
-- `kurbo = "0.11"`
+`magia-core/Cargo.toml` (実装時の実値。計画当初の 0.6 / 0.11 から世代更新):
+- `petgraph = "0.8"` (実値 0.8.3)
+- `kurbo = "0.13"` (実値 0.13.1)
 
 ## 受け入れ基準
 
-- [ ] 決定論性テストが通る (10回連続で同じ出力)
-- [ ] MainRing 中央配置・極座標 AuxRing・SummonGlyph 配置の3段階が分離した関数として実装されている
-- [ ] 交差最小化が **オプション** として ON/OFF できる (テスト容易性のため)
-- [ ] `cargo test -p magia-core` 全通過
-- [ ] `cargo clippy` 警告0
+- [x] 決定論性テストが通る (10回連続で同じ出力)
+- [x] MainRing 中央配置・極座標 AuxRing・SummonGlyph 配置の3段階が分離した関数として実装されている
+- [x] 交差最小化が **オプション** として ON/OFF できる (テスト容易性のため)
+- [x] `cargo test -p magia-core` 全通過
+- [x] `cargo clippy` 警告0
 
 ## 後続
 
 - Phase 1.6 で `LayoutResult` を入力として SVG を生成する
+
+## 実装結果メモ (2026-06-11)
+
+### 計画からの変更点
+
+- **`LayoutResult.positions` は `HashMap` でなく `BTreeMap`**: M6 レンダラが走査して
+  SVG 要素を出力するとき、HashMap だと出力順が実行ごとに揺れてスナップショットテストが
+  壊れるため。決定論要件 (spec §6.1.4) の自然な帰結として変更
+- **交差最小化は「隣接 SummonGlyph の角度入れ替え」でなく「ファン全体の回転」**:
+  接続線が全て「親中心 → 子中心」の放射線のため、同一親の glyph をスロット間で
+  入れ替えても線分集合の幾何が一切変わらず、計画のアルゴリズムでは交差数が動かない。
+  回転角の貪欲 hill-climbing (探索順・ステップ・パス上限固定) に置き換えた
+
+### 設計判断の確定
+
+- 角度系: 数学系 (+x 右、+y 上、反時計回り正)。3時起点は outward=0。SVG の y 反転は
+  M6 の責務 (素朴な反転は時計回りに見える点を mod.rs の doc に明記済み)
+- AuxRing 角度 = 親 outward + anchor/content_len の全周均等割 + ordinal × 扇状ステップ。
+  入れ子は BFS で外側に伸びる傾向
+- SummonGlyph は親ごとの GlyphFan (全周等間隔)。1個なら outward 方向。交差回避で
+  ファンごと回転しうる (1個ファンも対象、意図された挙動)
+- 防御規約: `positions` は常に全 Sigil を覆う (MainRing 欠落・到達不能は原点フォールバック)
+
+### レビュー対応 (Stage 2)
+
+- 修正済み: positions/radii の2本 Map 管理を `PlacedSigil { center, radius }` の1本に統合
+  (不整合状態を構造で排除) / `usize_to_f64` の expect panic 経路を `as f64` + 許容 lint に変更
+  (カウントは 2^53 未満) / 交差判定の端点同一視を機械イプシロン → 1e-9 に変更 /
+  `place_aux_rings` に root を明示引数化 / 1-glyph ファンの回転挙動と y 反転の注意を doc 化
+- 先送り (Phase 1.6 の目視検証で再評価):
+  - 回転ステップ 0.2 rad の粒度 (局所最小で十分かは見た目で判断、定数は pub なので調整容易)
+  - AuxRing と SummonGlyph の重なり回避は未実装 (Phase 1 スコープ外、目視で問題なら対応)

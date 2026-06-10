@@ -96,6 +96,12 @@ pub struct EffectSet { /* ... */ }
 
 `mod.rs` で `- [`graph`]: 説明` のような markdown は intra-doc link 扱いされて警告。`[`graph`][graph]` 形式にする (rust-1.94 で発生)。
 
+### `doc_lazy_continuation` (doc list item without indentation)
+
+doc コメントの継続行を `+` や `-` で始めると箇条書きの続きと誤認されて警告。
+「角度 = A + B」のような数式をコメントで改行するときは、行頭に演算子を置かない
+言い回し (「A」「B」の和、等) に変える (Phase 1.5 で発生)。
+
 ### `doc_markdown`
 
 カタカナ・固有名詞 (`MagiaMagica`, `MainRing`, `Mystical`) を多用するプロジェクトでは workspace 全体で `doc_markdown = "allow"` (cargo-workspace-bootstrap 既収録)。
