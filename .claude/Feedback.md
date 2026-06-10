@@ -9,6 +9,7 @@
 ## オーナーフィードバック
 
 - **判定依頼 (Phase 1.6)**: 自己ホスティング SVG 4本（parse_function / collect_calls_in_stmt / layout_with / count_crossings）を送付済み。魔法陣としての見た目の合格判定または調整指示をお待ちしています。既知の課題: AuxRing にぶら下がる召喚記号が親リング方向で重なることがある／描画定数は仮置き（`crates/magia-core/src/layout/constants.rs` で調整可能）
+- **報告 (Phase 1.7)**: Phase 1 (M1〜M7) が完了し、`cargo install --path crates/magia-cli` で配布可能な状態です。リリース（バージョン採番・チェンジログ）を行う場合は `/addf-release` を実行してください。次サイクルからはオーナーリクエストに従い Phase 2 計画の立案に入ります
 
 ## 問題の記録
 
@@ -26,6 +27,7 @@
 
 - Phase 1.5 の `layout/constants.rs` の半径・ギャップ値は仮置き。Phase 1.6 の自己ホスティング SVG では破綻していないが、オーナー目視判定の結果次第で調整する（交差最小化の回転ステップ 0.2 rad、glyph 全周配置によるノード重なりも同タイミングで再評価）
 - Phase 1.6 のコントリビューション検出より: `docs/knowhow/svg-deterministic-rendering.md` は SVG を生成する Rust プロジェクト全般に通用する汎用知見。ADDF 本体への昇格候補（rust-cargo-workspace-bootstrap 等と同じ扱い、Phase 1 完了後の節目で判断）
+- Phase 1.7 のコントリビューション検出より: `docs/knowhow/clap-cli-integration-pattern.md` の汎用部分（予約語フラグ・value_delimiter・assert_cmd・エラー責務分担）も ADDF 昇格候補。**Phase 1 が完了したため、昇格候補 4 件（cargo-workspace-bootstrap / syn-visitor-patterns / svg-deterministic-rendering / clap-cli-integration）の一括昇格を「品質向上計画」の一部として Phase 2 計画立案時に検討する**
 
 ## 改善アクション
 

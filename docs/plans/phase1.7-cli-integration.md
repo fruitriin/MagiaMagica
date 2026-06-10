@@ -67,20 +67,44 @@
 
 ## 受け入れ基準
 
-- [ ] `cargo install --path crates/magia-cli` でインストールできる
-- [ ] `magia --help` / `--version` が動作する
-- [ ] 3サブコマンド (`render` / `list` / `emit-ir`) が全 fixture で動く
-- [ ] 関数未発見時に候補一覧が表示される
-- [ ] `cargo test --workspace` が全通過 (統合テスト含む)
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings` 警告0
-- [ ] `README.md` が存在し、最初の使用例が再現可能
-- [ ] `fixtures/` が 8 個以上の合成 Rust サンプルを持つ
-- [ ] README に自己ホスティング (`magia` 自身のコード描画) の例が掲載されている
-- [ ] README が日本語で書かれ、MIT ライセンス表示を含む
+- [x] `cargo install --path crates/magia-cli` でインストールできる (実機確認済み)
+- [x] `magia --help` / `--version` が動作する
+- [x] 3サブコマンド (`render` / `list` / `emit-ir`) が全 fixture で動く
+- [x] 関数未発見時に候補一覧が表示される
+- [x] `cargo test --workspace` が全通過 (統合テスト含む、計111本)
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` 警告0
+- [x] `README.md` が存在し、最初の使用例が再現可能 (実バイナリで3例を再現確認)
+- [x] `fixtures/` が 8 個以上の合成 Rust サンプルを持つ (10個)
+- [x] README に自己ホスティング (`magia` 自身のコード描画) の例が掲載されている
+- [x] README が日本語で書かれ、MIT ライセンス表示を含む
 
 ## Phase 1 完了の判定
 
 本計画が完了した時点で、`project-docs/magia/spec-v0.1.md` §10.1 の Phase 1 スコープが全て満たされる。配布可能な CLI として MagiaMagica v0.1 がリリース可能となる。
+
+**判定 (2026-06-11): Phase 1 完了。** M1〜M7 の全マイルストーンが受け入れ基準を満たした。
+未決の残件は Phase 1.6 の「オーナーによる意匠の目視判定」のみ (SVG 送付済み・機能要件には影響しない)。
+リリース (バージョン採番・チェンジログ) は `/addf-release` で別途実施する。
+
+## 実装結果メモ (2026-06-11)
+
+### 計画からの変更・確定事項
+
+- 依存実値: clap 4.6.1 (derive) / anyhow 1.0 / assert_cmd 2.2.2 + 計画外で serde_json (emit-ir 用)
+- fixtures は計画の 8〜10 個に対し 10 個。**ファイル名と同名の代表関数を置く規約**にし、
+  統合テストのループと README の使用例が同じファイルを共有する
+- `--layers` のフィルタは CLI 層の行単位後処理で実装 (レンダラの「1行1要素・`</g>` 単独行」
+  出力規約に依存。規約は midchilda.rs と main.rs の双方のコメントで相互参照)
+- 構文エラーの行番号は CLI 層で `syn::Error::span()` から取得して付加
+  (ライブラリの Display は太らせない)
+
+### レビュー対応 (Stage 2)
+
+- 修正済み: filter_layers の閉じタグ未到達を debug_assert で検出 (W-1) /
+  閉じタグ規約を midchilda.rs に明記 (W-2) / フィルタパターンのループ外構築 (S-1) /
+  render 経路の構文エラーテスト・非 .rs 警告テスト追加 (S-2/S-3) /
+  README の自己ホスティング例に CWD 前提を明記 (S-4) / emit-ir テストの検証強化 (S-5)
+- 先送りなし
 
 ## 後続
 

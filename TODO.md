@@ -3,7 +3,12 @@
 `docs/plans/` の完了状態・優先度をトラックする。
 `docs/plans/` と TODO が一致しなければ TODO を編集する。
 
-## 現在のフェーズ: Phase 1 — 単一 Rust 関数 → ミッドチルダ式 SVG
+## 現在のフェーズ: Phase 1 完了 — 次は Phase 2 計画の立案
+
+Phase 1 (M1〜M7) は全マイルストーン完了。残件は Phase 1.6 のオーナー意匠判定のみ（機能要件外）。
+次タスクはオーナーリクエストに従い:
+1. Phase 2 (dev-server, レイヤー切替, フィルター DSL) の計画書を `project-docs/magia/phase2plus-notes-v0.1.md` §1〜§3 から起こす
+2. プロジェクトの品質を向上させる計画を追加する
 
 ## バックログ
 
@@ -16,7 +21,7 @@
 | 5 | 1.4 | [docs/plans/phase1.4-summon-effects.md](docs/plans/phase1.4-summon-effects.md) | 完了 |
 | 6 | 1.5 | [docs/plans/phase1.5-layout-engine.md](docs/plans/phase1.5-layout-engine.md) | 完了 |
 | 7 | 1.6 | [docs/plans/phase1.6-svg-renderer-midchilda.md](docs/plans/phase1.6-svg-renderer-midchilda.md) | 完了（オーナー目視判定待ち） |
-| 8 | 1.7 | [docs/plans/phase1.7-cli-integration.md](docs/plans/phase1.7-cli-integration.md) | 未着手 |
+| 8 | 1.7 | [docs/plans/phase1.7-cli-integration.md](docs/plans/phase1.7-cli-integration.md) | 完了 |
 
 優先度は実装順序 (1.0 → 1.7) に対応。各 Phase 1.x は前段の成果物に依存するため、原則として順次着手する。
 

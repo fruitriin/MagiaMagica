@@ -15,7 +15,7 @@ repository = "https://github.com/fruitriin/MagiaMagica"
 authors = ["fruitriin"]
 keywords = ["visualization", "ast", "code-analysis", "magic-circle"]
 categories = ["development-tools", "visualization"]
-# README.md は Phase 1.7 で整備するため、ここでは readme フィールドを未指定にしておく。
+readme = "README.md"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
