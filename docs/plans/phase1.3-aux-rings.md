@@ -43,6 +43,11 @@
 - `if-else if-else` の連鎖は左から順に AuxRing を生成し、末尾の `else` も AuxRing 化する
 - `?` 演算子は内部的には `match` 相当だが、Phase 1 では構文上の `?` を専用フラグで扱い、巨大な AuxRing を作らない (spec §6.1.3 の「早期リターン記号」のため)
 
+### Phase 1.2 レビューからの持ち越し (Info)
+
+- **`ParseContext` パターンの導入を検討**: Phase 1.2 では `fn_is_unsafe: bool` を `statement_to_operation` に直接渡しているが、AuxRing が増えると引数が膨れる。`ParseContext { fn_is_unsafe, current_depth, .. }` のような構造体にまとめると、Phase 1.4 (call site) / Phase 1.5 で追加コンテキストが増えたときの呼び出し連鎖が崩れない。POSD「複雑性を下に押し下げる」観点でも妥当
+- **`OperationKind::Await` / `Yield` / `Throw` の扱い**: Phase 1.2 ではトップレベル statement を全て `Compute` / `Return` で済ませているが、AuxRing 化に合わせて Await を独立 OperationKind に持ち上げるか、ConcurrencyInfo に統合したままにするかを判断する
+
 ## 受け入れ基準
 
 - [ ] 5種類のテストケースが全て通る
