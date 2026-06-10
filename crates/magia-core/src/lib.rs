@@ -4,8 +4,10 @@
 //! - [`layout`][layout]: 決定論的レイアウトエンジン (Phase 1.5)
 //! - [`render`][render]: SVG レンダラ — ミッドチルダ式 ConcentricRings (Phase 1.6)
 //! - [`filter`][filter]: フィルター言語 `.magia` (Phase 2.3)
+//! - [`transcript`][transcript]: 呪文書き起こし — アクセシビリティ (Phase 2.4)
 
 pub mod filter;
 pub mod ir;
 pub mod layout;
 pub mod render;
+pub mod transcript;

@@ -20,26 +20,10 @@ pub const FILESYSTEM: &str = "#7a4a1c";
 /// Unsafe: 赤 (Rust のみ)。
 pub const UNSAFE: &str = "#d92626";
 
-/// `EffectSet` を表示カテゴリ1つに潰す。
-///
-/// `EffectSet` は直交フラグの集合で複数同時に立ちうる (`operation.rs` の規約:
-/// 「矛盾の解消はレンダラの色相規約に委ねる」)。ここでの優先順位は
-/// **危険度・希少度の高い順**: unsafe > network > db > filesystem > io > pure。
-/// unsafe を最優先するのは赤が警告色として最も伝達価値が高いため。
+/// `EffectSet` → 表示カテゴリ。分類の実体は語彙の持ち主である
+/// `filter::EffectCategory::of` (レンダラ外からも使う共有ロジック)。
 pub(crate) fn category_of(effects: &EffectSet) -> EffectCategory {
-    if effects.unsafe_block {
-        EffectCategory::Unsafe
-    } else if effects.network {
-        EffectCategory::Network
-    } else if effects.db {
-        EffectCategory::Db
-    } else if effects.filesystem {
-        EffectCategory::Filesystem
-    } else if effects.io {
-        EffectCategory::Io
-    } else {
-        EffectCategory::Pure
-    }
+    EffectCategory::of(effects)
 }
 
 /// カテゴリ → 表示色。

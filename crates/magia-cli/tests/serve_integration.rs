@@ -129,6 +129,8 @@ fn serves_html_and_initial_state() {
     assert!(index.contains(r#"id="all-on""#) && index.contains(r#"id="all-off""#));
     // .magia エクスポート/適用 UI (Phase 2.3)。
     assert!(index.contains(r#"id="dsl""#) && index.contains(r#"id="dsl-apply""#));
+    // 呪文書き起こしの埋め込み (Phase 2.4, spec §15)。
+    assert!(index.contains(r#"id="transcript""#) && index.contains("visually-hidden"));
 
     let state = body_json(server.port);
     let svg = state["svg"].as_str().unwrap();
@@ -136,6 +138,10 @@ fn serves_html_and_initial_state() {
     assert!(state["error"].is_null());
     // パレット JS の cssClass() 変換 (snake_case → layer-kebab-case) が、
     // レンダラの出力する <g> クラス名と一致していることの契約テスト (spec §5.3)。
+    assert!(
+        state["transcript"].as_str().unwrap().contains("関数 "),
+        "state に書き起こしが入る"
+    );
     for class in ["layer-control-flow", "layer-effects", "layer-type-info"] {
         assert!(
             svg.contains(&format!(r#"<g class="{class}">"#)),

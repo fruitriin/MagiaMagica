@@ -31,6 +31,8 @@ const DEBOUNCE: Duration = Duration::from_millis(120);
 struct Shared {
     /// 直近の正常な SVG (エラー中も保持する)。
     svg: Mutex<String>,
+    /// 直近の正常な呪文書き起こし (spec §15。SVG と同じ IR の射影なので対で更新する)。
+    transcript: Mutex<String>,
     /// 現在の解析エラー (正常時は None)。
     error: Mutex<Option<String>>,
     /// 更新世代。クライアントはこの値の変化で再取得する。
@@ -52,6 +54,7 @@ impl Shared {
     fn new() -> Self {
         Self {
             svg: Mutex::new(String::new()),
+            transcript: Mutex::new(String::new()),
             error: Mutex::new(None),
             version: AtomicU64::new(0),
             clients: Mutex::new(Vec::new()),
@@ -59,14 +62,17 @@ impl Shared {
     }
 
     /// 状態を更新して世代を進め、SSE クライアントへ通知する。
-    fn publish(&self, rendered: Result<String, String>) {
+    fn publish(&self, rendered: Result<Rendered, String>) {
         match rendered {
-            Ok(svg) => {
-                *lock_or_recover(&self.svg) = svg;
+            Ok(rendered) => {
+                *lock_or_recover(&self.svg) = rendered.svg;
+                *lock_or_recover(&self.transcript) = rendered.transcript;
                 *lock_or_recover(&self.error) = None;
             }
             Err(message) => {
-                // SVG は触らない: 直前の正常な図を保持する (spec §7)。
+                // SVG・書き起こしは触らない: 直前の正常な内容を保持する (spec §7)。
+                // スクリーンリーダー利用者にもエラーは #status (テキスト) で伝わり、
+                // 書き起こしが「最後に解析できた状態」を指すのは視覚側と同じ扱い。
                 *lock_or_recover(&self.error) = Some(message);
             }
         }
@@ -78,6 +84,7 @@ impl Shared {
         serde_json::json!({
             "version": self.version.load(Ordering::SeqCst),
             "svg": *lock_or_recover(&self.svg),
+            "transcript": *lock_or_recover(&self.transcript),
             "error": *lock_or_recover(&self.error),
         })
         .to_string()
@@ -115,14 +122,23 @@ pub(crate) fn run(file: &Path, fn_name: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
+/// 1回分の解析結果 (SVG と書き起こしは同じ IR の射影なので必ず対で作る)。
+struct Rendered {
+    svg: String,
+    transcript: String,
+}
+
 // serve は常にフィルタなしで描き、レイヤー切替はブラウザ側 CSS で行う (spec §5.3)。
 // 将来 serve が `--filter` を受けるときは render_with に切り替える (Phase 3 拡張点)。
-fn render_once(file: &Path, fn_name: &str) -> Result<String, String> {
+fn render_once(file: &Path, fn_name: &str) -> Result<Rendered, String> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("ファイルを読み込めません: {}: {e}", file.display()))?;
     let graph = parse_function(&source, fn_name).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
-    Ok(render(&graph, &placed, RenderStyle::MidchildaConcentric))
+    Ok(Rendered {
+        svg: render(&graph, &placed, RenderStyle::MidchildaConcentric),
+        transcript: magia_core::transcript::transcribe(&graph),
+    })
 }
 
 /// ファイル監視スレッドを起動する。
@@ -196,9 +212,15 @@ const INDEX_HTML: &str = r#"<!doctype html>
   #palette textarea { width: 200px; font-family: ui-monospace, monospace; font-size: 12px; }
   #dsl-note { color: #7a4a1c; font-size: 11px; min-height: 1em; white-space: pre-wrap; }
   #dsl-box { margin-top: 8px; }
+  /* スクリーンリーダーにのみ露出する書き起こし (spec v0.2 §15)。
+     clip (旧) と clip-path (新) を併記し、margin/padding/border を明示する完全形。 */
+  .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+                     overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%);
+                     white-space: nowrap; border: 0; }
 </style></head>
 <body>
 <div id="status"></div>
+<div id="transcript" class="visually-hidden" role="region" aria-label="呪文書き起こし"></div>
 <div id="palette">
   <strong>レイヤー</strong>
   <div class="layer-row"><label><input type="checkbox" data-layer="control_flow" checked> 制御フロー</label>
@@ -315,6 +337,7 @@ async function refresh() {
     document.getElementById('magia').replaceChildren(doc.documentElement);
   }
   document.getElementById('status').textContent = state.error || '';
+  document.getElementById('transcript').textContent = state.transcript || '';
   apply(); // SVG 差し替えでインラインスタイルが消えるため再適用
 }
 readQuery();

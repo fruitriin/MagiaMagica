@@ -10,6 +10,7 @@
 
 - **意匠判定 (Phase 1.8 で対応済み・再判定待ち)**: Phase 1.6 の判定で「write_document 級はお洒落・write_control_flow 級は破綻」と確定 → Phase 1.8 で衝突回避を実装。**write_document の見た目はほぼ不変**（重なっていた青記号1個が 1.6px 退避したのみ、8px 閾値の回帰テストで固定）、**write_control_flow はリング重なり解消**。再判定素材3本（write_control_flow / write_document / dense_dispatch）を送付済み。次の調整指示があれば `layout/constants.rs` の定数または新規計画で対応
 - **報告 (Phase 1.7)**: Phase 1 (M1〜M7) が完了し、`cargo install --path crates/magia-cli` で配布可能な状態です。リリース（バージョン採番・チェンジログ）を行う場合は `/addf-release` を実行してください
+- **報告 (Phase 2 計画群一巡 2026-06-11)**: 立案した 6 計画 (1.8 + 2.0〜2.4) を全て完遂しました。MagiaMagica は「描く (render/filter)・眺める (serve/レイヤー)・読み上げる (transcribe)」が揃った状態です。バックログが空のため、次サイクルは notes §12 のロードマップ (Phase 3: CI 統合・差分エンジン・データフロー解析とベルカ式) から計画を起こします。**先にリリース (/addf-release) や別の優先事項があれば指示してください**
 - **確認依頼 (計画立案 2026-06-11)**: Phase 1.8 + Phase 2.0〜2.4 の計画 6 本を起こしました。暫定優先度（1.8 レイアウト衝突回避を先頭）で TODO に登録済み。**優先度の変更や計画への注文があればお知らせください**。何もなければ次サイクルから 1.8 に着手します
 
 ## 問題の記録

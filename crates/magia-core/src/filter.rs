@@ -70,6 +70,43 @@ pub enum EffectCategory {
 }
 
 impl EffectCategory {
+    /// `EffectSet` を表示カテゴリ1つに潰す。
+    ///
+    /// `EffectSet` は直交フラグの集合で複数同時に立ちうる (`operation.rs` の規約:
+    /// 「矛盾の解消はレンダラの色相規約に委ねる」)。優先順位は**危険度・希少度の
+    /// 高い順**: unsafe > network > db > filesystem > io > pure。
+    /// レンダラ (色相)・フィルター (絞り込み)・書き起こし (ラベル) が同じ分類を共有する。
+    #[must_use]
+    pub fn of(effects: &crate::ir::EffectSet) -> Self {
+        if effects.unsafe_block {
+            EffectCategory::Unsafe
+        } else if effects.network {
+            EffectCategory::Network
+        } else if effects.db {
+            EffectCategory::Db
+        } else if effects.filesystem {
+            EffectCategory::Filesystem
+        } else if effects.io {
+            EffectCategory::Io
+        } else {
+            EffectCategory::Pure
+        }
+    }
+
+    /// 危険度の序列 (大きいほど危険)。同一呼び出し先のカテゴリが揺れたときの
+    /// 「危険側を採用する」集計などに使う。
+    #[must_use]
+    pub fn danger_rank(self) -> u8 {
+        match self {
+            EffectCategory::Pure => 0,
+            EffectCategory::Io => 1,
+            EffectCategory::Filesystem => 2,
+            EffectCategory::Db => 3,
+            EffectCategory::Network => 4,
+            EffectCategory::Unsafe => 5,
+        }
+    }
+
     pub const ALL: [EffectCategory; 6] = [
         EffectCategory::Pure,
         EffectCategory::Io,

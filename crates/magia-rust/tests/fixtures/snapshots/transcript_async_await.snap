@@ -1,0 +1,10 @@
+---
+source: crates/magia-rust/tests/transcript_golden.rs
+expression: text
+---
+関数 async_await:
+  メインリングは小規模 (3操作)。
+  外部呼び出し: fetch (純粋、1回)、fetch_more (純粋、1回)。
+  早期リターンなし。
+  async 関数 (await 2点)。
+  Phase 1 メトリクス: 複雑度1、副作用カテゴリ0種。

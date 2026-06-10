@@ -38,11 +38,35 @@
 
 ## 受け入れ基準
 
-- [ ] 全 fixtures で transcribe が動き、notes §9.1 の例と同等の情報を含む
-- [ ] 同じ IR から2回生成して完全一致 (決定論)
-- [ ] dev-server の HTML に書き起こしが埋め込まれている
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] 全 fixtures で transcribe が動き、notes §9.1 の例と同等の情報を含む (種別内訳など §9.1 を上回る情報量、レビューで確認)
+- [x] 同じ IR から2回生成して完全一致 (決定論、5回反復テスト)
+- [x] dev-server の HTML に書き起こしが埋め込まれている (visually-hidden 完全形 + role="region")
+- [x] `cargo test --workspace` (149本) / clippy 警告0
 
 ## 後続
 
 - Phase 3 でレイヤー対応書き起こしへ拡張
+
+## 実装結果メモ (2026-06-11)
+
+### 設計判断の確定
+
+- EffectSet → カテゴリの分類ロジックを `filter::EffectCategory::of` に昇格
+  (レビュー M-2: render 内部の palette に transcript が依存しない。色相・絞り込み・
+  ラベルの三者が同じ分類を共有)
+- 同一呼び出し先でカテゴリが揺れた場合は `danger_rank` で**危険側を採用**して集計
+  (H-1: 聞き手に安全側の誤解を与えない)
+- serve は `Rendered { svg, transcript }` で SVG と書き起こしを**対で生成**
+  (同一 IR の射影の一致保証)。エラー中は両方とも直前の正常値を保持
+  (視覚側と同じ扱い、エラー自体は #status で伝わる — M-3 の判断をコメント化)
+- visually-hidden は clip (旧) / clip-path (新) 併記の完全形、role="region" (H-2)
+
+### レビュー対応 (Stage 2)
+
+- 修正: H-1 (危険度優先 + テスト) / H-2 (CSS 完全形・role) / M-1 (Result 優先の根拠コメント) /
+  M-2 (分類の filter 昇格) / M-3 (保持方針のコメント化) / M-4 (fixture をワークスペース
+  ルートに統一、async_await へ変更) / L-1 (閾値根拠コメント) / I-2 (テスト名)
+- 受理: L-2 (カテゴリ集計の Vec::contains — 最大5要素のため) / I-1 (must_use 文言)
+- 教訓: fixture が「ワークスペースルート」と「magia-rust テスト用」の2系統あり
+  同名・類似名で取り違えた (async_io vs async_await)。テストの fixture は原則
+  ワークスペースルートを参照する規約とした

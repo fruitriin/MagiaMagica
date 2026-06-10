@@ -5,6 +5,7 @@
 //! - `magia list <FILE>` — 関数一覧
 //! - `magia emit-ir <FILE> --fn <NAME>` — MagiaIR を JSON で出力 (デバッグ用)
 //! - `magia serve <FILE> --fn <NAME>` — dev-server (保存のたびにブラウザを自動更新)
+//! - `magia transcribe <FILE> --fn <NAME>` — 呪文書き起こし (アクセシビリティ用テキスト)
 
 mod serve;
 
@@ -58,6 +59,14 @@ enum Command {
     /// MagiaIR を JSON で標準出力する (デバッグ用)
     #[command(name = "emit-ir")]
     EmitIr {
+        /// 入力 Rust ソースファイル
+        file: PathBuf,
+        /// 対象の関数名
+        #[arg(long = "fn", value_name = "NAME")]
+        fn_name: String,
+    },
+    /// 呪文書き起こし (構造のテキスト要約) を標準出力する
+    Transcribe {
         /// 入力 Rust ソースファイル
         file: PathBuf,
         /// 対象の関数名
@@ -126,6 +135,12 @@ fn run(cli: Cli) -> Result<()> {
             let json =
                 serde_json::to_string_pretty(&graph).context("IR の JSON 変換に失敗しました")?;
             println!("{json}");
+            Ok(())
+        }
+        Command::Transcribe { file, fn_name } => {
+            let source = read_source(&file)?;
+            let graph = parse_source(&source, &fn_name)?;
+            print!("{}", magia_core::transcript::transcribe(&graph));
             Ok(())
         }
         Command::Serve {

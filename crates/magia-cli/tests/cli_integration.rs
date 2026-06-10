@@ -294,6 +294,21 @@ fn output_flag_writes_svg_file() {
 }
 
 #[test]
+fn transcribe_outputs_summary() {
+    let output = magia()
+        .arg("transcribe")
+        .arg(fixtures_dir().join("async_await.rs"))
+        .arg("--fn")
+        .arg("async_await")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("関数 async_await:"));
+    assert!(text.contains("async 関数 (await 2点)。"));
+}
+
+#[test]
 fn version_and_help_work() {
     magia().arg("--version").assert().success();
     magia().arg("--help").assert().success();
