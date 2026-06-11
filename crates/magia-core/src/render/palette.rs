@@ -31,6 +31,17 @@ pub const DIFF_CHANGED: &str = "#00a0c0";
 /// 削除された術式のゴースト: 灰 (消えた術式の残滓)。
 pub const DIFF_REMOVED: &str = "#909090";
 
+// ===== ベルカ式の三極 (Phase 3.5, spec v0.3 §14.2) =====
+// 効果カテゴリの6色・diff の3色と衝突しない色相を選ぶ。
+// 操作ドット自体は効果カテゴリ色 (上記) を式をまたいで共有する。
+
+/// 生成 (値の誕生): 空色 (湧き出す泉)。
+pub const BELKA_GENESIS: &str = "#2f86c9";
+/// 変換 (鍛錬・加工): 琥珀 (鍛冶の火)。
+pub const BELKA_TRANSMUTE: &str = "#c98a2f";
+/// 消費 (放出・副作用・帰還): 深紅がかった臙脂 (撃ち出す砲)。
+pub const BELKA_CONSUME: &str = "#b04a5a";
+
 /// `EffectSet` → 表示カテゴリ。分類の実体は語彙の持ち主である
 /// `filter::EffectCategory::of` (レンダラ外からも使う共有ロジック)。
 pub(crate) fn category_of(effects: &EffectSet) -> EffectCategory {

@@ -29,8 +29,10 @@ const DEBOUNCE: Duration = Duration::from_millis(120);
 
 /// ブラウザに配る共有状態。
 struct Shared {
-    /// 直近の正常な SVG (エラー中も保持する)。
+    /// 直近の正常な SVG — ミッドチルダ式 (エラー中も保持する)。
     svg: Mutex<String>,
+    /// 直近の正常な SVG — ベルカ式 (Phase 3.5)。同じ IR の別射影なので対で更新する。
+    svg_belka: Mutex<String>,
     /// 直近の正常な呪文書き起こし (spec §15。SVG と同じ IR の射影なので対で更新する)。
     transcript: Mutex<String>,
     /// 現在の解析エラー (正常時は None)。
@@ -54,6 +56,7 @@ impl Shared {
     fn new() -> Self {
         Self {
             svg: Mutex::new(String::new()),
+            svg_belka: Mutex::new(String::new()),
             transcript: Mutex::new(String::new()),
             error: Mutex::new(None),
             version: AtomicU64::new(0),
@@ -66,6 +69,7 @@ impl Shared {
         match rendered {
             Ok(rendered) => {
                 *lock_or_recover(&self.svg) = rendered.svg;
+                *lock_or_recover(&self.svg_belka) = rendered.svg_belka;
                 *lock_or_recover(&self.transcript) = rendered.transcript;
                 *lock_or_recover(&self.error) = None;
             }
@@ -84,6 +88,7 @@ impl Shared {
         serde_json::json!({
             "version": self.version.load(Ordering::SeqCst),
             "svg": *lock_or_recover(&self.svg),
+            "svg_belka": *lock_or_recover(&self.svg_belka),
             "transcript": *lock_or_recover(&self.transcript),
             "error": *lock_or_recover(&self.error),
         })
@@ -122,9 +127,10 @@ pub(crate) fn run(file: &Path, fn_name: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
-/// 1回分の解析結果 (SVG と書き起こしは同じ IR の射影なので必ず対で作る)。
+/// 1回分の解析結果 (両式の SVG と書き起こしは同じ IR の射影なので必ず対で作る)。
 struct Rendered {
     svg: String,
+    svg_belka: String,
     transcript: String,
 }
 
@@ -137,6 +143,8 @@ fn render_once(file: &Path, fn_name: &str) -> Result<Rendered, String> {
     let placed = layout(&graph);
     Ok(Rendered {
         svg: render(&graph, &placed, RenderStyle::MidchildaConcentric),
+        // ベルカ式は三角配置を内部で決める (placed は使われないが API は共通)。
+        svg_belka: render(&graph, &placed, RenderStyle::Belka),
         transcript: magia_core::transcript::transcribe(&graph),
     })
 }
@@ -222,6 +230,11 @@ const INDEX_HTML: &str = r#"<!doctype html>
 <div id="status"></div>
 <div id="transcript" class="visually-hidden" role="region" aria-label="呪文書き起こし"></div>
 <div id="palette">
+  <strong>式</strong>
+  <div class="layer-row">
+    <label><input type="radio" name="style" data-style="midchilda" checked> ミッドチルダ</label>
+    <label><input type="radio" name="style" data-style="belka"> ベルカ</label>
+  </div>
   <strong>レイヤー</strong>
   <div class="layer-row"><label><input type="checkbox" data-layer="control_flow" checked> 制御フロー</label>
     <input type="range" data-opacity="control_flow" min="0" max="1" step="0.05" value="1"></div>
@@ -243,9 +256,13 @@ const cssClass = (layer) => 'layer-' + layer.replace(/_/g, '-');
 // 状態: visible = 表示中レイヤーの集合、opacity = レイヤー別透明度 (既定 1)
 let visible = new Set(LAYERS);
 let opacity = {};
+// 式 (spec v0.3 §14.4)。切替は表示する SVG の選択のみで、両式ともサーバが常に生成する。
+let style = 'midchilda';
+let lastState = null;
 
 function readQuery() {
   const params = new URLSearchParams(location.search);
+  style = params.get('style') === 'belka' ? 'belka' : 'midchilda';
   const layers = params.get('layers');
   visible = layers === null ? new Set(LAYERS)
                             : new Set(layers.split(',').filter(l => LAYERS.includes(l)));
@@ -261,6 +278,7 @@ function readQuery() {
 
 function writeQuery() {
   const params = new URLSearchParams();
+  if (style === 'belka') { params.set('style', 'belka'); }
   if (visible.size < LAYERS.length) { params.set('layers', LAYERS.filter(l => visible.has(l)).join(',')); }
   const ops = LAYERS.filter(l => opacity[l] !== undefined && Math.abs(opacity[l] - 1) > 1e-9)
                     .map(l => l + ':' + opacity[l]).join(',');
@@ -282,15 +300,32 @@ function apply() {
     if (checkbox) { checkbox.checked = visible.has(layer); }
     if (slider) { slider.value = opacity[layer] ?? 1; }
   }
+  for (const radio of document.querySelectorAll('input[data-style]')) {
+    radio.checked = radio.dataset.style === style;
+  }
+}
+
+// 選択中の式の SVG を描画する (レイヤー切替はミッドチルダ式の <g> にのみ効く)。
+function show() {
+  if (!lastState) { return; }
+  const svg = style === 'belka' ? lastState.svg_belka : lastState.svg;
+  if (svg) {
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    document.getElementById('magia').replaceChildren(doc.documentElement);
+  }
+  apply();
 }
 
 document.getElementById('palette').addEventListener('input', (event) => {
   const layer = event.target.dataset.layer;
   const opacityLayer = event.target.dataset.opacity;
-  if (!layer && !opacityLayer) { return; } // 将来パレットに他の入力欄が増えても誤発火しない
+  const styleChoice = event.target.dataset.style;
+  if (!layer && !opacityLayer && !styleChoice) { return; } // 将来の入力欄でも誤発火しない
   if (layer) { event.target.checked ? visible.add(layer) : visible.delete(layer); }
   if (opacityLayer) { opacity[opacityLayer] = parseFloat(event.target.value); }
-  writeQuery(); apply();
+  if (styleChoice) { style = styleChoice; }
+  writeQuery();
+  if (styleChoice) { show(); } else { apply(); }
 });
 document.getElementById('all-on').addEventListener('click', () => { visible = new Set(LAYERS); writeQuery(); apply(); });
 document.getElementById('all-off').addEventListener('click', () => { visible = new Set(); writeQuery(); apply(); });
@@ -329,16 +364,12 @@ document.getElementById('dsl-apply').addEventListener('click', () => {
 
 async function refresh() {
   const response = await fetch('/state');
-  const state = await response.json();
-  if (state.svg) {
-    // innerHTML でなく DOMParser を使う: SVG 内に万一スクリプト類が混入しても
-    // 実行されない (レンダラは XML エスケープ済みだが多層防御として)。
-    const doc = new DOMParser().parseFromString(state.svg, 'image/svg+xml');
-    document.getElementById('magia').replaceChildren(doc.documentElement);
-  }
-  document.getElementById('status').textContent = state.error || '';
-  document.getElementById('transcript').textContent = state.transcript || '';
-  apply(); // SVG 差し替えでインラインスタイルが消えるため再適用
+  lastState = await response.json();
+  document.getElementById('status').textContent = lastState.error || '';
+  document.getElementById('transcript').textContent = lastState.transcript || '';
+  // innerHTML でなく DOMParser を使う (show 内): SVG 内に万一スクリプト類が
+  // 混入しても実行されない (レンダラは XML エスケープ済みだが多層防御として)。
+  show();
 }
 readQuery();
 refresh();

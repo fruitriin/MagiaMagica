@@ -114,6 +114,9 @@ pub struct TypeInfo {
     pub returns_result: bool,
     /// 戻り値が `Option` か。
     pub returns_option: bool,
+    /// Reducer 形 (`(A, B) -> A`: 第1引数型 = 戻り値型) か (Phase 3.5, spec §14.3)。
+    /// 構文上のトークン一致による判定で、型別名は見抜けない (意味解決なしの近似)。
+    pub reducer_shape: bool,
 }
 
 /// Rust の借用・寿命情報 (Phase 5+)。

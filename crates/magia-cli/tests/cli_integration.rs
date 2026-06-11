@@ -625,6 +625,131 @@ fn changed_passes_when_no_new_unsafe() {
         .success();
 }
 
+// ===== Phase 3.5: ベルカ式 (--style) =====
+
+#[test]
+fn render_style_belka_outputs_triangle_field() {
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("loop_accumulate.rs"))
+        .arg("--fn")
+        .arg("loop_accumulate")
+        .arg("--style")
+        .arg("belka")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let svg = String::from_utf8_lossy(&output.stdout);
+    assert!(svg.contains("belka-pole"));
+    assert!(svg.contains("belka-field"));
+    assert!(
+        !svg.contains("layer-control-flow"),
+        "ミッドチルダ式の層は出ない"
+    );
+}
+
+#[test]
+fn render_unknown_style_lists_candidates() {
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("simple_compute.rs"))
+        .arg("--fn")
+        .arg("simple_compute")
+        .arg("--style")
+        .arg("yagami")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success(), "夜天の書式は未実装 (選択不可)");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("未知の式"));
+    assert!(
+        stderr.contains("midchilda") && stderr.contains("belka"),
+        "候補を提示する"
+    );
+}
+
+#[test]
+fn reducer_shape_prints_belka_hint() {
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("reduce_brightness.rs"))
+        .arg("--fn")
+        .arg("reduce_brightness")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ベルカ式が適合します") && stderr.contains("--style belka"),
+        "Reducer 形には式の提案が出る (spec v0.3 §14.3): {stderr}"
+    );
+    // 提案のみで自動切替はしない: 出力はミッドチルダ式のまま。
+    let svg = String::from_utf8_lossy(&output.stdout);
+    assert!(svg.contains("layer-control-flow"));
+}
+
+#[test]
+fn belka_hint_is_absent_for_non_reducer_and_when_already_belka() {
+    // match_dispatch は u8 -> &'static str (非 Reducer 形)。
+    // ※ simple_compute は (i32, i32) -> i32 で Reducer 形に該当するため使わない。
+    let plain = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("match_dispatch.rs"))
+        .arg("--fn")
+        .arg("match_dispatch")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!String::from_utf8_lossy(&plain.stderr).contains("ベルカ式"));
+    let belka = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("reduce_brightness.rs"))
+        .arg("--fn")
+        .arg("reduce_brightness")
+        .arg("--style")
+        .arg("belka")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(
+        !String::from_utf8_lossy(&belka.stderr).contains("適合します"),
+        "既にベルカ式なら提案しない"
+    );
+}
+
+#[test]
+fn belka_rejects_filter_file_too() {
+    // --layers と同じ経路だが、API のもう一方の入口 (--filter FILE) も明示的に検証する。
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("loop_accumulate.rs"))
+        .arg("--fn")
+        .arg("loop_accumulate")
+        .arg("--style")
+        .arg("belka")
+        .arg("--filter")
+        .arg(fixtures_dir().join("filters/effects-only.magia"))
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("未対応"));
+}
+
+#[test]
+fn belka_rejects_layer_filters() {
+    let output = magia()
+        .arg("render")
+        .arg(fixtures_dir().join("loop_accumulate.rs"))
+        .arg("--fn")
+        .arg("loop_accumulate")
+        .arg("--style")
+        .arg("belka")
+        .arg("--layers")
+        .arg("effects")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success(), "ベルカ式はレイヤー語彙に未対応");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("未対応"));
+}
+
 #[test]
 fn version_and_help_work() {
     magia().arg("--version").assert().success();

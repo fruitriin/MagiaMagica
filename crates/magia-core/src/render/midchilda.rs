@@ -666,7 +666,8 @@ fn early_return_count(sigil: &Sigil) -> u32 {
 }
 
 /// 数値の文字列化: 小数2桁固定で属性値を安定させる。`-0.00` は `0.00` に正規化。
-fn num(value: f64) -> String {
+/// belka レンダラとも共有する (出力数値の規約は式をまたいで統一)。
+pub(crate) fn num(value: f64) -> String {
     let formatted = format!("{value:.2}");
     if formatted == "-0.00" {
         "0.00".to_string()
@@ -715,7 +716,7 @@ fn flush_number(out: &mut String, token: &mut String) {
     token.clear();
 }
 
-fn escape_xml(text: &str) -> String {
+pub(crate) fn escape_xml(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

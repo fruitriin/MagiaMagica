@@ -5,6 +5,7 @@
 //! SVG 生成は `std::fmt::Write` ベースの自前ビルダー (tech-selection §2.4:
 //! 属性順序を固定でき、スナップショットテストが安定する)。
 
+mod belka;
 mod midchilda;
 // 色相規約はレンダラの内部実装。公開 API に色定数を露出させない (POSD 情報隠蔽)。
 // 外部から色を参照したくなったら (Phase 2 dev-server 等) そのとき公開を判断する。
@@ -15,19 +16,47 @@ use crate::filter::FilterSpec;
 use crate::ir::MagiaGraph;
 use crate::layout::LayoutResult;
 
-/// 描画式 (魔法陣の流派)。Phase 1 はミッドチルダ式のみ実装。
-///
-/// バリアント名は将来の式追加に開いた形で先に定義しておく
-/// (実装は `unimplemented!` stub)。
+/// 描画式 (魔法陣の流派)。Phase 1 でミッドチルダ式、Phase 3.5 でベルカ式を実装。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RenderStyle {
     /// ミッドチルダ式 ConcentricRings (Phase 1 のフラッグシップ)。
     #[default]
     MidchildaConcentric,
-    /// ベルカ式 (Phase 3+: データフロー三角陣)。
+    /// ベルカ式 (Phase 3.5: データフロー三角力場)。
     Belka,
-    /// 夜天の書式 (Phase 6+)。
+    /// 夜天の書式 (Phase 6+、未実装)。
     Yagami,
+}
+
+impl RenderStyle {
+    /// 選択可能な式 (CLI / serve / DSL で共有する語彙)。Yagami は未実装のため含めない。
+    pub const SELECTABLE: [RenderStyle; 2] = [RenderStyle::MidchildaConcentric, RenderStyle::Belka];
+
+    /// CLI / URL クエリで使う名前。
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RenderStyle::MidchildaConcentric => "midchilda",
+            RenderStyle::Belka => "belka",
+            RenderStyle::Yagami => "yagami",
+        }
+    }
+}
+
+impl std::str::FromStr for RenderStyle {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        RenderStyle::SELECTABLE
+            .into_iter()
+            .find(|style| style.as_str() == s)
+            .ok_or_else(|| {
+                format!(
+                    "未知の式 `{s}` (使用可能: {})",
+                    RenderStyle::SELECTABLE.map(RenderStyle::as_str).join(", ")
+                )
+            })
+    }
 }
 
 /// レイアウト済みのグラフを SVG 文字列へ描画する。
@@ -38,7 +67,7 @@ pub enum RenderStyle {
 ///
 /// # Panics
 ///
-/// Phase 1 で未実装の式 (`Belka` / `Yagami`) を指定すると panic する。
+/// 未実装の式 (`Yagami` は Phase 6+) を指定すると panic する。
 #[must_use = "SVG 文字列は出力先に書き込まれるべき"]
 pub fn render(graph: &MagiaGraph, layout: &LayoutResult, style: RenderStyle) -> String {
     render_with(graph, layout, style, &FilterSpec::default())
@@ -52,7 +81,7 @@ pub fn render(graph: &MagiaGraph, layout: &LayoutResult, style: RenderStyle) -> 
 ///
 /// # Panics
 ///
-/// Phase 1 で未実装の式 (`Belka` / `Yagami`) を指定すると panic する。
+/// 未実装の式 (`Yagami` は Phase 6+) を指定すると panic する。
 #[must_use = "SVG 文字列は出力先に書き込まれるべき"]
 pub fn render_with(
     graph: &MagiaGraph,
@@ -62,9 +91,10 @@ pub fn render_with(
 ) -> String {
     match style {
         RenderStyle::MidchildaConcentric => midchilda::render(graph, layout, filter),
-        RenderStyle::Belka | RenderStyle::Yagami => {
-            unimplemented!("not implemented in Phase 1")
-        }
+        // ベルカ式は三角配置を閉形式で決めるため LayoutResult と FilterSpec を使わない
+        // (レイヤー語彙はミッドチルダ式の3層前提。CLI が併用を明示エラーにする)。
+        RenderStyle::Belka => belka::render(graph),
+        RenderStyle::Yagami => unimplemented!("夜天の書式は Phase 6+"),
     }
 }
 
@@ -78,8 +108,8 @@ pub fn render_with(
 ///
 /// # Panics
 ///
-/// Phase 3 時点で未実装の式 (`Belka` / `Yagami`) を指定すると panic する
-/// (`render` / `render_with` と同じ規約)。
+/// diff 強調はミッドチルダ式のみ対応 (`Belka` の差分強調は Phase 3 振り返りで判断、
+/// `Yagami` は未実装)。それ以外の式を指定すると panic する。
 #[must_use = "SVG 文字列は出力先に書き込まれるべき"]
 pub fn render_diff(
     before: &MagiaGraph,
@@ -91,7 +121,7 @@ pub fn render_diff(
     match style {
         RenderStyle::MidchildaConcentric => midchilda::render_diff(before, after, diff, filter),
         RenderStyle::Belka | RenderStyle::Yagami => {
-            unimplemented!("not implemented in Phase 1")
+            unimplemented!("diff 強調はミッドチルダ式のみ (Phase 3.5 時点)")
         }
     }
 }

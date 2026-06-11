@@ -83,6 +83,7 @@ fn sample_phase1_graph() -> MagiaGraph {
                 signature: Some("fn hello()".to_string()),
                 returns_result: false,
                 returns_option: false,
+                reducer_shape: false,
             }),
             concurrency: Some(ConcurrencyInfo {
                 is_async: false,

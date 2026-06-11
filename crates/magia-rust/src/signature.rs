@@ -15,7 +15,25 @@ pub(crate) fn extract_type_info(sig: &Signature) -> TypeInfo {
         signature: Some(signature),
         returns_result,
         returns_option,
+        reducer_shape: is_reducer_shape(sig),
     }
+}
+
+/// Reducer 形 `(A, B, ...) -> A` の構文的判定 (Phase 3.5, spec §14.3)。
+///
+/// 第1引数の型と戻り値型のトークン列が一致するか見るだけ (型別名・参照の剥がしは
+/// しない)。引数が2個未満なら Reducer とは呼ばない (単項の恒等変換を除外)。
+fn is_reducer_shape(sig: &Signature) -> bool {
+    if sig.inputs.len() < 2 {
+        return false;
+    }
+    let Some(syn::FnArg::Typed(first)) = sig.inputs.first() else {
+        return false; // self レシーバ始まりはメソッド畳み込みの将来課題に残す
+    };
+    let ReturnType::Type(_, output) = &sig.output else {
+        return false;
+    };
+    first.ty.to_token_stream().to_string() == output.to_token_stream().to_string()
 }
 
 /// 元コードに近い形でシグネチャを書き起こす (装飾的に使う想定)。
@@ -81,5 +99,23 @@ mod tests {
         let info = extract_type_info(&item.sig);
         assert!(!info.returns_result);
         assert!(!info.returns_option);
+    }
+
+    #[test]
+    fn reducer_shape_requires_first_param_matching_return() {
+        let fold: syn::ItemFn =
+            parse_quote! { fn fold(acc: u32, item: u8) -> u32 { acc + u32::from(item) } };
+        assert!(extract_type_info(&fold.sig).reducer_shape);
+        // 戻り値型が第1引数と異なれば Reducer ではない。
+        let map: syn::ItemFn =
+            parse_quote! { fn map(a: u32, b: u8) -> String { format!("{a}{b}") } };
+        assert!(!extract_type_info(&map.sig).reducer_shape);
+        // 単項は恒等変換でも Reducer と呼ばない。
+        let id: syn::ItemFn = parse_quote! { fn id(a: u32) -> u32 { a } };
+        assert!(!extract_type_info(&id.sig).reducer_shape);
+        // 複合型でもトークン一致で判定できる。
+        let extend: syn::ItemFn =
+            parse_quote! { fn extend(acc: Vec<String>, item: String) -> Vec<String> { acc } };
+        assert!(extract_type_info(&extend.sig).reducer_shape);
     }
 }

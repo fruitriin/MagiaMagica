@@ -270,6 +270,7 @@ mod tests {
                     signature: None,
                     returns_result: true,
                     returns_option: false,
+                    reducer_shape: false,
                 }),
                 concurrency: Some(ConcurrencyInfo {
                     is_async: true,

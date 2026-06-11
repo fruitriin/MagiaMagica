@@ -18,6 +18,7 @@ fn sample_graph() -> MagiaGraph {
                 signature: Some("async fn fetch(url: &str) -> Result<String, Error>".to_string()),
                 returns_result: true,
                 returns_option: false,
+                reducer_shape: false,
             }),
             concurrency: Some(ConcurrencyInfo {
                 is_async: true,
@@ -111,9 +112,19 @@ fn svg_root_has_viewbox_from_canvas() {
 }
 
 #[test]
-#[should_panic(expected = "not implemented in Phase 1")]
-fn belka_style_is_stubbed() {
+fn belka_style_renders_triangle_poles() {
+    // Phase 3.5 で実装済み: 手組みの IR でも3極が出る (詳細は magia-rust 側の golden)。
     let graph = sample_graph();
     let placed = layout(&graph);
-    let _ = render(&graph, &placed, RenderStyle::Belka);
+    let svg = render(&graph, &placed, RenderStyle::Belka);
+    assert_eq!(svg.matches(r#"class="belka-pole""#).count(), 3);
+    assert!(svg.trim_end().ends_with("</svg>"));
+}
+
+#[test]
+#[should_panic(expected = "夜天の書式")]
+fn yagami_style_is_stubbed() {
+    let graph = sample_graph();
+    let placed = layout(&graph);
+    let _ = render(&graph, &placed, RenderStyle::Yagami);
 }

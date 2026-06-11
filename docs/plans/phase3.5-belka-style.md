@@ -43,12 +43,34 @@
 
 ## 受け入れ基準
 
-- [ ] `--style belka` で三角力場の SVG が出る (XML valid・決定論的)
-- [ ] Reducer 形 fixture で式の推奨メッセージが出る
-- [ ] ミッドチルダ式の既存出力が不変 (回帰)
-- [ ] 自己ホスティング素材を生成しオーナーに意匠判定を依頼
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] `--style belka` で三角力場の SVG が出る (XML valid・決定論的)
+- [x] Reducer 形 fixture で式の推奨メッセージが出る
+- [x] ミッドチルダ式の既存出力が不変 (回帰)
+- [x] 自己ホスティング素材を生成しオーナーに意匠判定を依頼
+- [x] `cargo test --workspace` / clippy 警告0
 
 ## 後続
 
 - Phase 3 振り返りで二式並置ビュー・レイヤー差分分解の計画を判断
+
+## 実装結果メモ (2026-06-11)
+
+- `render/belka.rs` 新設: 射影モデル (3極分類 + フロー集計) と描画をセクション分離。
+  極の色は palette に BELKA_* 3色 (空色=生成 / 琥珀=変換 / 臙脂=消費)
+- **フロー集計は anchor に沿った実行順走査**: 当初の深さ優先 (SigilId 順) では
+  ループ内再定義 → 末尾戻り値の「変換 → 消費」還流を取り逃がした。**目視確認で発見**
+  (loop_accumulate の矢印欠落) — 実物レンダリング駆動の開発ループが再び機能
+- MainRing 末尾の Operation (暗黙の戻り値) は is_tail フラグで消費極に分類
+  (Return kind ではないため)
+- ドット散布は phyllotaxis (個数によらず決定論的)。力場は radialGradient
+  (gradientUnits 既定の objectBoundingBox で円中心基準 — 確認済みの旨コメント)
+- serve は両式を毎回レンダリングして state に同梱、クライアントは表示切替のみ
+  (?style= URL 同期、preview E2E でトグル・リロード復元を確認)
+- ベルカ式は FilterSpec/--layers 未対応 — CLI で明示エラー (黙って無視しない)
+- 意匠判定素材3点送付済み (loop_accumulate / 自己ホスティング measure / Reducer 形)。
+  **意匠判定待ち**。既知の調整候補: 引数は Operation を持たないため Reducer 形で
+  生成極が空円になる (「値は外から来る」表現とも読める — 判定次第で調整)
+- レビュー (Stage 2): Critical 0 / Warning 2 / Suggestion 4 → 全件対応。
+  W-2 は u32::MAX センチネルの**4度目の再発** (新規モジュール執筆時) — expect に修正
+- 計画スコープ外で見送り: ベルカ式の diff 強調 (render_diff は midchilda のみ)、
+  逆方向フォールバック提案 (計画どおり Phase 3 振り返りで判断)

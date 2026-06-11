@@ -3,11 +3,14 @@
 `docs/plans/` の完了状態・優先度をトラックする。
 `docs/plans/` と TODO が一致しなければ TODO を編集する。
 
-## 現在のフェーズ: Phase 3 — Spell Diff と第2の式 (ベルカ)
+## 現在のフェーズ: Phase 4 — フロントエンド充実
 
-Phase 1〜2 の計画群は全完了 (2026-06-11)。2026-06-11 に notes §12 のロードマップから
-Phase 3 計画 6 本を立案した。**優先度はオーナー確認待ち** (暫定: 依存順)。
-残存する判定待ち: Phase 1.8 の意匠再判定素材 (オーナー送付済み)。
+**Phase 3 (3.0〜3.5) は全完了 (2026-06-11)** — Spell Diff 系譜 + CI 統合 + ベルカ式。
+残存する判定待ち: Phase 1.8 / 3.2 / 3.5 の意匠判定素材 (オーナー送付済み)。
+2026-06-11 にオーナー要望から **Phase 4 系 (フロントエンド充実) ストリームを立ち上げ**、
+4.0 (ソース連動ビュー) を計画化した。次は 4.0 (オーナーの優先度確認待ちのまま暫定着手可)。
+Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow 一括昇格 PR) は
+オーナー判定が出揃った節目に実施する。
 
 ## バックログ
 
@@ -18,12 +21,26 @@ Phase 3 計画 6 本を立案した。**優先度はオーナー確認待ち** (
 | 3 | 3.2 | [docs/plans/phase3.2-spell-diff.md](docs/plans/phase3.2-spell-diff.md) | 完了（意匠判定待ち） |
 | 4 | 3.3 | [docs/plans/phase3.3-ci-integration.md](docs/plans/phase3.3-ci-integration.md) | 完了 |
 | 5 | 3.4 | [docs/plans/phase3.4-dataflow-ir.md](docs/plans/phase3.4-dataflow-ir.md) | 完了 |
-| 6 | 3.5 | [docs/plans/phase3.5-belka-style.md](docs/plans/phase3.5-belka-style.md) | 未着手 |
+| 6 | 3.5 | [docs/plans/phase3.5-belka-style.md](docs/plans/phase3.5-belka-style.md) | 完了（意匠判定待ち） |
+| 7 | 4.0 | [docs/plans/phase4.0-source-paired-view.md](docs/plans/phase4.0-source-paired-view.md) | 未着手 |
+| 8 | 4.1 | [docs/plans/phase4.1-pinned-focus-view.md](docs/plans/phase4.1-pinned-focus-view.md) | 未着手 |
+| 9 | 4.2 | [docs/plans/phase4.2-proximity-model.md](docs/plans/phase4.2-proximity-model.md) | 未着手 |
+| 10 | 4.3 | [docs/plans/phase4.3-composite-still-render.md](docs/plans/phase4.3-composite-still-render.md) | 未着手 |
+| 11 | 4.4 | [docs/plans/phase4.4-call-jump.md](docs/plans/phase4.4-call-jump.md) | 未着手（イメージ感のみ） |
+| 12 | 4.5 | [docs/plans/phase4.5-workspace-overview.md](docs/plans/phase4.5-workspace-overview.md) | 未着手（イメージ感のみ） |
+| 13 | 4.6 | [docs/plans/phase4.6-theme-and-diff-overlay.md](docs/plans/phase4.6-theme-and-diff-overlay.md) | 未着手（イメージ感のみ） |
 
 依存関係:
 - 3.0 (仕様化) は全ての前提。3.1 → 3.2 → 3.3 が Spell Diff の系譜
 - 3.4 → 3.5 がベルカ式の系譜 (3.1〜3.3 と独立して進められる)
 - 3.4 は EdgeLayerData の破壊的再設計 (spec v0.2 §4.3 の既定方針) を含む
+- **4.0 → 4.1 → 4.2 が「ピン中心ビュー」のコア系譜**。4.0 はペアビュー基盤、4.1 はフォーカス + リング配置、4.2 は近接度モデルを 4.1 のスタブから本実装に差し替え
+- **4.3 (静止画) は 4.1 のレイアウト関数を共有** — `magia render --focus` で動的UIと同じ構図を1枚 SVG に
+- **4.4 (呼び出しジャンプ) は 4.1 + 4.2 + Phase 3.4 データフロー IR に依存**
+- **4.5 (ワークスペース俯瞰) は 4.0〜4.4 完了後に詳細精緻化**
+- **4.6 (テーマ + Spell Diff overlay) は Phase 3.2 / 3.5 完了済成果物を 4.x 上に重ねる**
+- 4.4〜4.6 は計画書時点では **イメージ感のみ**、実装着手時に内容を精緻化する (オーナー方針 2026-06-11)
+- notes の Phase 4 (多言語アダプタ) は **Phase 5 系に繰り下げ**
 
 ---
 

@@ -13,6 +13,7 @@
 
 | ファイル | 要約 | キーワード |
 |---|---|---|
+| [multi-style-renderer-pattern.md](multi-style-renderer-pattern.md) | 第2のレンダリング様式 (同じ IR の別射影) を足す定型 (RenderStyle 語彙一元化, 未対応オプションの明示エラー, 射影モデルと描画の分離, anchor 実行順走査, 暗黙の戻り値の末尾フラグ, phyllotaxis 散布, serve の全様式同梱 + 表示切替) | RenderStyle, --style, belka, 様式, 射影, 三角力場, 極, フロー集計, 実行順, anchor, phyllotaxis, 黄金角, radialGradient, ?style=, トグル, SELECTABLE, FromStr |
 | [rust-cargo-workspace-bootstrap.md](rust-cargo-workspace-bootstrap.md) | Cargo workspace 立ち上げの定型パターン (workspace.package 継承, lints 一括設定, publish 準備, doc_markdown 抑制) | cargo, workspace, clippy, pedantic, doc_markdown, MSRV, unsafe_code, crates.io, publish, Cargo.lock |
 | [clap-cli-integration-pattern.md](clap-cli-integration-pattern.md) | clap 4 derive で CLI を統合するパターン (予約語フラグ, value_delimiter, エラー表示の責務分担, assert_cmd, 出力規約依存フィルタの相互参照) | clap, CLI, derive, --fn, value_delimiter, anyhow, assert_cmd, cargo_bin, 統合テスト, fixtures, exit code, thiserror |
 | [mini-dsl-pattern.md](mini-dsl-pattern.md) | 小さな DSL を足すときの定型 (enum+FromStr の語彙一元化, 予約語の明示エラー, 分類と着色の分離, xxx_with の API 拡張, 行番号つきパースエラー) | DSL, FilterSpec, FromStr, enum, 予約語, パーサ, .magia, show, hide, conflicts_with, render_with |

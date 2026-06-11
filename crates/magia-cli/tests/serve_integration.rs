@@ -149,6 +149,19 @@ fn serves_html_and_initial_state() {
         );
     }
 
+    // 式トグル (Phase 3.5, spec v0.3 §14.4): 両式の SVG が state に入り、UI に切替がある。
+    for style in ["midchilda", "belka"] {
+        assert!(
+            index.contains(&format!(r#"data-style="{style}""#)),
+            "{style} の切替ラジオがある"
+        );
+    }
+    let belka_svg = state["svg_belka"].as_str().unwrap();
+    assert!(
+        belka_svg.contains("belka-pole"),
+        "state にベルカ式 SVG が入る"
+    );
+
     let missing = http_get(server.port, "/no-such");
     assert!(missing.contains("404"));
 
@@ -157,6 +170,9 @@ fn serves_html_and_initial_state() {
     let with_query = http_get(server.port, "/?layers=effects&op=effects:0.5");
     assert!(with_query.contains("200") && with_query.contains(r#"<div id="magia">"#));
     assert!(with_query.contains("text/html"), "HTML として返る");
+    // ?style=belka でもトップページが返る (URL 同期のリロード経路)。
+    let with_style = http_get(server.port, "/?style=belka");
+    assert!(with_style.contains("200") && with_style.contains(r#"data-style="belka""#));
 }
 
 #[test]
@@ -174,6 +190,12 @@ fn file_change_triggers_rerender() {
         before["svg"].as_str().unwrap(),
         after["svg"].as_str().unwrap(),
         "変更後の SVG は変わる (helper 呼び出しの召喚記号が増える)"
+    );
+    // 両式は同じ IR の射影 — 必ず対で更新される (Phase 3.5 の不変条件)。
+    assert_ne!(
+        before["svg_belka"].as_str().unwrap(),
+        after["svg_belka"].as_str().unwrap(),
+        "ベルカ式 SVG も対で更新される"
     );
     assert!(after["error"].is_null());
 }
