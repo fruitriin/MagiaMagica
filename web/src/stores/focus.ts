@@ -34,6 +34,27 @@ export const useFocusStore = defineStore("focus", () => {
     selectedOperationId.value = id;
   }
 
+  // 召喚印インスペクタ (Phase 4.1): 召喚印クリックで呼び出し先のコードを
+  // ポップオーバー表示し、同ファイル関数ならそこからピンできる。
+  // 画面座標はポップオーバーの表示位置 (クリック地点) に使う。
+  const inspectedCall = ref<{ callTarget: string; clientX: number; clientY: number } | null>(null);
+
+  function inspectCall(callTarget: string, clientX: number, clientY: number) {
+    inspectedCall.value = { callTarget, clientX, clientY };
+  }
+
+  function closeInspector() {
+    inspectedCall.value = null;
+  }
+
+  /** 呼び出し名を同ファイルの関数に解決する (`charge` → `Wand::charge` など)。
+   *  名前一致が複数あるときは先頭 (定義順) — 厳密な解決は Phase 4.4 で。 */
+  function resolveCall(callTarget: string): string | null {
+    const plain = callTarget.replace(/^\./, "").replace(/!$/, "");
+    const hit = functions.value.find((f) => f.qualified === plain || f.name === plain);
+    return hit?.qualified ?? null;
+  }
+
   /**
    * URL (`?fn=`) 由来の初期希望値を置く。実ロードは SSE 接続直後イベント
    * (serve.rs が必ず1イベント流す) の refresh に一本化し、二重フェッチを避ける。
@@ -81,6 +102,8 @@ export const useFocusStore = defineStore("focus", () => {
   async function refresh() {
     // id は再パースで再採番されるため、選択を持ち越すと別の操作に
     // ハローが移る誤挙動になる — 更新前にクリアする。
+    // インスペクタ (inspectedCall) は名前ベースで再採番の影響を受けないため
+    // クリアしない (SSE 更新のたびにポップオーバーが閉じる誤挙動になる)。
     selectedOperationId.value = null;
     await loadState();
     await selectFunction(currentFn.value);
@@ -97,6 +120,10 @@ export const useFocusStore = defineStore("focus", () => {
     selectedOperationId,
     hoverOperation,
     selectOperation,
+    inspectedCall,
+    inspectCall,
+    closeInspector,
+    resolveCall,
     setInitialFn,
     loadState,
     selectFunction,

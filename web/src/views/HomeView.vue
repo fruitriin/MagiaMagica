@@ -5,6 +5,7 @@
 // 初回ロードは SSE 接続直後イベント (serve.rs 仕様) の refresh に一本化する。
 import { onMounted, onUnmounted } from "vue";
 
+import CallInspector from "../components/CallInspector.vue";
 import FunctionToc from "../components/FunctionToc.vue";
 import LayerPalette from "../components/LayerPalette.vue";
 import SymbolLegend from "../components/SymbolLegend.vue";
@@ -58,6 +59,7 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
     </div>
 
     <TranscriptRegion />
+    <CallInspector />
 
     <main flex min-h-0 flex-1>
       <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く。

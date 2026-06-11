@@ -15,9 +15,13 @@ fn greet(name: &str) -> String {
 fn compute(a: i32, b: i32) -> i32 {
     let sum = a + b;
     if sum > 10 {
-        return sum * 2;
+        return helper(sum);
     }
     sum
+}
+
+fn helper(value: i32) -> i32 {
+    value * 2
 }
 EOF
 

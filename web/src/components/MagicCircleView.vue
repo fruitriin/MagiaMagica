@@ -90,7 +90,7 @@ function pin(qualified: string) {
 
 <template>
   <div v-if="schema" w-full>
-    <svg xmlns="http://www.w3.org/2000/svg" :viewBox="outerViewBox" w-full>
+    <svg xmlns="http://www.w3.org/2000/svg" class="pin-view" :viewBox="outerViewBox" w-full>
       <g
         v-for="node in nodes"
         :key="node.qualified"

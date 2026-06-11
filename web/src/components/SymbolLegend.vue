@@ -105,6 +105,7 @@ const sampleSymbol = (kind: ControlSymbol["kind"]): ControlSymbol => ({
                 effect: 'io',
                 selectable: false,
                 layer: null,
+                callTarget: null,
               }"
             />
           </svg>

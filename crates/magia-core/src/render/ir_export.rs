@@ -83,6 +83,10 @@ pub struct GlyphIr {
     pub y: f64,
     pub radius: f64,
     pub effect: EffectCategory,
+    /// 呼び出し先の名前 (`write_defs` / `.expect` / `writeln!` 等)。
+    /// 同ファイル関数への解決 (ピン可能判定) はクライアントが関数一覧と照合する
+    /// (Phase 4.1 の召喚印インスペクタ / Phase 4.4 呼び出しジャンプの入力)。
+    pub call_target: Option<String>,
 }
 
 /// 制御フローの接続。端点 (リング表面) の計算は from/to の中心 + 半径から
@@ -154,12 +158,17 @@ pub fn spell_ir(graph: &MagiaGraph, layout: &LayoutResult) -> SpellIr {
                         .content
                         .first()
                         .map_or(EffectCategory::Pure, |op| palette::category_of(&op.effects));
+                    let call_target = sigil
+                        .content
+                        .first()
+                        .and_then(|op| op.payload.call_target.clone());
                     ir.glyphs.push(GlyphIr {
                         id: sigil.id.0,
                         x: nz(center.x),
                         y: nz(center.y),
                         radius,
                         effect,
+                        call_target,
                     });
                 }
             }

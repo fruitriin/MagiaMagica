@@ -122,6 +122,7 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
       effect: glyph.effect,
       selectable: true,
       layer: "effects",
+      callTarget: glyph.call_target,
     });
   }
 

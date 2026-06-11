@@ -76,6 +76,14 @@
 - [x] 12. 素材 (write_document 28チップ / Wand::cast 距離1・2混在) 作成。**実機ではオーナーが既にチップクリックでピン遷移を試遊済み**
 - [x] 13. Stage 1 ゲート全通過 (cargo 17 / ADDF / vp check / vitest 30 / build / playwright 13)
 
+**追加要望 (オーナー、4.1 サイクル中 2026-06-11): 召喚印インスペクタ — Phase 4.4 の前倒し**
+- [x] A1. GlyphIr に call_target (IR の OperationPayload.call_target を露出 — Rust 変更はこれだけ)
+- [x] A2. focus store: inspectedCall + resolveCall (呼び出し名 → 同ファイル関数の解決はクライアントで関数一覧と照合。`.method` / `macro!` の正規化付き)
+- [x] A3. CallInspector (Teleport ポップオーバー): 呼び出し名 + 解決先のコード断片 (既存 /spell API の source_html、縦可変 max-h-96) + コードクリック or ボタンでピン遷移。未解決は「外部呼び出し」案内。外側クリック / Esc で閉じる
+- [x] A4. GlyphDot クリックで起動 (callTarget があるときだけ cursor: pointer)
+- [x] A5. e2e 2本 (解決 → コード表示 → ピン遷移 / 外部呼び出し案内)。SSE refresh がインスペクタを閉じる誤挙動を修正 (名前ベースなので再採番の影響なし → クリアしない)、ピンビュー svg に .pin-view クラス (テストセレクタ安定化)
+- [x] A6. ゲート再実行全通過 (playwright 15)
+
 **品質検証 + 完了処理**
 - [ ] 14. Stage 2 レビュー + 指摘対応
 - [ ] 15. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット

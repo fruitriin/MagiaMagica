@@ -1,0 +1,134 @@
+<script setup lang="ts">
+// 召喚印インスペクタ (Phase 4.1)。召喚印クリックで呼び出し先のコードを
+// ポップオーバー表示する。同ファイルの関数に解決できればコード断片
+// (syntect HTML) を出し、クリックでピン遷移 — 外周にピン用シンボルを
+// 別建てせず、図の中の「呼び出し」からそのまま潜れる (オーナー要望 2026-06-11。
+// クレート外への解決・厳密な呼び出し解決は Phase 4.4)。
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+
+import { fetchSpell } from "../composables/api.ts";
+import { useFocusStore } from "../stores/focus.ts";
+
+const focus = useFocusStore();
+const route = useRoute();
+const router = useRouter();
+
+const resolved = computed(() => {
+  if (focus.inspectedCall === null) return null;
+  return focus.resolveCall(focus.inspectedCall.callTarget);
+});
+
+/** 解決先のコード断片 (syntect HTML)。インスペクタを開くたびに取得する。 */
+const sourceHtml = ref<string | null>(null);
+watch(
+  () => [focus.inspectedCall, resolved.value] as const,
+  async ([call, qualified]) => {
+    sourceHtml.value = null;
+    if (call === null || qualified === null) return;
+    try {
+      const spell = await fetchSpell(qualified);
+      // 開いている間に別の召喚印へ移っていたら捨てる
+      if (focus.inspectedCall?.callTarget === call.callTarget) {
+        sourceHtml.value = spell.source_html;
+      }
+    } catch {
+      sourceHtml.value = null;
+    }
+  },
+  { immediate: true },
+);
+
+/** クリック地点の近くに出す (画面端では内側に寄せる)。 */
+const popoverStyle = computed(() => {
+  const call = focus.inspectedCall;
+  if (call === null) return {};
+  const x = Math.min(call.clientX + 12, window.innerWidth - 440);
+  const y = Math.min(call.clientY + 12, window.innerHeight - 200);
+  return { left: `${Math.max(8, x)}px`, top: `${Math.max(8, y)}px` };
+});
+
+function pinResolved() {
+  if (resolved.value === null) return;
+  const target = resolved.value;
+  focus.closeInspector();
+  if (target === focus.currentFn) return;
+  void router.push({ query: { ...route.query, pin: target } });
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") focus.closeInspector();
+}
+</script>
+
+<template>
+  <Teleport to="body">
+    <template v-if="focus.inspectedCall">
+      <!-- 外側クリックで閉じる薄幕 (視覚的には透明) -->
+      <div fixed inset-0 z-40 @click="focus.closeInspector()" />
+      <div
+        fixed
+        z-50
+        max-w-md
+        rounded-lg
+        border
+        border-gray-300
+        bg-white
+        p-3
+        shadow-lg
+        text-sm
+        :style="popoverStyle"
+        role="dialog"
+        aria-label="呼び出し先"
+        @keydown="onKeydown"
+      >
+        <div flex items-baseline justify-between gap-3>
+          <code text-xs font-bold>{{ focus.inspectedCall.callTarget }}</code>
+          <button text-xs text-gray-400 hover:text-gray-700 @click="focus.closeInspector()">
+            ✕
+          </button>
+        </div>
+
+        <template v-if="resolved">
+          <!-- コード断片クリックでピン (縦可変・大きめ。オーナー要望) -->
+          <div
+            mt-2
+            max-h-96
+            cursor-pointer
+            overflow-auto
+            rounded
+            border
+            border-blue-200
+            text-xs
+            leading-relaxed
+            hover:border-blue-400
+            :title="`クリックで ${resolved} をピン`"
+            @click="pinResolved"
+          >
+            <div v-if="sourceHtml" p-2 v-html="sourceHtml" />
+            <div v-else p-2 text-gray-400>コードを読み込み中…</div>
+          </div>
+          <button
+            mt-2
+            w-full
+            rounded
+            border
+            border-blue-300
+            bg-blue-50
+            px-2
+            py-1
+            text-xs
+            text-blue-800
+            hover:bg-blue-100
+            @click="pinResolved"
+          >
+            📌 {{ resolved }} をピン
+          </button>
+        </template>
+        <div v-else mt-2 text-xs text-gray-500>
+          このファイル内に定義がない外部呼び出しです (クレート横断は Phase 4.5+)
+        </div>
+      </div>
+    </template>
+  </Teleport>
+</template>

@@ -57,6 +57,8 @@ export type EffectGlyph = Placed & {
   selectable: boolean;
   layer: SchemaLayer | null;
   z: number;
+  /** 呼び出し先の名前 (召喚印インスペクタの入力)。 */
+  callTarget: string | null;
 };
 
 /** 制御フローの接続線。Phase 4.0.7 (SVG 由来) は座標のみ。
@@ -188,6 +190,8 @@ export type IrGlyph = {
   y: number;
   radius: number;
   effect: EffectCategory;
+  /** 呼び出し先の名前。ピン可能判定はクライアントが関数一覧と照合する。 */
+  call_target: string | null;
 };
 
 export type IrEdge = {

@@ -64,8 +64,8 @@ function mockFetch() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (path: string) => {
-      const body =
-        path === "/state" ? STATE : spellFor(decodeURIComponent(path.split("/spell/")[1] ?? ""));
+      const qualified = decodeURIComponent((path.split("/spell/")[1] ?? "").split("?")[0] ?? "");
+      const body = path === "/state" ? STATE : spellFor(qualified);
       return new Response(JSON.stringify(body), { status: 200 });
     }),
   );
