@@ -28,8 +28,11 @@ jobs:
         run: cargo build -p magia-cli
 
       - name: Spell Diff レポートを生成
+        env:
+          # コンテキスト値はシェルに直接展開せず env 経由で渡す (インジェクション対策)。
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          MAGIA=target/debug/magia scripts/spell-diff-report.sh "origin/${{ github.base_ref }}" spell-diff-out
+          MAGIA=target/debug/magia scripts/spell-diff-report.sh "origin/${BASE_REF}" spell-diff-out
 
       - name: 強調 SVG を artifact に保存
         uses: actions/upload-artifact@v4
@@ -56,4 +59,9 @@ jobs:
 
       - name: unsafe 新規追加チェック (spec v0.3 §9.3 — 唯一の fail 条件)
         run: |
-          target/debug/magia changed --git "origin/${{ github.base_ref }}" --fail-on-new-unsafe
+          # レポート生成時の changed.json を再利用する (changed の2重実行を避ける)。
+          # ローカルで同じ判定をするなら `magia changed --git origin/main --fail-on-new-unsafe`。
+          if jq -e 'any(.[]; .new_unsafe)' spell-diff-out/changed.json > /dev/null; then
+            jq -r '.[] | select(.new_unsafe) | "::error::unsafe 操作が新規追加されています (spec v0.3 §9.3): \(.file) の \(.function)"' spell-diff-out/changed.json
+            exit 1
+          fi

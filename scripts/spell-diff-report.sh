@@ -11,6 +11,8 @@ set -euo pipefail
 
 BASE_REV="${1:?BASE_REV を指定してください (例: origin/main)}"
 OUT_DIR="${2:-spell-diff-out}"
+# MAGIA は意図的にクォートせず展開する (既定値 "cargo run -q -p magia-cli --" の
+# ワード分割が必要)。スペースを含むパスのバイナリは想定しない。
 MAGIA="${MAGIA:-cargo run -q -p magia-cli --}"
 
 mkdir -p "$OUT_DIR/svg"

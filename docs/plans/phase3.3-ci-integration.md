@@ -41,11 +41,31 @@ PR ごとに「Spell changed」を自動投稿する GitHub Actions 統合を作
 
 ## 受け入れ基準
 
-- [ ] `magia diff --git` と `magia changed --git` がローカルで動く
-- [ ] 本リポジトリの実 PR で Spell Diff コメントが付く (実地確認)
-- [ ] unsafe 新規追加で status check が fail する (テスト PR で確認)
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] `magia diff --git` と `magia changed --git` がローカルで動く
+- [x] 本リポジトリの実 PR で Spell Diff コメントが付く (実地確認)
+- [x] unsafe 新規追加で status check が fail する (テスト PR で確認)
+- [x] `cargo test --workspace` / clippy 警告0
 
 ## 後続
 
 - 運用フィードバックを Phase 3 振り返りで収集し、しきい値とコメント形式を調整
+
+## 実装結果メモ (2026-06-11)
+
+- `gitio.rs` 新設で git サブプロセスを隔離。パス解決は canonicalize + `ls-files
+  --full-name` の絶対パス pathspec (ファイル名だけだと同名ファイルに誤マッチ —
+  レビュー W-1 で修正)。リネーム追跡はしない (明記)
+- diff の入力2系統 (ファイル2つ / --git) は `DiffSources { source, label }` に
+  入口で正規化。Metrics に `unsafe_ops` を追加しレポート/JSON に露出
+- `magia changed --git <REV>`: 変更関数の列挙 (不変は出さない)。
+  `--fail-on-new-unsafe` は違反関数名を列挙して exit 1
+- ワークフローは PR #1 で実地確認済み: ①diff コメント投稿 ②unsafe 追加で fail
+  ③unsafe 除去で pass ④sticky 更新 (PATCH) ⑤SVG artifact の5点
+- レビュー (Stage 2): Critical 0 / Warning 3 / Suggestion 5。W-1 (ls-files 曖昧性)、
+  W-2 (base_ref を env 経由に — インジェクション対策)、W-3 (changed 2重実行 →
+  changed.json を jq で再利用、3ケースをローカル検証) を含め対応。
+  **S-4 (spec §9.1「メトリクス変化のテーブル併記」) は先送り**: 現状はテキスト
+  レポート内の「メトリクス変化:」行で提示。Markdown テーブル化は運用フィード
+  バック (Phase 3 振り返り) とあわせて判断
+- ワークフローの実行確認はレビュー修正前のもの。修正は YAML の env 渡しと
+  jq 判定 (ローカル3ケース検証済み) のみで、次の実 PR で自然に再検証される

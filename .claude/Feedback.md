@@ -21,6 +21,8 @@
 - Phase 1.3 のコントリビューション検出より: `addf-knowhow.exp.md` に記録した「統合先ファイルの冒頭メタコメントも実態に合わせて更新する」「INDEX は reindex を待たず手動同期してよい」は汎用的な教訓。ADDF 本体の `addf-knowhow.md` Phase 3 チェックリストへの追記 PR 候補
 - Phase 3.1 のコントリビューション検出より: `addf-knowhow.exp.md` の「関心が別なら新規ファイル、検索性を失わない統合なら既存ファイルに追記」という分割 vs 統合の判断軸も `addf-knowhow.md` への追記候補。上記 Phase 1.3 候補と**同一 PR に同梱**できる (Phase 3.2 で「冒頭メタコメントの更新」教訓が再確認された — 同 PR に追記事例として含める)
 - Phase 3.2 のコントリビューション検出より: `structural-diff-pattern.md` の overlay 節（強調チャネル独立性・Option 引数1つで既存出力不変・ID を外部契約に出さない情報隠蔽）は「ID 不安定な IR の差分を SVG overlay で重ねる」Rust ツール全般に通用する。既存の昇格候補4件に5件目として追加し、Phase 3 完了の節目で一括判断
+- Phase 3.3 のコントリビューション検出より: `git-ci-integration-pattern.md`（git サブプロセス隔離・入口正規化・最小主義 fail・薄い YAML + ローカル再現スクリプト・sticky comment・init_git_fixture）も汎用。昇格候補の**6件目**として Phase 3 完了の節目の一括 PR に含める
+- Phase 3.3 で先送りした項目: spec §9.1「メトリクス変化のテーブル併記」は PR コメント内のテキスト行で代替中。Markdown テーブル化は運用フィードバック (Phase 3 振り返り) で判断
 - Phase 1.3 の `AuxRingRole.anchor_operation` は親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期が必要。Phase 1.5/1.8 では問題にならなかったが、content を並び替える変更を入れるときは再確認
 - ~~spec 宿題 4 件 (Phase 1.1 補完型 / Phase 1.3 補完型・アームガード / LoopBody serde 不統一 / EdgeLayerData 非対称)~~ → **Phase 2.0 の spec-v0.2.md で解消** (§4.2 追補・§4.4 JSON 規約・§4.3 Phase 3 方針)
 

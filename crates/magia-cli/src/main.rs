@@ -366,10 +366,14 @@ fn run_changed(rev: &str, json: bool, fail_on_new_unsafe: bool) -> Result<()> {
         let after_source = fs::read_to_string(root.join(&relative)).ok();
         let before_fns = functions_or_warn(before_source.as_deref(), rev, &relative);
         let after_fns = functions_or_warn(after_source.as_deref(), "作業ツリー", &relative);
+        let before_set: std::collections::BTreeSet<&str> =
+            before_fns.iter().map(String::as_str).collect();
+        let after_set: std::collections::BTreeSet<&str> =
+            after_fns.iter().map(String::as_str).collect();
 
         // after の出現順を基準にし、削除された関数を後ろに足す (決定論的)。
         for name in &after_fns {
-            if before_fns.contains(name) {
+            if before_set.contains(name.as_str()) {
                 let (Some(before_src), Some(after_src)) =
                     (before_source.as_deref(), after_source.as_deref())
                 else {
@@ -379,7 +383,12 @@ fn run_changed(rev: &str, json: bool, fail_on_new_unsafe: bool) -> Result<()> {
                     parse_function(before_src, name),
                     parse_function(after_src, name),
                 ) else {
-                    continue; // 一覧には載るが個別解析に失敗 (マクロ境界等) — 黙って不変扱いにしない
+                    // 一覧には載るが個別解析に失敗 (マクロ境界等)。黙って不変扱いに
+                    // しない — 警告して人間の確認に委ねる。
+                    eprintln!(
+                        "警告: {relative} の {name} を個別解析できないため diff を判定できません"
+                    );
+                    continue;
                 };
                 let spell_diff = magia_core::diff::diff(&before_graph, &after_graph);
                 if spell_diff.is_empty() {
@@ -407,7 +416,7 @@ fn run_changed(rev: &str, json: bool, fail_on_new_unsafe: bool) -> Result<()> {
             }
         }
         for name in &before_fns {
-            if !after_fns.contains(name) {
+            if !after_set.contains(name.as_str()) {
                 entries.push(ChangedFunction {
                     file: relative.clone(),
                     function: name.clone(),

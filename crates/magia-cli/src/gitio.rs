@@ -44,19 +44,17 @@ pub fn repo_root(cwd: &Path) -> Result<PathBuf> {
 }
 
 /// リポジトリルートから見た `file` の相対パス。git 管理外なら案内エラー。
+///
+/// pathspec には絶対パスを渡す: ファイル名だけを渡すとリポジトリ内の
+/// **同名ファイル全部**にマッチし、先頭のどれが返るか保証できない。
 fn repo_relative(file: &Path) -> Result<String> {
-    let dir = context_dir(file);
-    let file_name = file
-        .file_name()
-        .with_context(|| format!("ファイル名を取り出せません: {}", file.display()))?;
+    let absolute = file
+        .canonicalize()
+        .with_context(|| format!("パスを解決できません: {}", file.display()))?;
+    let dir = context_dir(&absolute);
     let listed = git(
         &dir,
-        &[
-            "ls-files",
-            "--full-name",
-            "--",
-            &file_name.to_string_lossy(),
-        ],
+        &["ls-files", "--full-name", "--", &absolute.to_string_lossy()],
     )?;
     let relative = listed.lines().next().unwrap_or("").trim();
     if relative.is_empty() {
