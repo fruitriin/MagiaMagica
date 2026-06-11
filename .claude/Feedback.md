@@ -22,21 +22,14 @@
 
 ## 問題の記録
 
+- **knowhow 一括昇格を実施 (2026-06-11、オーナー指示)**: 蓄積していた昇格候補を ADDF 本体へ PR 化済み — **PR #13** (Rust 系 7本: cargo-bootstrap / syn-visitor / svg-deterministic / clap-cli / structural-diff / git-ci / minimal-dev-server SSE 訂正版 + addf-knowhow.md 記録判断パターン5例)、**PR #14** (Web 系 3本: viteplus-bun / milestone-gated-ui-plan / deprecated-module-maintenance-policy 新規)。マージは #13 → #14 の順を推奨 (TODO.addf.md の軽微コンフリクト)。残る候補: `.claude/launch.json` の scaffold テンプレート化 (launch.json.example、Phase 2.1 起源)、`rust-ir-skeleton-pattern.md` (Rust IR 設計 — 汎用性がやや低くプロジェクト寄りのため今回見送り)、addf-gui-test.md の .gitignore テンプレート (Phase 1.0 起源)
+
 - Phase 4.0.5 M2 で発覚: Phase 2.1 の SSE は統合テストが「HTML に EventSource の文字列が含まれる」という静的チェックだけだったため、**配信自体が壊れていることを2フェーズ以上見逃した**。ストリーミング系の機能は「実際にストリームを読むテスト」を受け入れ基準に含めること (回帰テスト `sse_events_stream_immediately` が定型、knowhow 訂正済み)。また「ブラウザで見た目が動く」確認は live-reload の動作確認の代わりにならない (初回ロードだけで画面は出る)
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
-- Phase 1.0 で「rust-cargo-workspace-bootstrap」ノウハウは現状プロジェクト固有 (`docs/knowhow/`) に置いたが、内容は ADDF 利用 Rust プロジェクト全般に役立つ。将来 `docs/knowhow/ADDF/` または ADDF 本体への昇格を検討
-- Phase 1.3 のコントリビューション検出より: `addf-knowhow.exp.md` に記録した「統合先ファイルの冒頭メタコメントも実態に合わせて更新する」「INDEX は reindex を待たず手動同期してよい」は汎用的な教訓。ADDF 本体の `addf-knowhow.md` Phase 3 チェックリストへの追記 PR 候補
-- Phase 3.1 のコントリビューション検出より: `addf-knowhow.exp.md` の「関心が別なら新規ファイル、検索性を失わない統合なら既存ファイルに追記」という分割 vs 統合の判断軸も `addf-knowhow.md` への追記候補。上記 Phase 1.3 候補と**同一 PR に同梱**できる (Phase 3.2 で「冒頭メタコメントの更新」教訓が再確認された — 同 PR に追記事例として含める)
-- Phase 3.2 のコントリビューション検出より: `structural-diff-pattern.md` の overlay 節（強調チャネル独立性・Option 引数1つで既存出力不変・ID を外部契約に出さない情報隠蔽）は「ID 不安定な IR の差分を SVG overlay で重ねる」Rust ツール全般に通用する。既存の昇格候補4件に5件目として追加し、Phase 3 完了の節目で一括判断
-- Phase 3.3 のコントリビューション検出より: `git-ci-integration-pattern.md`（git サブプロセス隔離・入口正規化・最小主義 fail・薄い YAML + ローカル再現スクリプト・sticky comment・init_git_fixture）も汎用。昇格候補の**6件目**として Phase 3 完了の節目の一括 PR に含める
 - Phase 3.3 で先送りした項目: spec §9.1「メトリクス変化のテーブル併記」は PR コメント内のテキスト行で代替中。Markdown テーブル化は運用フィードバック (Phase 3 振り返り) で判断
-- Phase 4.0.5 のコントリビューション検出より: 昇格候補に **7件目 = minimal-dev-server-pattern.md の SSE 訂正版** (既存候補の内容差し替え — 最新版を PR に含める)、**8件目 = viteplus-bun-frontend-bootstrap.md** (Vite+/Bun の Web 系新規。Playwright の Rust バイナリ webServer 構成・Bun+Rust ハイブリッド CI 節を含む) を追加。Rust 系 (1〜7) と Web 系 (8) で **PR を分ける**のが推奨。addf-knowhow.md チェックリスト追記候補に4例目「ストリーミング機能は実際にストリームを読むテストを受け入れ基準に」を追加
-- Phase 4.0.7 のコントリビューション検出より: 昇格候補に **9件目 = milestone-gated-ui-plan.md** (画素等価検証の方法論・toBeHidden 偽陽性を含む完全版)、**10件目 = viteplus-bun-frontend-bootstrap.md の 4.0.7 追記分** (happy-dom / e2e exclude 罠 / playwright screenshot CLI / pkill -f 自殺) を追加 — 8件目と同じ「Web 系 PR」に同梱。addf-knowhow.md 追記候補に**5例目「捨てる前提のファイル隔離 (Temporary Isolation Pattern)」** (svgToSchema.ts の実例) を追加
-- Phase 4.0.9 のコントリビューション検出より: 昇格候補に **11件目 = milestone-gated-ui-plan.md の 4.0.9 追記分** (撮影条件の罠・リメイク境界判断・クロス検証テスト — 9件目と同一ファイルの最新版として扱う)、**12件目 = 「deprecated モジュールへの保守方針コメント」パターン** (belka.rs の実例 — 削除 Phase 明記 + 保守方針節 + 投資優先ルールの3点セット。`docs/knowhow/ADDF/deprecated-module-maintenance-policy.md` として1ページ knowhow 化を推奨) を追加
 - Phase 4.0.9 のレビューで先送りした項目: EffectCategory 増加時の TS 側 (型 + COLOR_BY_EFFECT) 追従は手動 (型網羅で missing は検出される)。RawElement 型は IR 直結では常に空 — 4.3 のリメイク時に型ごと削除を判断
 - Phase 4.0.7 のレビューで先送りした項目: 操作の安定参照 (出現順 id でなく IR 由来 id) は 4.0.9 で。`EFFECT_BY_COLOR` の3箇所手動同期 (palette.rs / uno.config.ts / svgToSchema.ts) も 4.0.9 の IR 直結で解消される
 - Phase 4.0.5 のレビューで先送りした項目: SPA に Vue Router のパスベースビューを足すときは serve.rs の 404 → index.html フォールバックが要る (serve.rs にコメント済み)。`?fn=` 連打競合は世代ガードで対応済みだが、AbortController による fetch キャンセルは未実装 (必要になったら 4.1 で)
-- Phase 3.4 のコントリビューション検出より: `syn-visitor-patterns.md` の「近似データフロー解析」節と `rust-ir-skeleton-pattern.md` の「Edge 種別追加時の kind フィルタ」節は、両ファイルが既に昇格候補に含まれるため**同一 PR にセクションごと同梱**。`addf-knowhow.exp.md` の「1知見セットの複数ファイル分配」も addf-knowhow.md 追記候補の3例目として同梱
 - Phase 1.3 の `AuxRingRole.anchor_operation` は親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期が必要。Phase 1.5/1.8 では問題にならなかったが、content を並び替える変更を入れるときは再確認
 - ~~spec 宿題 4 件 (Phase 1.1 補完型 / Phase 1.3 補完型・アームガード / LoopBody serde 不統一 / EdgeLayerData 非対称)~~ → **Phase 2.0 の spec-v0.2.md で解消** (§4.2 追補・§4.4 JSON 規約・§4.3 Phase 3 方針)
 
@@ -44,9 +37,7 @@
 - Phase 1.4 時点の効果テーブルは `tokio::io` 未登録 (tokio::net / tokio::fs と非対称)。false negative が目立ったら追加 (effects.rs に TODO あり)
 
 - Phase 1.5 の `layout/constants.rs` の半径・ギャップ値は仮置き。Phase 1.6 の自己ホスティング SVG では破綻していないが、オーナー目視判定の結果次第で調整する（交差最小化の回転ステップ 0.2 rad、glyph 全周配置によるノード重なりも同タイミングで再評価）
-- Phase 1.6 のコントリビューション検出より: `docs/knowhow/svg-deterministic-rendering.md` は SVG を生成する Rust プロジェクト全般に通用する汎用知見。ADDF 本体への昇格候補（rust-cargo-workspace-bootstrap 等と同じ扱い、Phase 1 完了後の節目で判断）
 - Phase 2.1 のコントリビューション検出より: `.claude/launch.json`（preview サーバ定義）と `minimal-dev-server-pattern.md` は ADDF scaffold テンプレート（launch.json.example）/ ADDF knowhow への昇格候補。既存の昇格候補群と合わせて一括 PR を検討
-- Phase 1.7 のコントリビューション検出より: `docs/knowhow/clap-cli-integration-pattern.md` の汎用部分（予約語フラグ・value_delimiter・assert_cmd・エラー責務分担）も ADDF 昇格候補。**Phase 1 が完了したため、昇格候補 4 件（cargo-workspace-bootstrap / syn-visitor-patterns / svg-deterministic-rendering / clap-cli-integration）の一括昇格を「品質向上計画」の一部として Phase 2 計画立案時に検討する**
 
 ## 改善アクション
 
