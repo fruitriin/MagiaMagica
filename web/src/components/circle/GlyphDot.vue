@@ -19,8 +19,8 @@ const isHovered = computed(() => focus.hoveredOperationId === props.glyph.id);
     :cy="glyph.y"
     :r="glyph.radius"
     :fill="glyph.color"
-    @mouseenter="focus.hoverOperation(glyph.id)"
-    @mouseleave="focus.hoverOperation(null)"
+    @mouseenter="glyph.selectable && focus.hoverOperation(glyph.id)"
+    @mouseleave="glyph.selectable && focus.hoverOperation(null)"
   />
 </template>
 

@@ -27,8 +27,8 @@ function onClick() {
     :r="op.radius"
     :fill="op.color"
     :style="op.selectable ? { cursor: 'pointer' } : {}"
-    @mouseenter="focus.hoverOperation(op.id)"
-    @mouseleave="focus.hoverOperation(null)"
+    @mouseenter="op.selectable && focus.hoverOperation(op.id)"
+    @mouseleave="op.selectable && focus.hoverOperation(null)"
     @click="onClick"
   />
 </template>

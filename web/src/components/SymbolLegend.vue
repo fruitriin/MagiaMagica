@@ -39,7 +39,7 @@ const sampleRing = (role: "main" | "aux"): Circle => ({
 });
 
 const sampleOp = (color: string): Operation => ({
-  id: `legend-op-${color}`,
+  id: `legend-op-${color.replace("#", "")}`,
   z: 0,
   x: 0,
   y: 0,
@@ -50,11 +50,12 @@ const sampleOp = (color: string): Operation => ({
   layer: null,
 });
 
+// async_inner はリング本体と組で初めて意味を成す (単体サンプル不可) ため凡例から省略。
 const sampleSymbol = (kind: ControlSymbol["kind"]): ControlSymbol => ({
   id: `legend-sym-${kind}`,
   kind,
   x: 0,
-  y: kind === "loop" ? 0 : kind === "early_return" ? 0 : 2,
+  y: 0,
   radius: kind === "loop" ? 22 : kind === "early_return" ? 4 : 11,
   direction: [1, 0],
   layer: "control_flow",
@@ -153,6 +154,7 @@ const sampleSymbol = (kind: ControlSymbol["kind"]): ControlSymbol => ({
         </div>
       </section>
       <section>
+        <!-- 強調色は OperationDot/GlyphDot の scoped CSS と同値 (シアン/金 — 変更時は3箇所同期) -->
         <strong mt-2 block text-xs text-gray-500>操作の強調</strong>
         <div mt-1 flex items-center gap-2>
           <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
