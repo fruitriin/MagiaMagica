@@ -44,6 +44,28 @@
 5. tsconfig に `strict` は**生成時に入っていない**。手で足す
 6. `erasableSyntaxOnly` が生成時から有効 → `enum` は書けない。`type` ベース規約 (本プロジェクトの type > interface) と整合
 
+### UnoCSS は reset を別パッケージで入れる
+
+- preset-uno は Tailwind と違い **preflight (CSS リセット) を含まない**。`ul` の黒丸や
+  `button` の枠がそのまま出たらこれ。`bun add -d @unocss/reset` して main.ts の
+  先頭 (virtual:uno.css より前) で `import "@unocss/reset/tailwind.css"`
+
+### Vue + Vite+ alpha の HMR は editing 中に壊れることがある
+
+- `<script setup>` のトップレベル watch + Pinia 構成で、編集中の HMR rerender が
+  `TypeError: Cannot read properties of null (reading 'flags')` →
+  「[HMR] Something went wrong... Full reload required」になることがある
+- **full reload 後は再現しない** (本番ビルド・クリーンロードには影響なし)。
+  コンソールにこのスタック (`HMRClient.queueUpdate` 経由) が積もっていても
+  実バグと混同しない — クリーンリロード + `window.addEventListener('error')`
+  フックで操作テストして切り分ける
+
+### oxfmt は golden/fixture を必ず除外する
+
+- `vp check --fix` はプロジェクト内の JSON/HTML も整形する。バイト等価で比較する
+  golden ファイルが再フォーマットされると**ベースラインが静かに壊れる**。
+  `web/.prettierignore` に `golden/` を書く (oxfmt は .gitignore と .prettierignore を読む)
+
 ### lint/fmt/型チェックの一括窓口
 
 - `vp check` = oxfmt --check + oxlint + 型チェック。`vp check --fix` で fmt を自動修正

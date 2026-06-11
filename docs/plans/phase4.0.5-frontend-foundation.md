@@ -298,6 +298,18 @@ UI 実装中はオーナーの細かい確認が入る (オーナー指定)。**
 - E2E 確認: vite proxy 経由で `/events` 接続 → ファイル変更 → `/state` + `/spell` 再フェッチ → Vue 再描画
 - 既知の軽微事項 (M3 で整理): 初回ロード時に onMounted の selectFunction と SSE 接続直後イベントの refresh で `/spell` が2回走る (冪等なので実害なし)
 
+### M2 判定 (2026-06-11): 合格 (「同じに見える」)
+
+### M3 (2026-06-11 実施、判定待ち)
+
+- `<SourcePane>` (syntect HTML) + `<FunctionToc>` + ペアビューレイアウト (目次 | ソース | 魔法陣)、エラーバナー (構文エラー message + 行番号、last-good 保持)
+- **URL を唯一の状態源にする一方向ループ**: TOC クリック → `router.push(?fn=)` → query watch → `selectFunction`。戻る/進むも同じ watch を通る。fn 未指定の fallback 選択時だけ `router.replace` で書き戻し (履歴を汚さない)
+- 初回ロードは SSE 接続直後イベントの refresh に一本化 (M2 の二重フェッチ解消)。`setInitialFn` で `?fn=` を希望値として先置き
+- バグ修正: focus store の関数照合を `name` → `qualified` に (impl メソッド `Caster::cast` が fallback に落ちていた)
+- @unocss/reset 追加 (preset-uno は preflight なし — ul の黒丸・button 枠が出る)
+- E2E 確認済み: TOC 切替 / URL 同期 / 戻る進む / fallback 書き戻し / SSE で新関数が目次に出現 / 構文エラーバナー + last-good + 復旧 (一時 fixture)。HMR 編集中限定の警告は knowhow へ
+- 素材: write_document / write_control_flow / medium_render_doc / dense_dispatch の4ペアビュー (2x2) を送付済み
+
 ## 想定リスク
 
 - **Vite+ alpha の API 変動**: アルファ期間 (2026-03〜) のため後方互換破壊あり。実装時に最新リリースノート確認 + 計画書に確認日を記録。Vite+ が破壊的変更を出したら本計画に「Vite+ X.Y 対応」の追補をつける

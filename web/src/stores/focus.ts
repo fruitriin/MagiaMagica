@@ -6,16 +6,17 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 import { fetchSpell, fetchState } from "../composables/api.ts";
-import type { FunctionMeta, SpellResponse } from "../types/magia.ts";
+import type { FunctionMeta, ServerError, SpellResponse } from "../types/magia.ts";
 import { usePaletteStore } from "./palette.ts";
 import { useSourceStore } from "./source.ts";
 
 export const useFocusStore = defineStore("focus", () => {
   const file = ref<string | null>(null);
   const functions = ref<FunctionMeta[]>([]);
-  /** 構文エラー中は last-good 表示を保ちつつ、ここにメッセージが入る (M3 で UI 化)。 */
-  const serverError = ref<string | null>(null);
+  /** 構文エラー。エラー中も last-good の魔法陣・ソースを表示し続ける (会話を切らない)。 */
+  const serverError = ref<ServerError | null>(null);
 
+  /** 現在の関数 (qualified 名 — impl メソッドは `Caster::cast` 形式)。 */
   const currentFn = ref<string | null>(null);
   const spell = ref<SpellResponse | null>(null);
   const loadError = ref<string | null>(null);
@@ -26,6 +27,14 @@ export const useFocusStore = defineStore("focus", () => {
     const palette = usePaletteStore();
     return palette.style === "belka" ? spell.value.svg_belka : spell.value.svg;
   });
+
+  /**
+   * URL (`?fn=`) 由来の初期希望値を置く。実ロードは SSE 接続直後イベント
+   * (serve.rs が必ず1イベント流す) の refresh に一本化し、二重フェッチを避ける。
+   */
+  function setInitialFn(fn: string | null) {
+    currentFn.value = fn;
+  }
 
   /** `/state` を読み直して関数一覧を更新する。 */
   async function loadState() {
@@ -40,8 +49,8 @@ export const useFocusStore = defineStore("focus", () => {
    * 取得失敗時は直前の表示を保持する (エラー中も魔法陣を消さない — Phase 4.0 方針)。
    */
   async function selectFunction(fn: string | null) {
-    const fallback = functions.value[0]?.name ?? null;
-    const target = fn !== null && functions.value.some((f) => f.name === fn) ? fn : fallback;
+    const fallback = functions.value[0]?.qualified ?? null;
+    const target = fn !== null && functions.value.some((f) => f.qualified === fn) ? fn : fallback;
     if (target === null) return;
     currentFn.value = target;
     try {
@@ -68,6 +77,7 @@ export const useFocusStore = defineStore("focus", () => {
     spell,
     loadError,
     currentSvg,
+    setInitialFn,
     loadState,
     selectFunction,
     refresh,

@@ -92,12 +92,21 @@ export type FunctionMeta = {
   impl_context: string | null;
 };
 
+/** 構文エラーの内容。エラー中もサーバは last-good スナップショットを配信し続ける。 */
+export type ServerError = {
+  message: string;
+  /** エラー行 (1-origin)。位置を特定できないエラーでは null。 */
+  line: number | null;
+};
+
 /** `GET /state` のレスポンス。 */
 export type StateResponse = {
-  /** 構文エラー中は last-good を返しつつここにメッセージが入る。 */
-  error: string | null;
+  /** 構文エラー中は last-good を返しつつここに内容が入る。 */
+  error: ServerError | null;
   file: string;
   functions: FunctionMeta[];
+  /** ファイル更新ごとに進む世代番号 (SSE の `data:` と同じ系列)。 */
+  version: number;
 };
 
 /** `GET /spell/<fn>` のレスポンス。 */

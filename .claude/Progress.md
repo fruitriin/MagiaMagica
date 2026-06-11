@@ -81,8 +81,16 @@
 - [x] M2-5. ?fn= パラメータ受け取り (Vue Router → focus store 初期同期)
 - [x] **【バグ修正】SSE が Phase 2.1 から配信されていなかった潜在バグを発見・修正** — tiny_http のチャンク経路は二重バッファ (Encoder 8KB + BufWriter 1KB) が flush されず、イベントが永遠に届かない。`request.into_writer()` + 自前ヘッダ + イベント毎 flush の `stream_sse` に置換。回帰テスト `sse_events_stream_immediately` 追加 (serve_integration.rs)。E2E でファイル変更 → Vue 再フェッチを確認
 - [x] M2-6. Stage 1 ゲート (cargo 一式 + vp check + bun run build) 全通過
-- [ ] M2-7. 素材送付 (Vue 版 vs inline 版の比較スクショ) → **M2 判定待ち**
-- [ ] M3: ペアビュー UI（SourcePane / FunctionToc / SSE / エラー表示 / URL 同期）→ 判定待ち
+- [x] M2-7. 素材送付 (Vue 版 vs inline 版の比較スクショ) → **M2 判定: 合格** (「同じに見える」)
+
+**M3 (同サイクル続行、2026-06-11)**
+- [x] M3-1. SourcePane (syntect HTML v-html) + FunctionToc (クリック → ?fn= push) + ペアビューレイアウト (TOC | ソース | 魔法陣)
+- [x] M3-2. URL 同期: query watch → selectFunction の一方向ループ (URL が唯一の状態源)。戻る/進む対応 (push)、fallback 時の書き戻し (replace)
+- [x] M3-3. エラー表示: 構文エラーバナー (message + 行番号) + last-good 保持 + 復旧の E2E 確認 (一時 fixture で実証)
+- [x] M3-4. focus store の照合を qualified に修正 (impl メソッド `Caster::cast` が name 照合で fallback に落ちるバグ)、初回ロードを SSE 接続直後イベントに一本化 (M2 の二重フェッチ解消)
+- [x] M3-5. @unocss/reset 追加 (preset-uno は preflight を含まない)
+- [x] M3-6. ゲート: vp check + bun run build 通過 (Rust 側は今回無変更 — M2 で全通過済み)。E2E: TOC 切替 / URL 同期 / 戻る進む / SSE 新関数反映 / エラーバナー全て確認、クリーンロードでコンソールエラーなし (HMR 編集中限定の警告は knowhow に記録)
+- [x] M3-7. 素材送付 (4 fixture のペアビュー 2x2) → **M3 判定待ち**
 - [ ] M4: Phase 2.x 機能の Vue 移植（LayerPalette / DslEditor / TranscriptRegion）→ 判定待ち
 - [ ] M5: rust-embed 統合 + 旧 inline HTML 削除 + build.rs + CI + バイナリサイズ → 判定待ち
 - [ ] M6: Vitest + Playwright + Stage 1 ゲート + 知見記録
