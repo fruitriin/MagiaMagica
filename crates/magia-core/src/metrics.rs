@@ -21,6 +21,8 @@ pub struct Metrics {
     pub early_returns: u32,
     /// MainRing の Operation 数 (書き起こしの規模表現に使う)。
     pub main_operations: u32,
+    /// unsafe な Operation の総数 (CI しきい値判定 spec v0.3 §9.3 の基礎数値)。
+    pub unsafe_ops: u32,
 }
 
 impl Default for Metrics {
@@ -33,6 +35,7 @@ impl Default for Metrics {
             glyphs: 0,
             early_returns: 0,
             main_operations: 0,
+            unsafe_ops: 0,
         }
     }
 }
@@ -46,6 +49,7 @@ pub fn measure(module: &Module) -> Metrics {
     let mut glyphs: u32 = 0;
     let mut early_returns: u32 = 0;
     let mut main_operations: u32 = 0;
+    let mut unsafe_ops: u32 = 0;
 
     for sigil in &module.sigils {
         match sigil.kind {
@@ -66,6 +70,9 @@ pub fn measure(module: &Module) -> Metrics {
             if category != EffectCategory::Pure && !categories.contains(&category) {
                 categories.push(category);
             }
+            if op.effects.unsafe_block {
+                unsafe_ops += 1;
+            }
         }
     }
 
@@ -77,6 +84,7 @@ pub fn measure(module: &Module) -> Metrics {
         glyphs,
         early_returns,
         main_operations,
+        unsafe_ops,
     }
 }
 

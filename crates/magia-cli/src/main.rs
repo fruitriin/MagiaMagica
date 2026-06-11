@@ -9,6 +9,7 @@
 //! - `magia diff <BEFORE> <AFTER> --fn <NAME>` — 同一関数の2リビジョンの構造差分 (Spell Diff)。
 //!   `--svg` で差分を強調した魔法陣を出力する
 
+mod gitio;
 mod serve;
 
 use std::fs;
@@ -77,11 +78,14 @@ enum Command {
     },
     /// 同一関数の2リビジョンを構造比較する — Spell Diff (spec v0.3 §9.2)
     Diff {
-        /// 変更前の Rust ソースファイル
+        /// 変更前の Rust ソースファイル (--git 指定時は比較対象ファイル)
         before: PathBuf,
-        /// 変更後の Rust ソースファイル
-        after: PathBuf,
-        /// 比較する関数名 (両ファイルに存在すること)
+        /// 変更後の Rust ソースファイル (--git 指定時は不要)
+        after: Option<PathBuf>,
+        /// git リビジョン比較モード: <REV> 時点の同ファイルを変更前として使う
+        #[arg(long, value_name = "REV", conflicts_with = "after")]
+        git: Option<String>,
+        /// 比較する関数名 (両リビジョンに存在すること)
         #[arg(long = "fn", value_name = "NAME")]
         fn_name: String,
         /// JSON で出力する (CI 連携用)
@@ -96,6 +100,18 @@ enum Command {
         /// 出力先 SVG パス。省略時は標準出力 (--svg 指定時のみ有効)
         #[arg(short, long, value_name = "OUT.svg", requires = "svg")]
         output: Option<PathBuf>,
+    },
+    /// リビジョン以降に変更された関数を列挙する — CI の変更検出 (spec v0.3 §9.1)
+    Changed {
+        /// 比較基準のリビジョン (例: origin/main)
+        #[arg(long, value_name = "REV")]
+        git: String,
+        /// JSON で出力する (CI 連携用)
+        #[arg(long)]
+        json: bool,
+        /// unsafe 操作が新規追加された関数があれば exit 1 (spec v0.3 §9.3 の唯一の fail 条件)
+        #[arg(long)]
+        fail_on_new_unsafe: bool,
     },
     /// dev-server を起動する (ファイル保存のたびにブラウザの魔法陣を自動更新)
     Serve {
@@ -176,20 +192,28 @@ fn run(cli: Cli) -> Result<()> {
         Command::Diff {
             before,
             after,
+            git,
             fn_name,
             json,
             svg,
             filter,
             output,
-        } => run_diff(
-            &before,
-            &after,
-            &fn_name,
+        } => {
+            let sources = diff_sources(&before, after.as_deref(), git.as_deref())?;
+            run_diff(
+                &sources,
+                &fn_name,
+                json,
+                svg,
+                filter.as_deref(),
+                output.as_deref(),
+            )
+        }
+        Command::Changed {
+            git,
             json,
-            svg,
-            filter.as_deref(),
-            output.as_deref(),
-        ),
+            fail_on_new_unsafe,
+        } => run_changed(&git, json, fail_on_new_unsafe),
         Command::Serve {
             file,
             fn_name,
@@ -241,20 +265,52 @@ fn prettify_parse_error(error: &magia_rust::Error) -> anyhow::Error {
     }
 }
 
+/// diff の入力2系統 (ファイル2つ / --git <REV>) を「ソース文字列ペア」に正規化する。
+/// run_diff 以降は入力の出自を意識しない (複雑性をここで畳む)。
+struct DiffSources {
+    before_source: String,
+    /// エラー表示用のラベル (例: "origin/main:src/lib.rs")
+    before_label: String,
+    after_source: String,
+    after_label: String,
+}
+
+fn diff_sources(before: &Path, after: Option<&Path>, git: Option<&str>) -> Result<DiffSources> {
+    match (after, git) {
+        (Some(after), None) => Ok(DiffSources {
+            before_source: read_source(before)?,
+            before_label: before.display().to_string(),
+            after_source: read_source(after)?,
+            after_label: after.display().to_string(),
+        }),
+        // --git モード: <REV> 時点の同ファイルが変更前、作業ツリーが変更後。
+        (None, Some(rev)) => Ok(DiffSources {
+            before_source: gitio::show_file_at(rev, before)?,
+            before_label: format!("{rev}:{}", before.display()),
+            after_source: read_source(before)?,
+            after_label: before.display().to_string(),
+        }),
+        (None, None) => anyhow::bail!(
+            "変更後ファイルか --git <REV> のどちらかを指定してください (magia diff --help)"
+        ),
+        // clap の conflicts_with で弾かれるが、防御として明示する。
+        (Some(_), Some(_)) => anyhow::bail!("<AFTER> と --git は同時に指定できません"),
+    }
+}
+
 /// `magia diff` の本体。テキスト / JSON / 強調 SVG の3形態で出力する。
 fn run_diff(
-    before: &Path,
-    after: &Path,
+    sources: &DiffSources,
     fn_name: &str,
     json: bool,
     svg: bool,
     filter: Option<&Path>,
     output: Option<&Path>,
 ) -> Result<()> {
-    let before_graph = parse_source(&read_source(before)?, fn_name)
-        .with_context(|| format!("変更前 ({})", before.display()))?;
-    let after_graph = parse_source(&read_source(after)?, fn_name)
-        .with_context(|| format!("変更後 ({})", after.display()))?;
+    let before_graph = parse_source(&sources.before_source, fn_name)
+        .with_context(|| format!("変更前 ({})", sources.before_label))?;
+    let after_graph = parse_source(&sources.after_source, fn_name)
+        .with_context(|| format!("変更後 ({})", sources.after_label))?;
     let spell_diff = magia_core::diff::diff(&before_graph, &after_graph);
     if svg {
         // diff 文脈なので highlight: changed を含むフィルターも有効 (spec v0.3 §8)。
@@ -283,6 +339,152 @@ fn run_diff(
     Ok(())
 }
 
+/// 変更関数1件の検出結果。
+struct ChangedFunction {
+    file: String,
+    function: String,
+    /// "追加" / "削除" / "変更"
+    status: &'static str,
+    /// unsafe 操作が新規に増えたか (spec v0.3 §9.3 の fail 条件)。
+    new_unsafe: bool,
+}
+
+/// `magia changed --git <REV>` の本体。
+///
+/// 変更された .rs ファイルを git に聞き、各ファイルの関数一覧を before/after で
+/// 突き合わせて「追加 / 削除 / 変更」を列挙する。構造が不変の関数は出さない。
+/// 構文エラー等で解析できないファイルは警告して飛ばす (CI を解析失敗で
+/// 落とさない — ビルドの成否は別ジョブの責務)。
+fn run_changed(rev: &str, json: bool, fail_on_new_unsafe: bool) -> Result<()> {
+    let cwd = Path::new(".");
+    let root = gitio::repo_root(cwd)?;
+    let mut entries: Vec<ChangedFunction> = Vec::new();
+
+    for relative in gitio::changed_rs_files(rev, cwd)? {
+        // 追加ファイルは before が、削除ファイルは after が None になる。
+        let before_source = gitio::show_repo_file(rev, cwd, &relative).ok();
+        let after_source = fs::read_to_string(root.join(&relative)).ok();
+        let before_fns = functions_or_warn(before_source.as_deref(), rev, &relative);
+        let after_fns = functions_or_warn(after_source.as_deref(), "作業ツリー", &relative);
+
+        // after の出現順を基準にし、削除された関数を後ろに足す (決定論的)。
+        for name in &after_fns {
+            if before_fns.contains(name) {
+                let (Some(before_src), Some(after_src)) =
+                    (before_source.as_deref(), after_source.as_deref())
+                else {
+                    continue;
+                };
+                let (Ok(before_graph), Ok(after_graph)) = (
+                    parse_function(before_src, name),
+                    parse_function(after_src, name),
+                ) else {
+                    continue; // 一覧には載るが個別解析に失敗 (マクロ境界等) — 黙って不変扱いにしない
+                };
+                let spell_diff = magia_core::diff::diff(&before_graph, &after_graph);
+                if spell_diff.is_empty() {
+                    continue; // 不変の関数は列挙しない (spec §9.1: 変更された関数だけ)
+                }
+                entries.push(ChangedFunction {
+                    file: relative.clone(),
+                    function: name.clone(),
+                    status: "変更",
+                    new_unsafe: spell_diff.metrics.after.unsafe_ops
+                        > spell_diff.metrics.before.unsafe_ops,
+                });
+            } else {
+                let new_unsafe = after_source
+                    .as_deref()
+                    .and_then(|src| parse_function(src, name).ok())
+                    .and_then(|graph| graph.modules.first().map(magia_core::metrics::measure))
+                    .is_some_and(|m| m.unsafe_ops > 0);
+                entries.push(ChangedFunction {
+                    file: relative.clone(),
+                    function: name.clone(),
+                    status: "追加",
+                    new_unsafe,
+                });
+            }
+        }
+        for name in &before_fns {
+            if !after_fns.contains(name) {
+                entries.push(ChangedFunction {
+                    file: relative.clone(),
+                    function: name.clone(),
+                    status: "削除",
+                    new_unsafe: false,
+                });
+            }
+        }
+    }
+
+    print_changed(&entries, json)?;
+
+    if fail_on_new_unsafe {
+        let violations: Vec<String> = entries
+            .iter()
+            .filter(|e| e.new_unsafe)
+            .map(|e| format!("{} の {}", e.file, e.function))
+            .collect();
+        if !violations.is_empty() {
+            anyhow::bail!(
+                "unsafe 操作が新規追加されています (spec v0.3 §9.3): {}",
+                violations.join("、")
+            );
+        }
+    }
+    Ok(())
+}
+
+/// changed の検出結果をテキスト (TSV) または JSON で出力する。
+fn print_changed(entries: &[ChangedFunction], json: bool) -> Result<()> {
+    if json {
+        let value = entries
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "file": e.file,
+                    "function": e.function,
+                    "status": e.status,
+                    "new_unsafe": e.new_unsafe,
+                })
+            })
+            .collect::<Vec<_>>();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::Value::Array(value))
+                .context("changed の JSON 変換に失敗しました")?
+        );
+    } else {
+        for entry in entries {
+            let mark = if entry.new_unsafe {
+                "\t⚠ unsafe 追加"
+            } else {
+                ""
+            };
+            println!(
+                "{}\t{}\t{}{}",
+                entry.file, entry.function, entry.status, mark
+            );
+        }
+    }
+    Ok(())
+}
+
+/// ソースから関数名一覧を取る。解析できなければ警告して空にする。
+fn functions_or_warn(source: Option<&str>, revision: &str, file: &str) -> Vec<String> {
+    let Some(source) = source else {
+        return Vec::new();
+    };
+    match list_functions(source) {
+        Ok(names) => names,
+        Err(error) => {
+            eprintln!("警告: {revision} の {file} を解析できません ({error})");
+            Vec::new()
+        }
+    }
+}
+
 /// SpellDiff を CI 連携用の JSON に整形する。
 /// IR と違い diff 型は Serialize を持たない (公開スキーマは CLI 出力だけに限定し、
 /// core の内部表現を JSON 契約から切り離す) ため、ここで明示的に組み立てる。
@@ -295,6 +497,7 @@ fn diff_to_json(spell_diff: &magia_core::diff::SpellDiff, fn_name: &str) -> Resu
             "glyphs": m.glyphs,
             "early_returns": m.early_returns,
             "main_operations": m.main_operations,
+            "unsafe_ops": m.unsafe_ops,
         })
     };
     let value = serde_json::json!({

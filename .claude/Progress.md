@@ -55,4 +55,20 @@
 
 ## タスク
 
-（現在タスクなし）
+### Phase 3.3 — CI 統合 (docs/plans/phase3.3-ci-integration.md)
+
+**実装フェーズ**
+- [x] 1. `Metrics` に unsafe 操作数を追加（しきい値判定 spec v0.3 §9.3 の基礎数値。diff レポート/JSON にも露出）
+- [x] 2. CLI: `magia diff --git <REV> <FILE> --fn <NAME>`（git show でベース版取得。通常2ファイルモードと排他）
+- [x] 3. CLI: `magia changed --git <REV> [--json] [--fail-on-new-unsafe]`（変更 .rs ファイル × 関数の追加/削除/変更を列挙。unsafe 新規追加で exit 1）
+- [x] 4. ローカル再現スクリプト `scripts/spell-diff-report.sh`（31 関数の実差分でローカル確認済み）
+- [x] 5. `.github/workflows/spell-diff.yml`（changed 検出 → レポート生成 → sticky comment 投稿 → fail-on-new-unsafe）
+- [x] 6. テスト（init_git_fixture による git モード統合テスト6本）
+- [x] 7. Stage 1 品質ゲート + コーディング知見記録（git-ci-integration-pattern.md 新設）
+- [ ] 8. 実地確認: main を push → テスト PR (関数変更 + unsafe 追加) で コメント投稿と fail を確認 → PR クローズ
+
+**品質検証フェーズ（Stage 2）**
+- [ ] 9. レビュー + コントリビューション検出 + 指摘対応 → ゲート再実行
+
+**完了処理**
+- [ ] 10. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット

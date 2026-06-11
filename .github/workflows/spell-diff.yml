@@ -1,0 +1,59 @@
+# Spell Diff — PR ごとに関数の構造差分を魔法陣として報告する (Phase 3.3, spec v0.3 §9)
+#
+# 設計判断: CI ロジックは magia コマンドと scripts/spell-diff-report.sh に寄せ、
+# この YAML は薄く保つ。ローカルでも `scripts/spell-diff-report.sh origin/main` で
+# 同じレポートが再現できる (デバッグ可能性の要件)。
+name: Spell Diff
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  spell-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # ベースリビジョンとの比較に全履歴が要る
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: magia をビルド
+        run: cargo build -p magia-cli
+
+      - name: Spell Diff レポートを生成
+        run: |
+          MAGIA=target/debug/magia scripts/spell-diff-report.sh "origin/${{ github.base_ref }}" spell-diff-out
+
+      - name: 強調 SVG を artifact に保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: spell-diff-svg
+          path: spell-diff-out/svg
+          if-no-files-found: ignore
+
+      - name: PR コメントを更新 (sticky)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # マーカー <!-- spell-diff --> を持つ既存コメントがあれば更新、なければ新規投稿。
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- spell-diff -->")) | .id' | head -n1)"
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -F body=@spell-diff-out/comment.md
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F body=@spell-diff-out/comment.md
+          fi
+
+      - name: unsafe 新規追加チェック (spec v0.3 §9.3 — 唯一の fail 条件)
+        run: |
+          target/debug/magia changed --git "origin/${{ github.base_ref }}" --fail-on-new-unsafe

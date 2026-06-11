@@ -99,7 +99,7 @@ impl SpellDiff {
 
 fn metric_changes(delta: &MetricsDelta) -> Vec<String> {
     let mut lines = Vec::new();
-    let pairs: [(&str, u32, u32); 5] = [
+    let pairs: [(&str, u32, u32); 6] = [
         ("複雑度", delta.before.complexity, delta.after.complexity),
         (
             "副作用カテゴリ",
@@ -112,6 +112,12 @@ fn metric_changes(delta: &MetricsDelta) -> Vec<String> {
             "早期リターン",
             delta.before.early_returns,
             delta.after.early_returns,
+        ),
+        // CI しきい値 (spec v0.3 §9.3) の根拠数値。レポートでも見えるようにする。
+        (
+            "unsafe 操作",
+            delta.before.unsafe_ops,
+            delta.after.unsafe_ops,
         ),
     ];
     for (label, before, after) in pairs {

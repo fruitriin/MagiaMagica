@@ -463,6 +463,168 @@ fn diff_missing_function_names_the_offending_file() {
     assert!(stderr.contains("変更後") && stderr.contains("simple_compute.rs"));
 }
 
+// ===== Phase 3.3: git 連携 (--git / changed) =====
+
+/// 一時 git リポジトリを作り、v1 をコミット → v2 を作業ツリーに置く。
+/// v1→v2 の差分: alpha は extra() 呼び出しが増え (変更)、gone は消え (削除)、
+/// fresh は unsafe fn として新規追加 (unsafe 新規追加の fail 条件を踏む)。
+fn init_git_fixture(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("magia-git-test-{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(args)
+            .output()
+            .expect("git を起動できる");
+        assert!(
+            output.status.success(),
+            "git {args:?} が失敗: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "test@example.com"]);
+    git(&["config", "user.name", "test"]);
+    std::fs::write(
+        dir.join("sample.rs"),
+        "fn alpha(x: u32) -> u32 { helper(x) }\nfn gone() {}\n",
+    )
+    .unwrap();
+    git(&["add", "sample.rs"]);
+    git(&["commit", "-q", "-m", "v1"]);
+    std::fs::write(
+        dir.join("sample.rs"),
+        "fn alpha(x: u32) -> u32 { extra(x); helper(x) }\nunsafe fn fresh(p: *const u8) -> u8 { *p }\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn diff_git_mode_compares_against_revision() {
+    let dir = init_git_fixture("diff");
+    let output = magia()
+        .current_dir(&dir)
+        .arg("diff")
+        .arg("sample.rs")
+        .arg("--git")
+        .arg("HEAD")
+        .arg("--fn")
+        .arg("alpha")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("追加: main > 召喚 extra"));
+}
+
+#[test]
+fn diff_requires_after_or_git() {
+    let output = magia()
+        .arg("diff")
+        .arg(fixtures_dir().join("diff/before.rs"))
+        .arg("--fn")
+        .arg("process_order")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--git"), "案内が出る: {stderr}");
+}
+
+#[test]
+fn changed_lists_added_removed_and_modified_functions() {
+    let dir = init_git_fixture("changed");
+    let output = magia()
+        .current_dir(&dir)
+        .arg("changed")
+        .arg("--git")
+        .arg("HEAD")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("alpha\t変更"));
+    assert!(text.contains("gone\t削除"));
+    assert!(text.contains("fresh\t追加"));
+    assert!(text.contains("unsafe 追加"), "unsafe の警告マークが出る");
+}
+
+#[test]
+fn changed_json_carries_new_unsafe_flag() {
+    let dir = init_git_fixture("changed-json");
+    let output = magia()
+        .current_dir(&dir)
+        .arg("changed")
+        .arg("--git")
+        .arg("HEAD")
+        .arg("--json")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("changed --json は有効な JSON を出す");
+    let entries = json.as_array().expect("配列");
+    let fresh = entries
+        .iter()
+        .find(|e| e["function"] == "fresh")
+        .expect("fresh が列挙される");
+    assert_eq!(fresh["status"], "追加");
+    assert_eq!(fresh["new_unsafe"], true);
+    let alpha = entries
+        .iter()
+        .find(|e| e["function"] == "alpha")
+        .expect("alpha が列挙される");
+    assert_eq!(alpha["new_unsafe"], false);
+}
+
+#[test]
+fn changed_fails_on_new_unsafe_when_requested() {
+    let dir = init_git_fixture("fail-unsafe");
+    let output = magia()
+        .current_dir(&dir)
+        .arg("changed")
+        .arg("--git")
+        .arg("HEAD")
+        .arg("--fail-on-new-unsafe")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success(), "unsafe 新規追加で fail する");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsafe 操作が新規追加"));
+    assert!(stderr.contains("fresh"), "違反した関数名が出る");
+}
+
+#[test]
+fn changed_passes_when_no_new_unsafe() {
+    let dir = init_git_fixture("pass-unsafe");
+    // unsafe を含まない v2 に差し替える (alpha の変更のみ)。
+    std::fs::write(
+        dir.join("sample.rs"),
+        "fn alpha(x: u32) -> u32 { extra(x); helper(x) }\nfn gone() {}\n",
+    )
+    .unwrap();
+    magia()
+        .current_dir(&dir)
+        .arg("changed")
+        .arg("--git")
+        .arg("HEAD")
+        .arg("--fail-on-new-unsafe")
+        .assert()
+        .success();
+}
+
 #[test]
 fn version_and_help_work() {
     magia().arg("--version").assert().success();
