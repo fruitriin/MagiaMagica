@@ -27,9 +27,13 @@ fn main() {
         );
     }
 
+    // 鮮度判定は rerun-if-changed と二重に見えるが役割が違う: rerun-if-changed は
+    // 「build.rs を再実行するか」、mtime 比較は「再実行されたとき bun build を呼ぶか」。
+    // CI のように bun build を明示的に先行させた環境では後者がスキップして二重ビルドを防ぐ。
     let fresh = match (dist_mtime(&dist_index), src_mtime(&web_dir)) {
         (Some(dist), Some(src)) => dist >= src,
-        (Some(_), None) => true,
+        // src ツリーが読めないのは異常 — 黙って古い dist を採用しない (センチネル禁止規約)。
+        (Some(_), None) => panic!("web/src の最終更新時刻を取得できません (web/ の構成を確認)"),
         _ => false,
     };
     if fresh {

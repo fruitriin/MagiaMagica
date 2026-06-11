@@ -11,6 +11,8 @@ const route = useRoute();
 const router = useRouter();
 
 function select(qualified: string) {
+  // 同一関数の再クリックは何もしない (UX 確定)。「再クリックでリセット」のような
+  // 仕様を入れる場合はこの早期 return を外すことになる。
   if (qualified === focus.currentFn) return;
   void router.push({ query: { ...route.query, fn: qualified } });
 }

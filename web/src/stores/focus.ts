@@ -21,10 +21,11 @@ export const useFocusStore = defineStore("focus", () => {
   const spell = ref<SpellResponse | null>(null);
   const loadError = ref<string | null>(null);
 
+  const palette = usePaletteStore();
+
   /** 表示すべき SVG。様式の選択は palette store の管轄。 */
   const currentSvg = computed(() => {
     if (spell.value === null) return null;
-    const palette = usePaletteStore();
     return palette.style === "belka" ? spell.value.svg_belka : spell.value.svg;
   });
 
@@ -44,21 +45,29 @@ export const useFocusStore = defineStore("focus", () => {
     serverError.value = state.error;
   }
 
+  /** 選択リクエストの世代。後発の選択があったら先発の応答を捨てる (競合防止)。 */
+  let selectSeq = 0;
+
   /**
    * 関数を選択して呪文を取得する。`fn` が一覧にない場合や未指定の場合は先頭の関数。
    * 取得失敗時は直前の表示を保持する (エラー中も魔法陣を消さない — Phase 4.0 方針)。
+   * 連打 (戻る/進むの連続) では最後に選んだ関数の応答だけを反映する。
    */
   async function selectFunction(fn: string | null) {
     const fallback = functions.value[0]?.qualified ?? null;
     const target = fn !== null && functions.value.some((f) => f.qualified === fn) ? fn : fallback;
     if (target === null) return;
     currentFn.value = target;
+    selectSeq += 1;
+    const seq = selectSeq;
     try {
       const next = await fetchSpell(target);
+      if (seq !== selectSeq) return; // 古い応答 — 後発の選択が優先
       spell.value = next;
       loadError.value = null;
       useSourceStore().setSource(next.source_html, next.start_line);
     } catch (e) {
+      if (seq !== selectSeq) return;
       loadError.value = e instanceof Error ? e.message : String(e);
     }
   }

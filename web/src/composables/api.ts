@@ -26,6 +26,7 @@ export function fetchSpell(fn: string): Promise<SpellResponse> {
  */
 export function connectEvents(handlers: {
   onUpdate: (version: string) => void;
+  /** "connecting" は接続前の初期値で EventSource からは遷移しないため、ここには現れない。 */
   onStatus: (status: "open" | "error") => void;
 }): () => void {
   const source = new EventSource("/events");

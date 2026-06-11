@@ -44,6 +44,9 @@ export function useQuerySync() {
       }
     }
 
+    // fn は currentFn と異なるときだけロードする。初期化パス (下の setInitialFn 直後)
+    // ではこのガードにより selectFunction が走らず、初回ロードは SSE 接続直後
+    // イベントの refresh に一本化される — このガードはその前提を担う (壊すと二重フェッチ)。
     const fn = asString(query["fn"]);
     if (fn !== null && fn !== focus.currentFn) {
       void focus.selectFunction(fn);
@@ -67,7 +70,10 @@ export function useQuerySync() {
   focus.setInitialFn(asString(route.query["fn"]));
   applyQueryToStores(route.query);
 
-  // store → URL。状態微調整は履歴を汚さない (replace)。同値ならスキップしてループを断つ
+  // store → URL。状態微調整は履歴を汚さない (replace)。同値ならスキップしてループを断つ。
+  // 比較はキー順に依存させない (URL が ?style=..&fn=.. の順で入力されても同値と扱う)。
+  const canonical = (params: Record<string, string>) =>
+    JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)));
   watch(
     [() => focus.currentFn, () => palette.style, () => palette.layers],
     () => {
@@ -75,7 +81,7 @@ export function useQuerySync() {
       const current = Object.fromEntries(
         Object.entries(route.query).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : [])),
       );
-      if (JSON.stringify(next) !== JSON.stringify(current)) {
+      if (canonical(next) !== canonical(current)) {
         void router.replace({ query: next });
       }
     },

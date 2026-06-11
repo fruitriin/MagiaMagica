@@ -18,6 +18,7 @@ const container = ref<HTMLElement | null>(null);
 function applyLayers() {
   if (container.value === null) return;
   for (const layer of LAYERS) {
+    // クラス名は Rust レンダラの <g class="layer-*"> と同語彙 (spec §5.4 位置共有制約)。
     const cssClass = `layer-${layer.replace(/_/g, "-")}`;
     const state = palette.layers[layer];
     for (const group of container.value.querySelectorAll<SVGGElement>(`g.${cssClass}`)) {

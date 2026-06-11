@@ -41,6 +41,7 @@ export function parseDsl(text: string): DslParseResult {
         }
         hasCategories = true;
       }
+      // split は常に1要素以上返すので [0] は実在する (?? "" は noUncheckedIndexedAccess 対策)。
       const name = (part.split("[")[0] ?? "").trim();
       if (!(LAYERS as readonly string[]).includes(name)) {
         return { ok: false, error: `${i + 1}行目: 未知のレイヤー名 \`${name}\`` };

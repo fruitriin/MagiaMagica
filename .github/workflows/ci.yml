@@ -53,6 +53,8 @@ jobs:
       - name: Rust テスト
         run: cargo test --workspace
 
+      # E2E の webServer (e2e/serve-fixture.sh) は target/debug/magia を使う。
+      # 上の cargo test が bin ターゲットをビルド済みなので、ここでの再ビルドはキャッシュヒットする。
       - name: Playwright ブラウザをインストール
         working-directory: web
         run: bunx playwright install --with-deps chromium

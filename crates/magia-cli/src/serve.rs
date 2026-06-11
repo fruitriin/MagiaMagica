@@ -292,6 +292,7 @@ struct WebDist;
 fn handle_request(request: tiny_http::Request, shared: &Shared) {
     let url = request.url().to_string();
     // ルーティングはパス部分のみで行う (`?fn=...` 等の状態クエリが付いても返す)。
+    // split は常に1要素以上返すため unwrap_or は不達 (防御のみ)。
     let path = url.split('?').next().unwrap_or("/").to_string();
     let result = match (request.method(), path.as_str()) {
         (tiny_http::Method::Get, "/") => request.respond(embedded_response("index.html")),
@@ -309,6 +310,8 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
                 // 新規接続のたびに切断済みクライアントを掃除する (publish が無い間の
                 // Sender リーク防止)。現世代を送って生存判定を兼ねる (受信側は
                 // 冪等な refresh をするだけなので余分な1イベントは無害)。
+                // 既知の制約: 切断済み Sender は次の reload か新規接続まで残る
+                // (ローカル開発ツールの接続数では許容)。
                 let version = shared.version.load(Ordering::SeqCst);
                 let mut clients = lock_or_recover(&shared.clients);
                 clients.retain(|client| client.send(version).is_ok());
@@ -323,6 +326,8 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
             return;
         }
         // API 以外は SPA の静的ファイル (/assets/*.js, /favicon.svg, ...)。
+        // 注: SPA のルートは現状 `/` 1本のため index.html フォールバックは持たない。
+        // Vue Router にパスベースのビューを足すときは 404 → index.html のフォールバックが要る。
         (tiny_http::Method::Get, file) => {
             request.respond(embedded_response(file.trim_start_matches('/')))
         }
