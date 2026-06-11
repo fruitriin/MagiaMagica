@@ -7,10 +7,10 @@
 
 **Phase 3 (3.0〜3.5) は全完了 (2026-06-11)** — Spell Diff 系譜 + CI 統合 + ベルカ式。
 残存する判定待ち: Phase 1.8 / 3.2 / 3.5 の意匠判定素材 (オーナー送付済み)。
-2026-06-11 にオーナー要望から **Phase 4 系 (フロントエンド充実) ストリームを立ち上げ**、
-4.0 (ソース連動ビュー) は**サーバ側 API まで完了** (2026-06-11、スコープ縮小はオーナー指示)。次は 4.0.5 (Vue 基盤 — UI 実装をここに集約)。
-Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow 一括昇格 PR) は
-オーナー判定が出揃った節目に実施する。
+**Phase 4.0.5 (Vue 基盤) も完了 (2026-06-11)** — `magia` バイナリ単体で Vue UI が動く。
+次は **4.0.7 (案1: SVG → 境界スキーマ + Vue コンポーネント)**。
+Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow 一括昇格 PR — Rust 系と
+Web 系で PR を分ける、計8件 + addf-knowhow 追記4例) はオーナー判定が出揃った節目に実施する。
 
 ## バックログ
 
@@ -22,7 +22,7 @@ Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow
 | 4 | 3.3 | [docs/plans/phase3.3-ci-integration.md](docs/plans/phase3.3-ci-integration.md) | 完了 |
 | 5 | 3.4 | [docs/plans/phase3.4-dataflow-ir.md](docs/plans/phase3.4-dataflow-ir.md) | 完了 |
 | 6 | 3.5 | [docs/plans/phase3.5-belka-style.md](docs/plans/phase3.5-belka-style.md) | 完了（意匠判定待ち） |
-| 7 | 4.0.5 | [docs/plans/phase4.0.5-frontend-foundation.md](docs/plans/phase4.0.5-frontend-foundation.md) | 進行中（M1〜M2 合格、M3 判定待ち） |
+| 7 | 4.0.5 | [docs/plans/phase4.0.5-frontend-foundation.md](docs/plans/phase4.0.5-frontend-foundation.md) | **完了**（M1〜M5 全判定合格、2026-06-11） |
 | 8 | 4.0 | [docs/plans/phase4.0-source-paired-view.md](docs/plans/phase4.0-source-paired-view.md) | 完了（サーバ側 API まで。UI は 4.0.5 に移管） |
 | 9 | 4.0.7 | [docs/plans/phase4.0.7-svg-to-vue-schema.md](docs/plans/phase4.0.7-svg-to-vue-schema.md) | 未着手（**案1**: 境界スキーマ + Vue コンポーネント） |
 | 10 | 4.0.9 | [docs/plans/phase4.0.9-ir-json-export-and-vue-builder.md](docs/plans/phase4.0.9-ir-json-export-and-vue-builder.md) | 未着手（**案2**: IR JSON + Vue ビルダ、SVG パーサ廃止） |

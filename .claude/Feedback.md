@@ -8,7 +8,7 @@
 
 ## オーナーフィードバック
 
-- **判定依頼 (Phase 4.0.5 M5, 2026-06-11)**: M4 合格 + パレット折りたたみ対応済み (既定閉)。M5 完了 — rust-embed 統合で **`magia` バイナリ単体で Vue UI 全機能が動く配布形態**になりました (旧 inline HTML 削除、build.rs が bun ビルドを自動化、CI も Bun 化)。判定ポイント: ①バイナリ単体配信のスクショ (4747 直、vite なし)、②**バイナリサイズ 5.91MB — 基準 5MB 超過**。ただし SPA 同梱の純増は +0.11MB で、超過の主因は Phase 4.0 の syntect (ハイライト用シンタックス定義)。5MB 復帰には syntect を Rust シンタックスだけに絞る最適化が必要です — **「5.91MB を受け入れる」か「syntect 削減を別計画で起こす」かご判定ください**。OK なら M6 (Vitest + Playwright + 知見記録) → Stage 2 → 完了処理に進みます
+- **報告 (Phase 4.0.5 完了, 2026-06-11)**: フロントエンド実行基盤 (Vue 3 + Vite+ + UnoCSS + Bun) が**全マイルストーン判定合格で完了**しました。`magia` バイナリ単体で Vue UI 全機能が動く配布形態です (旧 inline HTML 削除済み、CI も Bun 化、Vitest 18本 + Playwright E2E 8本)。判定での決定事項は反映済み: ルーティングは明示的クエリベース / ペイン並びは魔法陣最優先 / パレット折りたたみ / バイナリサイズ基準撤廃 (CLAUDE.repo.md に方針化) / SVG 描画系アフォーダンスは 4.3 後。**次は 4.0.7 (案1: SVG → 境界スキーマ + Vue コンポーネント)** です。リリースを行う場合は `/addf-release` を実行してください
 - **報告 (SSE 潜在バグ修正, 2026-06-11)**: Phase 2.1 から SSE (`/events`) がクライアントに配信されていなかった潜在バグを M2 の E2E 確認中に発見・修正しました (tiny_http チャンク経路の二重バッファ問題)。live-reload は実際には動いていませんでした。修正後は E2E でファイル保存 → Vue 自動再描画を確認済み、回帰テストも追加済みです
 - **報告 (Phase 3 完了, 2026-06-11)**: Phase 3 (3.0〜3.5) が全完了しました — Spell Diff (構造差分 + 視覚強調)、CI 統合 (PR 自動コメント + unsafe チェック)、データフロー IR、ベルカ式 (三角力場)。リリース (バージョン採番・チェンジログ) を行う場合は `/addf-release` を実行してください。次サイクルからはオーナー要望の Phase 4.0 (ソース連動ビュー) に着手します
 - **意匠判定依頼 (Phase 3.5, 2026-06-11)**: ベルカ式の素材3点を送付済み — ①loop_accumulate ②自己ホスティング measure ③Reducer 形。色 (空色/琥珀/臙脂)・三角の歪み・力場の濃淡・「Reducer 形で生成極が空円」の見せ方が判定ポイント。調整は `render/belka.rs` 冒頭の定数群と `palette.rs` の `BELKA_*` で対応
@@ -28,6 +28,8 @@
 - Phase 3.2 のコントリビューション検出より: `structural-diff-pattern.md` の overlay 節（強調チャネル独立性・Option 引数1つで既存出力不変・ID を外部契約に出さない情報隠蔽）は「ID 不安定な IR の差分を SVG overlay で重ねる」Rust ツール全般に通用する。既存の昇格候補4件に5件目として追加し、Phase 3 完了の節目で一括判断
 - Phase 3.3 のコントリビューション検出より: `git-ci-integration-pattern.md`（git サブプロセス隔離・入口正規化・最小主義 fail・薄い YAML + ローカル再現スクリプト・sticky comment・init_git_fixture）も汎用。昇格候補の**6件目**として Phase 3 完了の節目の一括 PR に含める
 - Phase 3.3 で先送りした項目: spec §9.1「メトリクス変化のテーブル併記」は PR コメント内のテキスト行で代替中。Markdown テーブル化は運用フィードバック (Phase 3 振り返り) で判断
+- Phase 4.0.5 のコントリビューション検出より: 昇格候補に **7件目 = minimal-dev-server-pattern.md の SSE 訂正版** (既存候補の内容差し替え — 最新版を PR に含める)、**8件目 = viteplus-bun-frontend-bootstrap.md** (Vite+/Bun の Web 系新規。Playwright の Rust バイナリ webServer 構成・Bun+Rust ハイブリッド CI 節を含む) を追加。Rust 系 (1〜7) と Web 系 (8) で **PR を分ける**のが推奨。addf-knowhow.md チェックリスト追記候補に4例目「ストリーミング機能は実際にストリームを読むテストを受け入れ基準に」を追加
+- Phase 4.0.5 のレビューで先送りした項目: SPA に Vue Router のパスベースビューを足すときは serve.rs の 404 → index.html フォールバックが要る (serve.rs にコメント済み)。`?fn=` 連打競合は世代ガードで対応済みだが、AbortController による fetch キャンセルは未実装 (必要になったら 4.1 で)
 - Phase 3.4 のコントリビューション検出より: `syn-visitor-patterns.md` の「近似データフロー解析」節と `rust-ir-skeleton-pattern.md` の「Edge 種別追加時の kind フィルタ」節は、両ファイルが既に昇格候補に含まれるため**同一 PR にセクションごと同梱**。`addf-knowhow.exp.md` の「1知見セットの複数ファイル分配」も addf-knowhow.md 追記候補の3例目として同梱
 - Phase 1.3 の `AuxRingRole.anchor_operation` は親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期が必要。Phase 1.5/1.8 では問題にならなかったが、content を並び替える変更を入れるときは再確認
 - ~~spec 宿題 4 件 (Phase 1.1 補完型 / Phase 1.3 補完型・アームガード / LoopBody serde 不統一 / EdgeLayerData 非対称)~~ → **Phase 2.0 の spec-v0.2.md で解消** (§4.2 追補・§4.4 JSON 規約・§4.3 Phase 3 方針)

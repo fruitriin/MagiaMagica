@@ -173,19 +173,19 @@ Phase 4.0 が素 JS で先行着手中のため、本計画は完了時点の 4.
 
 ## 受け入れ基準
 
-- [ ] `web/` 配下に Vite+ Vue 3 + UnoCSS プロジェクトが作成される
-- [ ] `cd web && vite+ dev` で localhost:5173 が起動、proxy 経由で `/state` が 200 を返す
-- [ ] `cargo run -p magia-cli -- serve <FILE>` で localhost:4747 にアクセス → 本番ビルド済 SPA が表示される (rust-embed 経由)
-- [ ] **Phase 4.0 計画書の「やること」(ペアビュー UI / 関数目次クリック切替 / `?fn=` 同期 / SSE 反映 / エラー時の図保持) が Vue で実装され、オーナー目視判定済み** (M3)
-- [ ] Phase 2.x の機能 (魔法陣表示、レイヤー toggle、DSL UI、書き起こし、SSE 自動更新) が Vue 化後も全て動作
-- [ ] TypeScript の型宣言が `type` 統一されている (`interface` の使用箇所には例外コメント必須)
-- [ ] UnoCSS の preset と theme が `palette.rs` (Rust 側) と色名・意味で一致
-- [ ] 既存 Rust 統合テスト (`cargo test --workspace`) 全本数通過
-- [ ] Vitest ユニットテスト + Playwright E2E が CI で走る
-- [ ] `cargo build --workspace` が `vite+ build` を自動で呼ぶ (or 明示手順が CLAUDE.repo.md に記載)
+- [x] `web/` 配下に Vite+ Vue 3 + UnoCSS プロジェクトが作成される
+- [x] `cd web && vite+ dev` で localhost:5173 が起動、proxy 経由で `/state` が 200 を返す (M1。衝突時は PORT で差し替え)
+- [x] `cargo run -p magia-cli -- serve <FILE>` で localhost:4747 にアクセス → 本番ビルド済 SPA が表示される (rust-embed 経由) (M5)
+- [x] **Phase 4.0 計画書の「やること」(ペアビュー UI / 関数目次クリック切替 / `?fn=` 同期 / SSE 反映 / エラー時の図保持) が Vue で実装され、オーナー目視判定済み** (M3。判定でペイン並び変更 → 対応済み)
+- [x] Phase 2.x の機能 (魔法陣表示、レイヤー toggle、DSL UI、書き起こし、SSE 自動更新) が Vue 化後も全て動作 (M4 判定「めっちゃいいかんじ」+ Playwright 8本で固定)
+- [x] TypeScript の型宣言が `type` 統一されている (Oxlint consistent-type-definitions で機械化、interface 使用ゼロ)
+- [x] UnoCSS の preset と theme が `palette.rs` (Rust 側) と色名・意味で一致 (M1 判定済み)
+- [x] 既存 Rust 統合テスト (`cargo test --workspace`) 全本数通過 (SSE 回帰テスト追加、inline HTML テストは SPA 契約に更新)
+- [x] Vitest ユニットテスト + Playwright E2E が CI で走る (ci.yml 新設、M6)
+- [x] `cargo build --workspace` が `vite+ build` を自動で呼ぶ (build.rs。手順も CLAUDE.repo.md に記載)
 - [x] ~~バイナリサイズが 5 MB 以下~~ → **基準撤廃 (オーナー判定 2026-06-11)**: 「意味のある機能の対価なら肥大化は気にしない」(CLAUDE.repo.md に方針化)。実測 5.91MB、SPA 同梱の純増 +0.11MB
-- [ ] CLAUDE.repo.md に **Bun** の前提と起動手順が記載される (Node.js は不採用)
-- [ ] **M1〜M5 の各マイルストーンでオーナー目視判定が通っている** (NG 残置で次へ進まない)
+- [x] CLAUDE.repo.md に **Bun** の前提と起動手順が記載される (Node.js は不採用)
+- [x] **M1〜M5 の各マイルストーンでオーナー目視判定が通っている** (M1 色/トーン合格 → M2 同等性合格 → M3 並び修正対応 → M4 合格 + 折りたたみ対応 → M5 サイズ基準撤廃で合格)
 
 ## 後続候補
 
