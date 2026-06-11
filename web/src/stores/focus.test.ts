@@ -35,7 +35,26 @@ function spellFor(qualified: string): SpellResponse {
     signature: `fn ${qualified}`,
     source_html: `<pre>${qualified}</pre>`,
     start_line: 1,
-    svg: `<svg data-fn="${qualified}"></svg>`,
+    ir: {
+      view_box: [-100, -100, 200, 200],
+      rings: [
+        {
+          id: 0,
+          role: "main",
+          x: 0,
+          y: 0,
+          radius: 120,
+          is_async: false,
+          symbol: null,
+          early_return: null,
+          operations: [{ x: 104, y: 0, radius: 3.5, effect: "pure" }],
+        },
+      ],
+      glyphs: [],
+      edges: [],
+      signature: { text: `fn ${qualified}`, arc_path: "M-100,0 A100,100 0 0 1 100,0" },
+      return_branch: null,
+    },
     svg_belka: `<svg data-belka="${qualified}"></svg>`,
     transcript: `関数 ${qualified}`,
   };
@@ -97,13 +116,11 @@ describe("useFocusStore", () => {
     expect(focus.loadError).not.toBeNull();
   });
 
-  it("currentSvg は palette の style に応じて両式を切り替える", async () => {
+  it("spell は配置済み IR とベルカ SVG の両方を保持する (表示切替は MagicCircleView)", async () => {
     const focus = useFocusStore();
     await focus.loadState();
     await focus.selectFunction("greet");
-    expect(focus.currentSvg).toContain("data-fn");
-    const { usePaletteStore } = await import("./palette.ts");
-    usePaletteStore().setStyle("belka");
-    expect(focus.currentSvg).toContain("data-belka");
+    expect(focus.spell?.ir.rings[0]?.role).toBe("main");
+    expect(focus.spell?.svg_belka).toContain("data-belka");
   });
 });

@@ -159,12 +159,23 @@ fn spell_endpoint_renders_function_on_demand() {
     let server = spawn_server(&file);
 
     let spell = body_json_at(server.port, "/spell/watched");
+    // Phase 4.0.9: ミッドチルダ式は配置済み IR (JSON)。メインリングと配置済み
+    // 操作ドット・シグネチャ円弧を持つ (Vue がこれを描画する契約)。
+    let ir = &spell["ir"];
+    let rings = ir["rings"].as_array().unwrap();
+    assert!(rings.iter().any(|r| r["role"] == "main"));
+    let main = rings.iter().find(|r| r["role"] == "main").unwrap();
+    assert!(main["radius"].as_f64().unwrap() > 0.0);
+    assert!(!main["operations"].as_array().unwrap().is_empty());
+    assert!(main["operations"][0]["x"].is_number());
     assert!(
-        spell["svg"]
+        ir["signature"]["arc_path"]
             .as_str()
             .unwrap()
-            .contains("layer-control-flow")
+            .starts_with('M')
     );
+    assert_eq!(ir["view_box"].as_array().unwrap().len(), 4);
+    // ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。
     assert!(spell["svg_belka"].as_str().unwrap().contains("belka-pole"));
     assert!(spell["source_html"].as_str().unwrap().contains("<pre"));
     assert!(spell["source_html"].as_str().unwrap().contains("watched"));
@@ -201,10 +212,7 @@ fn file_change_updates_function_index_and_spells() {
     });
     // 既存関数の魔法陣・ソースも新内容でオンデマンド再レンダリングされる。
     let after_spell = body_json_at(server.port, "/spell/watched");
-    assert_ne!(
-        before_spell["svg"].as_str().unwrap(),
-        after_spell["svg"].as_str().unwrap()
-    );
+    assert_ne!(before_spell["ir"], after_spell["ir"]);
     assert_ne!(
         before_spell["source_html"].as_str().unwrap(),
         after_spell["source_html"].as_str().unwrap()
@@ -267,7 +275,7 @@ fn syntax_error_keeps_last_good_snapshot() {
     let file = temp_fixture("broken.rs", INITIAL);
     let server = spawn_server(&file);
     let good_spell = body_json_at(server.port, "/spell/watched");
-    let good_svg = good_spell["svg"].as_str().unwrap().to_string();
+    let good_ir = good_spell["ir"].clone();
 
     std::fs::write(&file, BROKEN).unwrap();
     let state = wait_for(server.port, |s| !s["error"].is_null());
@@ -277,8 +285,7 @@ fn syntax_error_keeps_last_good_snapshot() {
     assert!(!state["functions"].as_array().unwrap().is_empty());
     let kept = body_json_at(server.port, "/spell/watched");
     assert_eq!(
-        kept["svg"].as_str().unwrap(),
-        good_svg,
+        kept["ir"], good_ir,
         "直前の正常な魔法陣を保持する (会話を切らない)"
     );
 
@@ -287,5 +294,5 @@ fn syntax_error_keeps_last_good_snapshot() {
     let recovered = wait_for(server.port, |s| s["error"].is_null());
     assert!(recovered["error"].is_null());
     let fresh = body_json_at(server.port, "/spell/watched");
-    assert_ne!(fresh["svg"].as_str().unwrap(), good_svg);
+    assert_ne!(fresh["ir"], good_ir);
 }

@@ -85,8 +85,23 @@ export type Signature = {
   y: number;
 };
 
-/** 意味論を復元しない要素の素通し (複合記号 sym-*、ベルカ式の力場など)。
- *  markup はサーバ生成 SVG の断片 (信頼済み入力) で、表示維持のためそのまま描画する。 */
+/** 制御記号 (Phase 4.0.9 で意味論化 — 頂点計算は SymbolMark コンポーネントが行う)。 */
+export type ControlSymbol = {
+  id: string;
+  kind: "branch" | "loop" | "early_return" | "return_branch" | "async_inner";
+  /** アンカー位置 (branch/loop/async = リング中心、early_return/return_branch = 起点)。 */
+  x: number;
+  y: number;
+  /** 対象リングの半径 (loop の軌道・early_return の長さ・async 内円に使う)。 */
+  radius: number;
+  /** early_return の向き (単位ベクトル)。他種別では [0,0]。 */
+  direction: [number, number];
+  layer: SchemaLayer | null;
+  z: number;
+};
+
+/** 意味論を復元しない要素の素通し (Phase 4.0.7 の過渡互換。4.0.9 のミッドチルダ
+ *  IR 直結では使われず、常に空 — 型は将来の拡張余地として残す)。 */
 export type RawElement = {
   id: string;
   layer: SchemaLayer | null;
@@ -110,6 +125,7 @@ export type MagicCircleSchema = {
   operations: Operation[];
   edges: SchemaEdge[];
   glyphs: EffectGlyph[];
+  symbols: ControlSymbol[];
   raws: RawElement[];
 };
 
@@ -142,6 +158,52 @@ export type StateResponse = {
   version: number;
 };
 
+// ===== 配置済み IR (spec v0.3 §16、Phase 4.0.9) =====
+
+/** リング上の操作ドット (配置済み)。 */
+export type IrOperation = {
+  x: number;
+  y: number;
+  radius: number;
+  effect: EffectCategory;
+};
+
+export type IrRing = {
+  /** JSON 内の相互参照 (edges の from/to) 専用。永続化しない。 */
+  id: number;
+  role: "main" | "aux";
+  x: number;
+  y: number;
+  radius: number;
+  is_async: boolean;
+  symbol: "branch" | "loop" | null;
+  early_return: [number, number] | null;
+  operations: IrOperation[];
+};
+
+export type IrGlyph = {
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+  effect: EffectCategory;
+};
+
+export type IrEdge = {
+  from: number;
+  to: number;
+};
+
+/** 配置済み IR (ミッドチルダ式)。レイアウトは Rust 確定済み、Vue は描画専任。 */
+export type IrSpell = {
+  view_box: [number, number, number, number];
+  rings: IrRing[];
+  glyphs: IrGlyph[];
+  edges: IrEdge[];
+  signature: { text: string; arc_path: string } | null;
+  return_branch: [number, number] | null;
+};
+
 /** `GET /spell/<fn>` のレスポンス。 */
 export type SpellResponse = {
   qualified: string;
@@ -149,7 +211,9 @@ export type SpellResponse = {
   /** syntect でハイライト済みのソース HTML (サーバ生成、信頼済み入力)。 */
   source_html: string;
   start_line: number;
-  svg: string;
+  /** 配置済み IR (ミッドチルダ式、spec v0.3 §16)。 */
+  ir: IrSpell;
+  /** ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。 */
   svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */
   transcript: string;

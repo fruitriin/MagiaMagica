@@ -1,13 +1,12 @@
-// 現在フォーカス中の関数と、その呪文 (魔法陣 SVG + メタ)。
+// 現在フォーカス中の関数と、その呪文 (配置済み IR + ベルカ SVG + メタ)。
 // 関数の選択 → /spell 取得 → source store への分配までを担う
 // (利用側が fetch と分配を組み立てる形にしない — POSD「複雑性を下に押し下げる」)。
 
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { ref } from "vue";
 
 import { fetchSpell, fetchState } from "../composables/api.ts";
 import type { FunctionMeta, ServerError, SpellResponse } from "../types/magia.ts";
-import { usePaletteStore } from "./palette.ts";
 import { useSourceStore } from "./source.ts";
 
 export const useFocusStore = defineStore("focus", () => {
@@ -21,17 +20,9 @@ export const useFocusStore = defineStore("focus", () => {
   const spell = ref<SpellResponse | null>(null);
   const loadError = ref<string | null>(null);
 
-  const palette = usePaletteStore();
-
-  /** 表示すべき SVG。様式の選択は palette store の管轄。 */
-  const currentSvg = computed(() => {
-    if (spell.value === null) return null;
-    return palette.style === "belka" ? spell.value.svg_belka : spell.value.svg;
-  });
-
-  // ホバー/選択中の操作 (Phase 4.0.7)。id はスキーマの出現順 id (セッション内の
-  // 一時識別子) なので、URL 等への永続化はしない。選択はファイル更新で構造が
-  // 変わるとズレうる — IR 由来の安定参照は Phase 4.0.9 で検討する。
+  // ホバー/選択中の操作。id はスキーマ内の一時識別子 (ring id + 出現順) で、
+  // SigilId 同様パースごとに変わりうるため URL 等への永続化はしない
+  // (Phase 4.0.9 で検討した結論: 安定参照は IR にも存在しない — spec §16)。
   const hoveredOperationId = ref<string | null>(null);
   const selectedOperationId = ref<string | null>(null);
 
@@ -88,8 +79,8 @@ export const useFocusStore = defineStore("focus", () => {
 
   /** SSE 更新時の再読込。一覧と現在の呪文を取り直す。 */
   async function refresh() {
-    // 出現順 id は再パースで再採番されるため、選択を持ち越すと別の操作に
-    // ハローが移る誤挙動になる — 更新前にクリアする (安定参照は 4.0.9 で検討)。
+    // id は再パースで再採番されるため、選択を持ち越すと別の操作に
+    // ハローが移る誤挙動になる — 更新前にクリアする。
     selectedOperationId.value = null;
     await loadState();
     await selectFunction(currentFn.value);
@@ -102,7 +93,6 @@ export const useFocusStore = defineStore("focus", () => {
     currentFn,
     spell,
     loadError,
-    currentSvg,
     hoveredOperationId,
     selectedOperationId,
     hoverOperation,

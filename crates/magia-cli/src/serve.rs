@@ -25,7 +25,7 @@ use anyhow::{Context, Result};
 use notify::{RecursiveMode, Watcher};
 
 use magia_core::layout::layout;
-use magia_core::render::{RenderStyle, render};
+use magia_core::render::{RenderStyle, ir_export::spell_ir, render};
 use magia_rust::{FunctionEntry, function_index, parse_function};
 
 use crate::srcview::highlight_rust;
@@ -173,10 +173,14 @@ fn render_spell(source: &str, entry: &FunctionEntry) -> Result<String, String> {
     let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
     let snippet = source_lines(source, entry.start_line, entry.end_line);
+    // Phase 4.0.9: ミッドチルダ式は配置済み IR (JSON) で返し、Vue が描画する。
+    // SVG 文字列は出さない (v1.0 前は旧を消す)。ベルカ式の Vue 移植は Phase 4.3 で
+    // 行うため、svg_belka のみ SVG 文字列を温存する。
+    let ir = serde_json::to_value(spell_ir(&graph, &placed)).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "qualified": entry.qualified,
         "signature": entry.signature,
-        "svg": render(&graph, &placed, RenderStyle::MidchildaConcentric),
+        "ir": ir,
         "svg_belka": render(&graph, &placed, RenderStyle::Belka),
         "source_html": highlight_rust(&snippet),
         "transcript": magia_core::transcript::transcribe(&graph),

@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// 魔法陣ペイン (Phase 4.0.7 で v-html → 境界スキーマ + コンポーネントツリーに置換)。
-// SVG 文字列 → MagicCircleSchema の変換はここだけが svgToSchema を参照する
-// (converters/ の隔離 — Phase 4.0.9 で IR ビルダに差し替えるとき、この computed と
-// svgToSchema.ts だけが変わり、<MagicCircle> 以下は無修正で流用される)。
-// SSE 更新 → currentSvg 変化 → computed 再評価 → Vue がリアクティブ再描画。
+// 魔法陣ペイン (Phase 4.0.9 で IR 直結に移行)。
+// ミッドチルダ式: 配置済み IR (spec v0.3 §16) を irToSchema で MagicCircleSchema に
+// 展開し、<MagicCircle> ツリーが描画する。SSE 更新 → spell 差し替え → computed
+// 再評価 → リアクティブ再描画。
+// ベルカ式: Phase 4.3 の Vue SSR 移行まで SVG 文字列 (svg_belka) を素通し表示する
+// (サーバ生成の信頼済み入力)。
 import { computed } from "vue";
 
-import { svgToSchema } from "../converters/svgToSchema.ts";
+import { irToSchema } from "../converters/irToSchema.ts";
 import { useFocusStore } from "../stores/focus.ts";
 import { usePaletteStore } from "../stores/palette.ts";
 import MagicCircle from "./circle/MagicCircle.vue";
@@ -14,17 +15,20 @@ import MagicCircle from "./circle/MagicCircle.vue";
 const focus = useFocusStore();
 const palette = usePaletteStore();
 
-// style 切替時は currentSvg (svg / svg_belka の選択) も必ず変わるため、
-// この computed の再評価トリガは実質 currentSvg 1本 (二重評価は起きない)。
 const schema = computed(() => {
-  if (focus.currentSvg === null) return null;
-  return svgToSchema(focus.currentSvg, palette.style);
+  if (focus.spell === null || palette.style === "belka") return null;
+  return irToSchema(focus.spell.ir);
 });
+
+const belkaSvg = computed(() =>
+  palette.style === "belka" ? (focus.spell?.svg_belka ?? null) : null,
+);
 </script>
 
 <template>
   <div v-if="schema" w-full>
     <MagicCircle :schema="schema" />
   </div>
+  <div v-else-if="belkaSvg" w-full v-html="belkaSvg" />
   <div v-else p-8 text-gray-400>魔法陣を読み込み中…</div>
 </template>

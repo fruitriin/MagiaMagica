@@ -6,6 +6,7 @@
 //! 属性順序を固定でき、スナップショットテストが安定する)。
 
 mod belka;
+pub mod ir_export;
 mod midchilda;
 // 色相規約はレンダラの内部実装。公開 API に色定数を露出させない (POSD 情報隠蔽)。
 // 外部から色を参照したくなったら (Phase 2 dev-server 等) そのとき公開を判断する。

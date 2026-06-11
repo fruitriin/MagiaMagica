@@ -60,7 +60,9 @@ impl FromStr for LayerName {
 }
 
 /// 効果カテゴリ (spec §6.1.3 の色相に対応する語彙)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// JSON 表現 (Phase 4.0.9 の IR エクスポート) は `as_str` と同じ lowercase。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EffectCategory {
     Pure,
     Io,

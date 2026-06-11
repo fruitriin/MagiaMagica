@@ -1,3 +1,7 @@
+//! **deprecated (Phase 4.0.9)**: serve の動的 UI は配置済み IR (`ir_export`) + Vue
+//! 描画へ移行済み。本 SVG レンダラは CLI (`magia render` / `diff` / `ci`) 専用となり、
+//! **Phase 4.3 (Vue SSR 一本化) で削除する**。幾何ヘルパの所有権は ir_export へ移す。
+//!
 //! ミッドチルダ式 ConcentricRings レンダラ (Phase 1.6, spec §6.1.2 / §6.1.3)。
 //!
 //! 描画規約:
@@ -277,7 +281,7 @@ fn write_defs(out: &mut String, graph: &MagiaGraph, layout: &LayoutResult) -> st
 /// 外側まで広げる。広げた先でさらに別の要素と食い込む場合があるため、
 /// 安定するまで反復する (要素数で有界、決定論的)。
 /// 帯に食い込む要素がなければ既定値のまま = 既存の見た目を変えない。
-fn signature_arc_radius(
+pub(crate) fn signature_arc_radius(
     module: &Module,
     layout: &LayoutResult,
     main_id: SigilId,
@@ -610,7 +614,7 @@ fn circle(
 }
 
 /// レイアウト座標 (数学系) を画面座標へ変換する。未配置 (壊れた IR) は原点。
-fn screen_position(layout: &LayoutResult, id: SigilId) -> Point {
+pub(crate) fn screen_position(layout: &LayoutResult, id: SigilId) -> Point {
     layout
         .positions
         .get(&id)
@@ -628,7 +632,7 @@ fn module_radius(module: &Module, id: SigilId) -> f64 {
 }
 
 /// AuxRing が親から離れる方向 (画面座標)。親が見つからなければ 3時方向。
-fn outward_direction(module: &Module, layout: &LayoutResult, id: SigilId) -> Vec2 {
+pub(crate) fn outward_direction(module: &Module, layout: &LayoutResult, id: SigilId) -> Vec2 {
     // 親子関係は ControlFlow Edge のみ (DataFlow Edge が先に並ぶ入力でも誤らない)。
     let Some(edge) = module
         .edges
@@ -648,7 +652,7 @@ fn outward_direction(module: &Module, layout: &LayoutResult, id: SigilId) -> Vec
     }
 }
 
-fn aux_kind(sigil: &Sigil) -> Option<AuxRingKind> {
+pub(crate) fn aux_kind(sigil: &Sigil) -> Option<AuxRingKind> {
     sigil
         .layers
         .control_flow
@@ -657,7 +661,7 @@ fn aux_kind(sigil: &Sigil) -> Option<AuxRingKind> {
         .map(|role| role.kind)
 }
 
-fn early_return_count(sigil: &Sigil) -> u32 {
+pub(crate) fn early_return_count(sigil: &Sigil) -> u32 {
     sigil
         .layers
         .control_flow
@@ -679,7 +683,7 @@ pub(crate) fn num(value: f64) -> String {
 /// SVG パス文字列中の数値を `num()` と同じ2桁固定に揃える。
 /// コマンド文字 (M/C/L 等) と区切りはそのまま通す。数値として解釈できない
 /// トークンは無加工で残す (防御)。
-fn normalize_path_numbers(d: &str) -> String {
+pub(crate) fn normalize_path_numbers(d: &str) -> String {
     let mut out = String::new();
     let mut token = String::new();
     for ch in d.chars() {
@@ -725,7 +729,7 @@ pub(crate) fn escape_xml(text: &str) -> String {
 
 /// レイアウト側と同じ判断: カウントは 2^53 未満なので精度劣化は起きない。
 #[allow(clippy::cast_precision_loss)]
-fn usize_to_f64(value: usize) -> f64 {
+pub(crate) fn usize_to_f64(value: usize) -> f64 {
     value as f64
 }
 

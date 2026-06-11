@@ -15,6 +15,7 @@ import OperationDot from "./OperationDot.vue";
 import RawFragment from "./RawFragment.vue";
 import RingCircle from "./RingCircle.vue";
 import SignatureArc from "./SignatureArc.vue";
+import SymbolMark from "./SymbolMark.vue";
 
 const props = defineProps<{ schema: MagicCircleSchema }>();
 
@@ -25,6 +26,7 @@ type DrawItem =
   | { kind: "op"; z: number; op: MagicCircleSchema["operations"][number] }
   | { kind: "glyph"; z: number; glyph: MagicCircleSchema["glyphs"][number] }
   | { kind: "edge"; z: number; edge: MagicCircleSchema["edges"][number] }
+  | { kind: "symbol"; z: number; symbol: MagicCircleSchema["symbols"][number] }
   | { kind: "raw"; z: number; raw: MagicCircleSchema["raws"][number] };
 
 const drawList = computed<DrawItem[]>(() =>
@@ -33,6 +35,7 @@ const drawList = computed<DrawItem[]>(() =>
     ...props.schema.operations.map((op): DrawItem => ({ kind: "op", z: op.z, op })),
     ...props.schema.glyphs.map((glyph): DrawItem => ({ kind: "glyph", z: glyph.z, glyph })),
     ...props.schema.edges.map((edge): DrawItem => ({ kind: "edge", z: edge.z, edge })),
+    ...props.schema.symbols.map((symbol): DrawItem => ({ kind: "symbol", z: symbol.z, symbol })),
     ...props.schema.raws.map((raw): DrawItem => ({ kind: "raw", z: raw.z, raw })),
   ].sort((a, b) => a.z - b.z),
 );
@@ -47,6 +50,8 @@ function itemId(item: DrawItem): string {
       return item.glyph.id;
     case "edge":
       return item.edge.id;
+    case "symbol":
+      return item.symbol.id;
     case "raw":
       return item.raw.id;
   }
@@ -62,6 +67,8 @@ function itemLayer(item: DrawItem): SchemaLayer | null {
       return item.glyph.layer;
     case "edge":
       return item.edge.layer;
+    case "symbol":
+      return item.symbol.layer;
     case "raw":
       return item.raw.layer;
   }
@@ -101,6 +108,11 @@ function layerStyle(layer: SchemaLayer | null): Record<string, string> {
       <EdgeLine
         v-else-if="item.kind === 'edge'"
         :edge="item.edge"
+        :style="layerStyle(itemLayer(item))"
+      />
+      <SymbolMark
+        v-else-if="item.kind === 'symbol'"
+        :symbol="item.symbol"
         :style="layerStyle(itemLayer(item))"
       />
       <RawFragment v-else :raw="item.raw" :style="layerStyle(itemLayer(item))" />
