@@ -99,6 +99,19 @@
 - Pinia store の単体テスト定型: `setActivePinia(createPinia())` (beforeEach) +
   `vi.stubGlobal("fetch", vi.fn(...))`。store間分配 (focus → source) もこの形で検証できる
 
+### テスト環境の追加注意 (Phase 4.0.7)
+
+- DOMParser を使うコードの Vitest には `bun add -d happy-dom` + vite.config.ts の
+  `test: { environment: "happy-dom" }`
+- **`test:` 設定を書くと vitest の既定 exclude が外れて Playwright の e2e/ まで拾う** —
+  `exclude: ["**/node_modules/**", "e2e/**"]` を明示する
+- ヘッドレス撮影は **`playwright screenshot --viewport-size=… --wait-for-timeout=2500 <URL> <out.png>`**
+  が良い: Playwright の chromium-headless-shell はユーザーの実 Chrome と完全分離で、
+  ローカル Chrome をヘッドレス起動する方式 (プロファイルロック・既存セッション奪取で絡まる) より安定。
+  wait-for-timeout を入れないと SPA の fetch 完了前に撮れる
+- シェル経由の `pkill -f <パターン>` は **eval されたコマンドライン自身にマッチして自殺する**
+  (zsh スナップショット経由の実行で顕在化)。プロセス停止は `pkill -x <プロセス名>` か kill PID で
+
 ## プロジェクトへの適用
 
 - `web/` が本パターンの実例 (Phase 4.0.5)。dev は `bun run --cwd web dev`、検証は `cd web && vp check && bun run build`

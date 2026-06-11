@@ -22,6 +22,7 @@
     "@unocss/preset-uno": "^66.7.0",
     "@unocss/reset": "^66.7.0",
     "@vitejs/plugin-vue": "^6.0.7",
+    "happy-dom": "^20.10.2",
     "typescript": "~6.0.2",
     "unocss": "^66.7.0",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.1.24",

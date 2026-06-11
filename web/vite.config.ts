@@ -19,6 +19,12 @@ export default defineConfig({
       "/events": MAGIA_SERVE,
     },
   },
+  test: {
+    // svgToSchema が DOMParser を使うため DOM 実装が要る (Phase 4.0.7)
+    environment: "happy-dom",
+    // e2e/ は Playwright の領分 (test 設定を書くと vitest の既定 exclude が外れて拾われる)
+    exclude: ["**/node_modules/**", "e2e/**"],
+  },
   fmt: {},
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],

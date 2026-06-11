@@ -29,6 +29,20 @@ export const useFocusStore = defineStore("focus", () => {
     return palette.style === "belka" ? spell.value.svg_belka : spell.value.svg;
   });
 
+  // ホバー/選択中の操作 (Phase 4.0.7)。id はスキーマの出現順 id (セッション内の
+  // 一時識別子) なので、URL 等への永続化はしない。選択はファイル更新で構造が
+  // 変わるとズレうる — IR 由来の安定参照は Phase 4.0.9 で検討する。
+  const hoveredOperationId = ref<string | null>(null);
+  const selectedOperationId = ref<string | null>(null);
+
+  function hoverOperation(id: string | null) {
+    hoveredOperationId.value = id;
+  }
+
+  function selectOperation(id: string | null) {
+    selectedOperationId.value = id;
+  }
+
   /**
    * URL (`?fn=`) 由来の初期希望値を置く。実ロードは SSE 接続直後イベント
    * (serve.rs が必ず1イベント流す) の refresh に一本化し、二重フェッチを避ける。
@@ -86,6 +100,10 @@ export const useFocusStore = defineStore("focus", () => {
     spell,
     loadError,
     currentSvg,
+    hoveredOperationId,
+    selectedOperationId,
+    hoverOperation,
+    selectOperation,
     setInitialFn,
     loadState,
     selectFunction,
