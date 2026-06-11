@@ -1,4 +1,4 @@
-//! dev-server の統合テスト (Phase 2.1 受け入れ基準)。
+//! dev-server の統合テスト (Phase 2.1 受け入れ基準 + Phase 4.0 ソース連動ビュー)。
 //!
 //! 実バイナリを `--port 0` (空きポート自動割当) で起動し、生 TCP の HTTP/1.0 で叩く
 //! (HTTP クライアント依存を増やさない)。サーバは子プロセスとして必ず kill する。
@@ -21,13 +21,12 @@ impl Drop for DevServer {
     }
 }
 
-fn spawn_server(file: &std::path::Path, fn_name: &str) -> DevServer {
+/// Phase 4.0: `--fn` は廃止 — ファイルだけで起動する。
+fn spawn_server(file: &std::path::Path) -> DevServer {
     let binary = assert_cmd::cargo::cargo_bin("magia");
     let mut child = Command::new(binary)
         .arg("serve")
         .arg(file)
-        .arg("--fn")
-        .arg(fn_name)
         .arg("--port")
         .arg("0")
         .stdout(Stdio::piped())
@@ -63,20 +62,24 @@ fn http_get(port: u16, path: &str) -> String {
     response
 }
 
-fn body_json(port: u16) -> serde_json::Value {
-    let response = http_get(port, "/state");
+fn body_json_at(port: u16, path: &str) -> serde_json::Value {
+    let response = http_get(port, path);
     let body = response
         .split("\r\n\r\n")
         .nth(1)
         .expect("ヘッダとボディの区切りがある");
-    serde_json::from_str(body).expect("state は有効な JSON")
+    serde_json::from_str(body).unwrap_or_else(|e| panic!("{path} は有効な JSON: {e}\n{body}"))
+}
+
+fn state_json(port: u16) -> serde_json::Value {
+    body_json_at(port, "/state")
 }
 
 /// 条件が満たされるまで /state をポーリングする (上限 5 秒)。
 fn wait_for(port: u16, predicate: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let state = body_json(port);
+        let state = state_json(port);
         if predicate(&state) {
             return state;
         }
@@ -101,125 +104,138 @@ fn temp_fixture(name: &str, content: &str) -> std::path::PathBuf {
     path
 }
 
-const INITIAL: &str = "fn watched(a: i32) -> i32 { a + 1 }\n";
-const CHANGED: &str = "fn watched(a: i32) -> i32 { let b = a * 2; helper(b) }\n";
+const INITIAL: &str = "fn watched(a: i32) -> i32 { a + 1 }\n\
+struct Caster;\n\
+impl Caster {\n    fn cast(&self) -> i32 { 42 }\n}\n";
+const CHANGED: &str = "fn watched(a: i32) -> i32 { let b = a * 2; helper(b) }\n\
+fn fresh_fn() {}\n\
+struct Caster;\n\
+impl Caster {\n    fn cast(&self) -> i32 { 42 }\n}\n";
 const BROKEN: &str = "fn watched(a: i32) -> i32 { let b = \n";
 
 #[test]
-fn serves_html_and_initial_state() {
+fn serves_function_index_api() {
     let file = temp_fixture("initial.rs", INITIAL);
-    let server = spawn_server(&file, "watched");
+    let server = spawn_server(&file);
 
+    // Phase 4.0 はサーバ側 API まで (ペアビュー UI は Phase 4.0.5 / Vue)。
+    // 既存 UI (パレット・式トグル・書き起こし・DSL 往復) は維持される。
     let index = http_get(server.port, "/");
     assert!(index.contains("200"));
     assert!(index.contains(r#"<div id="magia">"#));
     assert!(index.contains("EventSource"));
-
-    // レイヤーパレット (Phase 2.2): 3レイヤーの切替 UI が配信される。
     for layer in ["control_flow", "effects", "type_info"] {
-        assert!(
-            index.contains(&format!(r#"data-layer="{layer}""#)),
-            "{layer} のチェックボックスがある"
-        );
-        assert!(
-            index.contains(&format!(r#"data-opacity="{layer}""#)),
-            "{layer} の透明度スライダーがある"
-        );
+        assert!(index.contains(&format!(r#"data-layer="{layer}""#)));
     }
-    assert!(index.contains(r#"id="all-on""#) && index.contains(r#"id="all-off""#));
-    // .magia エクスポート/適用 UI (Phase 2.3)。
-    assert!(index.contains(r#"id="dsl""#) && index.contains(r#"id="dsl-apply""#));
-    // 呪文書き起こしの埋め込み (Phase 2.4, spec §15)。
-    assert!(index.contains(r#"id="transcript""#) && index.contains("visually-hidden"));
-
-    let state = body_json(server.port);
-    let svg = state["svg"].as_str().unwrap();
-    assert!(svg.contains("<svg "), "初回レンダリング済み");
-    assert!(state["error"].is_null());
-    // パレット JS の cssClass() 変換 (snake_case → layer-kebab-case) が、
-    // レンダラの出力する <g> クラス名と一致していることの契約テスト (spec §5.3)。
-    assert!(
-        state["transcript"].as_str().unwrap().contains("関数 "),
-        "state に書き起こしが入る"
-    );
-    for class in ["layer-control-flow", "layer-effects", "layer-type-info"] {
-        assert!(
-            svg.contains(&format!(r#"<g class="{class}">"#)),
-            "SVG に {class} の <g> がある"
-        );
-    }
-
-    // 式トグル (Phase 3.5, spec v0.3 §14.4): 両式の SVG が state に入り、UI に切替がある。
     for style in ["midchilda", "belka"] {
-        assert!(
-            index.contains(&format!(r#"data-style="{style}""#)),
-            "{style} の切替ラジオがある"
-        );
+        assert!(index.contains(&format!(r#"data-style="{style}""#)));
     }
-    let belka_svg = state["svg_belka"].as_str().unwrap();
-    assert!(
-        belka_svg.contains("belka-pole"),
-        "state にベルカ式 SVG が入る"
-    );
+    assert!(index.contains(r#"id="dsl""#) && index.contains("visually-hidden"));
+    // 薄い継ぎ目: 旧 UI が新 API を呼ぶ。
+    assert!(index.contains("/spell/"));
 
-    let missing = http_get(server.port, "/no-such");
-    assert!(missing.contains("404"));
+    // /state はメタ + 関数一覧 (impl メソッドは qualified 名)。
+    let state = state_json(server.port);
+    assert!(state["error"].is_null());
+    let names: Vec<&str> = state["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["qualified"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["watched", "Caster::cast"]);
+    let cast = &state["functions"][1];
+    assert_eq!(cast["impl_context"], "Caster");
+    assert!(cast["start_line"].as_u64().unwrap() > 0);
 
-    // レイヤー状態のクエリ付き URL (リロード・共有) でもトップページが返る。
-    // 回帰経緯: ルート照合が完全一致だった頃 `/?layers=...` が 404 になった。
-    let with_query = http_get(server.port, "/?layers=effects&op=effects:0.5");
-    assert!(with_query.contains("200") && with_query.contains(r#"<div id="magia">"#));
-    assert!(with_query.contains("text/html"), "HTML として返る");
-    // ?style=belka でもトップページが返る (URL 同期のリロード経路)。
-    let with_style = http_get(server.port, "/?style=belka");
-    assert!(with_style.contains("200") && with_style.contains(r#"data-style="belka""#));
+    // ?fn= 付き URL でもトップページが返る (リロード・共有経路)。
+    let with_fn = http_get(server.port, "/?fn=Caster%3A%3Acast&style=belka");
+    assert!(with_fn.contains("200") && with_fn.contains(r#"<div id="magia">"#));
 }
 
 #[test]
-fn file_change_triggers_rerender() {
+fn spell_endpoint_renders_function_on_demand() {
+    let file = temp_fixture("spell.rs", INITIAL);
+    let server = spawn_server(&file);
+
+    let spell = body_json_at(server.port, "/spell/watched");
+    assert!(
+        spell["svg"]
+            .as_str()
+            .unwrap()
+            .contains("layer-control-flow")
+    );
+    assert!(spell["svg_belka"].as_str().unwrap().contains("belka-pole"));
+    assert!(spell["source_html"].as_str().unwrap().contains("<pre"));
+    assert!(spell["source_html"].as_str().unwrap().contains("watched"));
+    assert!(spell["transcript"].as_str().unwrap().contains("関数 "));
+    assert!(spell["signature"].as_str().unwrap().contains("fn watched"));
+
+    // impl メソッドは qualified 名 (URL エンコード) で引ける。
+    let method = body_json_at(server.port, "/spell/Caster%3A%3Acast");
+    assert!(method["signature"].as_str().unwrap().contains("fn cast"));
+    assert!(
+        method["source_html"].as_str().unwrap().contains("42"),
+        "メソッド本体のスニペットが入る"
+    );
+
+    // 未知の関数は 404。
+    let missing = http_get(server.port, "/spell/no_such_fn");
+    assert!(missing.contains("404"));
+    assert!(missing.contains("索引にありません"));
+}
+
+#[test]
+fn file_change_updates_function_index_and_spells() {
     let file = temp_fixture("change.rs", INITIAL);
-    let server = spawn_server(&file, "watched");
-    let before = body_json(server.port);
-    let before_version = before["version"].as_u64().unwrap();
+    let server = spawn_server(&file);
+    let before_spell = body_json_at(server.port, "/spell/watched");
 
     std::fs::write(&file, CHANGED).unwrap();
+    // 述語は version でなく意味 (新関数の出現) で待つ: truncate→write の途中状態を
+    // 読んだ中間 reload の version 加算を最終状態と誤認しない。
     let after = wait_for(server.port, |s| {
-        s["version"].as_u64().unwrap() > before_version
+        s["functions"]
+            .as_array()
+            .is_some_and(|fns| fns.iter().any(|f| f["qualified"] == "fresh_fn"))
     });
+    // 既存関数の魔法陣・ソースも新内容でオンデマンド再レンダリングされる。
+    let after_spell = body_json_at(server.port, "/spell/watched");
     assert_ne!(
-        before["svg"].as_str().unwrap(),
-        after["svg"].as_str().unwrap(),
-        "変更後の SVG は変わる (helper 呼び出しの召喚記号が増える)"
+        before_spell["svg"].as_str().unwrap(),
+        after_spell["svg"].as_str().unwrap()
     );
-    // 両式は同じ IR の射影 — 必ず対で更新される (Phase 3.5 の不変条件)。
     assert_ne!(
-        before["svg_belka"].as_str().unwrap(),
-        after["svg_belka"].as_str().unwrap(),
-        "ベルカ式 SVG も対で更新される"
+        before_spell["source_html"].as_str().unwrap(),
+        after_spell["source_html"].as_str().unwrap()
     );
     assert!(after["error"].is_null());
 }
 
 #[test]
-fn syntax_error_keeps_last_good_svg() {
+fn syntax_error_keeps_last_good_snapshot() {
     let file = temp_fixture("broken.rs", INITIAL);
-    let server = spawn_server(&file, "watched");
-    let good = body_json(server.port);
-    let good_svg = good["svg"].as_str().unwrap().to_string();
-    assert!(good_svg.contains("<svg "));
+    let server = spawn_server(&file);
+    let good_spell = body_json_at(server.port, "/spell/watched");
+    let good_svg = good_spell["svg"].as_str().unwrap().to_string();
 
     std::fs::write(&file, BROKEN).unwrap();
     let state = wait_for(server.port, |s| !s["error"].is_null());
-    // メッセージ本文には依存しない (実装側の文言変更でフレークさせない)。
-    assert!(!state["error"].as_str().unwrap().is_empty());
+    // エラーには行番号が付く (ソースペインの案内に使う)。
+    assert!(state["error"]["line"].as_u64().is_some());
+    // 関数一覧も /spell も直前の正常スナップショットから配信し続ける。
+    assert!(!state["functions"].as_array().unwrap().is_empty());
+    let kept = body_json_at(server.port, "/spell/watched");
     assert_eq!(
-        state["svg"].as_str().unwrap(),
+        kept["svg"].as_str().unwrap(),
         good_svg,
-        "直前の正常な SVG を保持する (会話を切らない)"
+        "直前の正常な魔法陣を保持する (会話を切らない)"
     );
 
     // 直してまた描けることも確認する。
     std::fs::write(&file, CHANGED).unwrap();
     let recovered = wait_for(server.port, |s| s["error"].is_null());
-    assert_ne!(recovered["svg"].as_str().unwrap(), good_svg);
+    assert!(recovered["error"].is_null());
+    let fresh = body_json_at(server.port, "/spell/watched");
+    assert_ne!(fresh["svg"].as_str().unwrap(), good_svg);
 }

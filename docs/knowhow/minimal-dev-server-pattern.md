@@ -1,7 +1,7 @@
 # 同期スレッドモデルの最小 dev-server パターン
 
-> Phase 2.1 (magia serve) で確立。「保存したらブラウザが自動更新される」live-reload を
-> async ランタイムなしで実装する定型。
+> Phase 2.1 (magia serve) で確立、Phase 4.0 (メタ + オンデマンドレンダへの再設計) で拡張。
+> 「保存したらブラウザが自動更新される」live-reload を async ランタイムなしで実装する定型。
 
 ## 発見した知見
 
@@ -40,6 +40,25 @@
   (`history.replaceState`) で双方向同期し、SSE の innerHTML 差し替え後に毎回 apply する
   (差し替えで `<g>` のインラインスタイルが消えるため)
 
+## メタ + オンデマンドレンダへの再設計 (Phase 4.0)
+
+「描画済み SVG を /state で配る」形から「メタ + 関数単位のオンデマンドレンダ」へ
+再設計するときの定型:
+
+- **サーバ状態は最小に**: 「直近の正常スナップショット (ソース全文 + 関数索引) +
+  エラー (行付き)」だけを持つ。**どの関数を見ているかはクライアント (URL `?fn=`) の
+  状態**であり、サーバは保持しない
+- `/spell/<fn>` をオンデマンドレンダにすると、キャッシュ無効化・サーバ側の選択状態・
+  全関数プリレンダが全部不要になる。これは**レンダラが決定論的だから成り立つ**
+  (同じソースからは常に同じ SVG — リクエストごとの再レンダリングが冪等)
+- エラー中は直近スナップショットから配信し続ける (会話を切らない原則の一般化:
+  SVG 単体でなくスナップショット全体を保持する)
+- **統合テストの述語は意味で書く**: 「version が進んだら」を述語にすると、
+  truncate→write の中間状態を読んだ reload を最終状態と誤認してフレークする。
+  「新関数が索引に現れたら」のような意味述語で待つ
+- URL パスセグメント (`/spell/Foo%3A%3Abar`) には最小のパーセントデコードが要る
+  (tiny_http はデコードしない)
+
 ## プロジェクトへの適用
 
 - `crates/magia-cli/src/serve.rs` — `magia serve <FILE> --fn <NAME> [--port]`
@@ -60,3 +79,7 @@
 - `crates/magia-cli/src/serve.rs`
 - `crates/magia-cli/tests/serve_integration.rs`
 - `project-docs/magia/spec-v0.2.md` §7
+- `crates/magia-cli/src/serve.rs` の `GoodSnapshot` / `spell_json` / `percent_decode`
+- `crates/magia-cli/src/srcview.rs` — syntect は default-features を切り
+  `default-syntaxes + default-themes + html + regex-fancy` に絞る (onig の C 依存回避)。
+  SyntaxSet/Theme は OnceLock で初回のみロード

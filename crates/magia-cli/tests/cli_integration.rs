@@ -750,6 +750,51 @@ fn belka_rejects_layer_filters() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("未対応"));
 }
 
+// ===== Phase 4.0: serve の --fn 廃止 =====
+
+#[test]
+fn serve_rejects_removed_fn_flag() {
+    // Phase 4.0 [break]: 最初に映す関数は URL ?fn= の責務になった。
+    let output = magia()
+        .arg("serve")
+        .arg(fixtures_dir().join("simple_compute.rs"))
+        .arg("--fn")
+        .arg("simple_compute")
+        .output()
+        .expect("CLI を起動できる");
+    assert!(!output.status.success(), "--fn は廃止済み");
+}
+
+#[test]
+fn list_includes_impl_methods_with_qualified_names() {
+    // Phase 4.0 [break]: list は impl メソッドを Foo::bar 形式で含む。
+    let dir = std::env::temp_dir().join("magia-cli-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("with_impl.rs");
+    std::fs::write(
+        &path,
+        "fn free() {}\nstruct S;\nimpl S { fn method(&self) {} }\n",
+    )
+    .unwrap();
+    let output = magia()
+        .arg("list")
+        .arg(&path)
+        .output()
+        .expect("CLI を起動できる");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.lines().any(|l| l == "free"));
+    assert!(stdout.lines().any(|l| l == "S::method"));
+    // list が返した名前は render で必ず再発見できる (規約)。
+    magia()
+        .arg("render")
+        .arg(&path)
+        .arg("--fn")
+        .arg("S::method")
+        .assert()
+        .success();
+}
+
 #[test]
 fn version_and_help_work() {
     magia().arg("--version").assert().success();

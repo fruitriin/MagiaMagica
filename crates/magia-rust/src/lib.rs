@@ -10,12 +10,14 @@ mod allocator;
 mod dataflow;
 mod effects;
 mod error;
+mod index;
 mod ring;
 mod signature;
 mod statement;
 mod summon;
 
 pub use error::Error;
+pub use index::{FunctionEntry, function_index};
 
 use magia_core::ir::{ConcurrencyInfo, MagiaGraph, Module, ModuleId, ProjectMetadata};
 use syn::visit::Visit;
@@ -27,19 +29,19 @@ use crate::signature::extract_type_info;
 use crate::statement::ParseContext;
 use crate::summon::UseMap;
 
-/// Rust ソースから関数定義の名前一覧を返す。
+/// Rust ソースから関数定義の qualified 名一覧を返す (Phase 4.0 [break])。
 ///
-/// トップレベル・`mod { ... }` 内・関数内のネスト `fn` を再帰的に収集する。
-/// `impl` ブロック内のメソッドは Phase 1.2 のスコープ外 (Phase 1.4 以降で検討)。
+/// トップレベル・`mod { ... }` 内・関数内のネスト `fn`・**impl 内メソッド**を
+/// 再帰的に収集する。メソッドは `Foo::bar` 形式 (`index::FunctionEntry` と同じ規約)。
 ///
 /// 規約: 本関数が返す任意の名前は `parse_function` で必ず発見できる
-/// (両者の探索範囲は意図的に一致させてある)。
+/// (両者は `index` モジュールの同一 walker を共有する)。
 #[must_use = "関数一覧は呼び出し側で利用されるべき"]
 pub fn list_functions(source: &str) -> Result<Vec<String>, Error> {
-    let file: File = syn::parse_str(source)?;
-    let mut collector = FunctionNameCollector { names: Vec::new() };
-    collector.visit_file(&file);
-    Ok(collector.names)
+    Ok(function_index(source)?
+        .into_iter()
+        .map(|entry| entry.qualified)
+        .collect())
 }
 
 /// 指定された名前の関数を MagiaIR に変換する。
@@ -49,7 +51,8 @@ pub fn list_functions(source: &str) -> Result<Vec<String>, Error> {
 #[must_use = "IR は呼び出し側で利用されるべき"]
 pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> {
     let file: File = syn::parse_str(source)?;
-    let item_fn = find_function(&file, fn_name)?;
+    // qualified 名 (`Foo::bar`) を正、素の名前をフォールバックとして解決する。
+    let item_fn = &index::find_function(&file, fn_name)?;
     let mut allocator = SigilIdAllocator::new();
     let ctx = ParseContext {
         fn_is_unsafe: item_fn.sig.unsafety.is_some(),
@@ -92,22 +95,6 @@ pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> 
     })
 }
 
-fn find_function<'a>(file: &'a File, fn_name: &str) -> Result<&'a ItemFn, Error> {
-    let mut collector = FunctionRefCollector {
-        target: fn_name.to_string(),
-        all_names: Vec::new(),
-        found: None,
-    };
-    collector.visit_file(file);
-    if let Some(item) = collector.found {
-        return Ok(item);
-    }
-    Err(Error::FunctionNotFound {
-        name: fn_name.to_string(),
-        candidates: collector.all_names,
-    })
-}
-
 /// 関数本体内の `.await` 数を数える。
 ///
 /// ネストした `async { ... }` ブロック内部の `.await` も合算する (Phase 1 の近似)。
@@ -128,41 +115,17 @@ fn count_await_points(item_fn: &ItemFn) -> u32 {
     counter.count
 }
 
-struct FunctionNameCollector {
-    names: Vec<String>,
-}
-
-impl<'ast> Visit<'ast> for FunctionNameCollector {
-    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        self.names.push(node.sig.ident.to_string());
-        // 関数内の `fn` ネストや `mod` 内宣言も拾う。`FunctionRefCollector` と探索範囲を揃え、
-        // 列挙された名前を `parse_function` で必ず再発見できる API 規約を保つ。
-        syn::visit::visit_item_fn(self, node);
-    }
-}
-
-struct FunctionRefCollector<'ast> {
-    target: String,
-    all_names: Vec<String>,
-    found: Option<&'ast ItemFn>,
-}
-
-impl<'ast> Visit<'ast> for FunctionRefCollector<'ast> {
-    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        let name = node.sig.ident.to_string();
-        self.all_names.push(name.clone());
-        if self.found.is_none() && name == self.target {
-            self.found = Some(node);
-        }
-        // `list_functions` の `FunctionNameCollector` と探索範囲を揃え、列挙された名前が
-        // 必ず `parse_function` で再発見できることを保証する。
-        syn::visit::visit_item_fn(self, node);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_functions_includes_impl_methods_as_qualified_names() {
+        // Phase 4.0 [break]: impl メソッドは `Foo::bar` 形式で列挙される。
+        let names =
+            list_functions("fn free() {}\nstruct S;\nimpl S { fn method(&self) {} }\n").unwrap();
+        assert_eq!(names, ["free", "S::method"]);
+    }
     use magia_core::ir::{AuxRingKind, EdgeKind, LoopKind, OperationKind, Sigil, SigilKind};
 
     /// モジュール内の AuxRing 一覧 (SigilId 昇順)。

@@ -4,13 +4,14 @@
 //! - `magia render <FILE> --fn <NAME>` — SVG を出力
 //! - `magia list <FILE>` — 関数一覧
 //! - `magia emit-ir <FILE> --fn <NAME>` — MagiaIR を JSON で出力 (デバッグ用)
-//! - `magia serve <FILE> --fn <NAME>` — dev-server (保存のたびにブラウザを自動更新)
+//! - `magia serve <FILE>` — dev-server (ソース連動ビュー。関数選択は URL `?fn=`)
 //! - `magia transcribe <FILE> --fn <NAME>` — 呪文書き起こし (アクセシビリティ用テキスト)
 //! - `magia diff <BEFORE> <AFTER> --fn <NAME>` — 同一関数の2リビジョンの構造差分 (Spell Diff)。
 //!   `--svg` で差分を強調した魔法陣を出力する
 
 mod gitio;
 mod serve;
+mod srcview;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -116,13 +117,13 @@ enum Command {
         #[arg(long)]
         fail_on_new_unsafe: bool,
     },
-    /// dev-server を起動する (ファイル保存のたびにブラウザの魔法陣を自動更新)
+    /// dev-server を起動する (ソース連動ビュー。保存のたびにブラウザを自動更新)
+    ///
+    /// Phase 4.0 [break]: `--fn` は廃止。最初に映す関数はクライアント側の状態
+    /// (URL `?fn=<qualified>`) で、省略時はファイル先頭の関数。
     Serve {
         /// 入力 Rust ソースファイル
         file: PathBuf,
-        /// 描画する関数名
-        #[arg(long = "fn", value_name = "NAME")]
-        fn_name: String,
         /// 待ち受けポート (0 で空きポートを自動割当)
         #[arg(long, default_value_t = 4747)]
         port: u16,
@@ -203,11 +204,7 @@ fn run(cli: Cli) -> Result<()> {
             json,
             fail_on_new_unsafe,
         } => run_changed(&git, json, fail_on_new_unsafe),
-        Command::Serve {
-            file,
-            fn_name,
-            port,
-        } => {
+        Command::Serve { file, port } => {
             // serve は起動時にファイルが読めなくても立ち上がり、画面にエラーを出す
             // (会話を切らない方針)。拡張子警告だけはここで出す。
             if file.extension().and_then(|e| e.to_str()) != Some("rs") {
@@ -216,7 +213,7 @@ fn run(cli: Cli) -> Result<()> {
                     file.display()
                 );
             }
-            serve::run(&file, &fn_name, port)
+            serve::run(&file, port)
         }
     }
 }

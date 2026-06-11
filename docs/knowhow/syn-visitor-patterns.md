@@ -1,7 +1,8 @@
 # syn::Visit で AST から情報を集めるパターン
 
 > Phase 1.2 (syn → IR) で確立、Phase 1.3 (AuxRing 再帰展開)・
-> Phase 1.4 (call site 抽出と効果判定)・Phase 3.4 (近似データフロー解析) で拡張。
+> Phase 1.4 (call site 抽出と効果判定)・Phase 3.4 (近似データフロー解析)・
+> Phase 4.0 (impl メソッド対応の FunctionIndex) で拡張。
 
 ## 基本形: 単一関心の Visitor を関数スコープに閉じ込める
 
@@ -200,6 +201,17 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
   フローが自然に出る (ベルカ式の「変換 → 消費」の根拠)。syn 2 では複合代入は
   `ExprBinary` + `*Assign` 系 `BinOp` (ExprAssignOp は無い)
 - クロージャは `visit_expr_closure` を空実装にして再帰を止める (追わない宣言)
+
+## impl メソッド対応の関数索引 (Phase 4.0)
+
+- **ImplItemFn → ItemFn の正規化**: attrs / vis / sig / block は形が共通なので、
+  メソッドを `ItemFn` に詰め替えれば後段 (リング構築) を一本化できる
+- **qualified 名 (`Foo::bar`) を一意キーの正**とし、素の名前はソース出現順の最初に
+  解決するフォールバックにする (同名メソッドの impl 違いを区別する一意キー)。
+  impl 文脈は self 型の最後のパスセグメント (`impl fmt::Display for Foo` → `Foo`)
+- **「索引と本体は同じ走査範囲」が規約なら walker を1本にする** (1関心1visitor の
+  意図的な例外として明記する)。list / parse / serve の3者が同じ walker を共有すれば
+  「列挙された名前は必ず再発見できる」規約が一点で守れる (`magia-rust/src/index.rs`)
 
 ## 関連文書
 

@@ -4,7 +4,7 @@
     {
       "name": "magia-serve",
       "runtimeExecutable": "target/debug/magia",
-      "runtimeArgs": ["serve", "crates/magia-core/src/render/midchilda.rs", "--fn", "write_document", "--port", "4747"],
+      "runtimeArgs": ["serve", "crates/magia-core/src/render/midchilda.rs", "--port", "4747"],
       "port": 4747
     }
   ]

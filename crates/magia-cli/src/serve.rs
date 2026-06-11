@@ -1,10 +1,15 @@
-//! dev-server (Phase 2.1, spec v0.2 §7)。
+//! dev-server (Phase 2.1〜2.4, Phase 3.5 式トグル, Phase 4.0 ソース連動ビュー)。
 //!
-//! `magia serve <FILE> --fn <NAME>` で常駐し、ブラウザに魔法陣を表示する。
-//! ファイル保存を検知して再レンダリングし、SSE でブラウザへ更新を push する
-//! (spec §7 は WebSocket または SSE を許容。同期サーバで完結する SSE を採用)。
-//! 解析エラー中は**直前の正常な SVG を保持**したままエラーメッセージを重ねる
-//! (コードとの会話を切らない、notes §1.1)。
+//! `magia serve <FILE>` でファイル全体を監視し、ブラウザに
+//! 「ソース | 魔法陣」の左右ペインを配信する (spec §7 / Phase 4.0 計画)。
+//!
+//! 状態モデル (Phase 4.0):
+//! - サーバは**直近の正常スナップショット** (ソース全文 + 関数索引) と
+//!   現在の解析エラーだけを持つ。どの関数を見ているかは**クライアントの状態**
+//!   (URL `?fn=`) であり、サーバは保持しない
+//! - `/state` = ファイルメタ + 関数一覧 + エラー。`/spell/<fn>` = 関数単位の
+//!   (svg 両式 + SH 済みソース + 書き起こし) をオンデマンドでレンダリング
+//! - 構文エラー中は直近の正常スナップショットから配信し続ける (会話を切らない原則)
 //!
 //! 構成は同期スレッドモデル: tiny_http の受信ループ + リクエストごとのスレッド
 //! (SSE 接続はスレッドを1本占有するが、ローカル開発ツールの同時接続数では問題ない)。
@@ -21,22 +26,34 @@ use notify::{RecursiveMode, Watcher};
 
 use magia_core::layout::layout;
 use magia_core::render::{RenderStyle, render};
-use magia_rust::parse_function;
+use magia_rust::{FunctionEntry, function_index, parse_function};
+
+use crate::srcview::highlight_rust;
 
 /// エディタの「テンポラリ書き込み → rename」保存で複数イベントが連射されるため、
-/// 最後のイベントからこの時間だけ静まるのを待ってから1回だけ再レンダリングする。
+/// 最後のイベントからこの時間だけ静まるのを待ってから1回だけ再解析する。
 const DEBOUNCE: Duration = Duration::from_millis(120);
+
+/// 直近の正常スナップショット。構文エラー中の配信はここから行う。
+#[derive(Default)]
+struct GoodSnapshot {
+    source: String,
+    functions: Vec<FunctionEntry>,
+}
+
+/// 現在の解析エラー (正常時は None)。
+struct ServeError {
+    message: String,
+    /// 構文エラーの行 (1始まり)。ソースペインの案内に使う。
+    line: Option<usize>,
+}
 
 /// ブラウザに配る共有状態。
 struct Shared {
-    /// 直近の正常な SVG — ミッドチルダ式 (エラー中も保持する)。
-    svg: Mutex<String>,
-    /// 直近の正常な SVG — ベルカ式 (Phase 3.5)。同じ IR の別射影なので対で更新する。
-    svg_belka: Mutex<String>,
-    /// 直近の正常な呪文書き起こし (spec §15。SVG と同じ IR の射影なので対で更新する)。
-    transcript: Mutex<String>,
-    /// 現在の解析エラー (正常時は None)。
-    error: Mutex<Option<String>>,
+    /// 表示用ファイル名。
+    file_label: String,
+    good: Mutex<GoodSnapshot>,
+    error: Mutex<Option<ServeError>>,
     /// 更新世代。クライアントはこの値の変化で再取得する。
     version: AtomicU64,
     /// SSE 接続中クライアントへの通知チャネル。
@@ -53,58 +70,145 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Shared {
-    fn new() -> Self {
+    fn new(file_label: String) -> Self {
         Self {
-            svg: Mutex::new(String::new()),
-            svg_belka: Mutex::new(String::new()),
-            transcript: Mutex::new(String::new()),
+            file_label,
+            good: Mutex::new(GoodSnapshot::default()),
             error: Mutex::new(None),
             version: AtomicU64::new(0),
             clients: Mutex::new(Vec::new()),
         }
     }
 
-    /// 状態を更新して世代を進め、SSE クライアントへ通知する。
-    fn publish(&self, rendered: Result<Rendered, String>) {
-        match rendered {
-            Ok(rendered) => {
-                *lock_or_recover(&self.svg) = rendered.svg;
-                *lock_or_recover(&self.svg_belka) = rendered.svg_belka;
-                *lock_or_recover(&self.transcript) = rendered.transcript;
+    /// ファイルを読み直してスナップショットを更新し、SSE クライアントへ通知する。
+    fn reload(&self, file: &Path) {
+        match load_snapshot(file) {
+            Ok(snapshot) => {
+                *lock_or_recover(&self.good) = snapshot;
                 *lock_or_recover(&self.error) = None;
             }
-            Err(message) => {
-                // SVG・書き起こしは触らない: 直前の正常な内容を保持する (spec §7)。
-                // スクリーンリーダー利用者にもエラーは #status (テキスト) で伝わり、
-                // 書き起こしが「最後に解析できた状態」を指すのは視覚側と同じ扱い。
-                *lock_or_recover(&self.error) = Some(message);
+            Err(error) => {
+                // スナップショットは触らない: 直前の正常な内容を配信し続ける (spec §7)。
+                *lock_or_recover(&self.error) = Some(error);
             }
         }
         let version = self.version.fetch_add(1, Ordering::SeqCst) + 1;
         lock_or_recover(&self.clients).retain(|client| client.send(version).is_ok());
     }
 
+    /// `/state`: ファイルメタ + 関数一覧 + エラー (魔法陣・ソースは `/spell/<fn>` 側)。
     fn state_json(&self) -> String {
+        let good = lock_or_recover(&self.good);
+        let functions: Vec<_> = good
+            .functions
+            .iter()
+            .map(|entry| {
+                serde_json::json!({
+                    "qualified": entry.qualified,
+                    "name": entry.name,
+                    "impl_context": entry.impl_context,
+                    "signature": entry.signature,
+                    "start_line": entry.start_line,
+                    "end_line": entry.end_line,
+                })
+            })
+            .collect();
+        let error = lock_or_recover(&self.error);
         serde_json::json!({
             "version": self.version.load(Ordering::SeqCst),
-            "svg": *lock_or_recover(&self.svg),
-            "svg_belka": *lock_or_recover(&self.svg_belka),
-            "transcript": *lock_or_recover(&self.transcript),
-            "error": *lock_or_recover(&self.error),
+            "file": self.file_label,
+            "functions": functions,
+            "error": error.as_ref().map(|e| serde_json::json!({
+                "message": e.message,
+                "line": e.line,
+            })),
         })
         .to_string()
     }
+
+    /// `/spell/<fn>`: 関数単位のレンダリング (オンデマンド、サーバに選択状態を持たない)。
+    /// 不明な関数は `None` (404 は呼び出し側の責務)。
+    fn spell_json(&self, qualified: &str) -> Option<Result<String, String>> {
+        // レンダリング (parse + layout + render ×2 + syntect) は重いので、
+        // ロックは複製を取るまでに留める — reload (保存) を /spell がブロックしない。
+        let (source, entry) = {
+            let good = lock_or_recover(&self.good);
+            let entry = good
+                .functions
+                .iter()
+                .find(|entry| entry.qualified == qualified)?
+                .clone();
+            (good.source.clone(), entry)
+        };
+        Some(render_spell(&source, &entry))
+    }
+}
+
+/// ファイルを読み、関数索引つきのスナップショットを作る。
+fn load_snapshot(file: &Path) -> Result<GoodSnapshot, ServeError> {
+    let source = std::fs::read_to_string(file).map_err(|e| ServeError {
+        message: format!("ファイルを読み込めません: {}: {e}", file.display()),
+        line: None,
+    })?;
+    let functions = function_index(&source).map_err(|e| ServeError {
+        line: syntax_error_line(&e),
+        message: e.to_string(),
+    })?;
+    Ok(GoodSnapshot { source, functions })
+}
+
+/// 構文エラーの行番号 (ソースペインの案内に使う)。
+fn syntax_error_line(error: &magia_rust::Error) -> Option<usize> {
+    match error {
+        magia_rust::Error::Syntax(syntax) => Some(syntax.span().start().line),
+        magia_rust::Error::FunctionNotFound { .. } => None,
+    }
+}
+
+/// 関数1つ分の応答 JSON を組み立てる。Err は内部不整合 (500 相当)。
+///
+/// `source_html` は Phase 4.0.5 (Vue のソースペイン) が使う先行実装で、
+/// 現行 UI (薄い継ぎ目 JS) はまだ表示しない — API 契約として先に固定しておく。
+fn render_spell(source: &str, entry: &FunctionEntry) -> Result<String, String> {
+    let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
+    let placed = layout(&graph);
+    let snippet = source_lines(source, entry.start_line, entry.end_line);
+    Ok(serde_json::json!({
+        "qualified": entry.qualified,
+        "signature": entry.signature,
+        "svg": render(&graph, &placed, RenderStyle::MidchildaConcentric),
+        "svg_belka": render(&graph, &placed, RenderStyle::Belka),
+        "source_html": highlight_rust(&snippet),
+        "transcript": magia_core::transcript::transcribe(&graph),
+        "start_line": entry.start_line,
+    })
+    .to_string())
+}
+
+/// 1始まり・両端含みの行範囲を切り出す (関数スニペット)。
+fn source_lines(source: &str, start_line: usize, end_line: usize) -> String {
+    // span が正常なら end >= start。壊れた入力でも最低1行は返す防御。
+    let end_line = end_line.max(start_line);
+    let mut snippet: String = source
+        .lines()
+        .skip(start_line.saturating_sub(1))
+        .take(end_line.saturating_sub(start_line) + 1)
+        .collect::<Vec<_>>()
+        .join("\n");
+    snippet.push('\n');
+    snippet
 }
 
 /// dev-server を起動する。Ctrl-C で終了するまで戻らない。
-pub(crate) fn run(file: &Path, fn_name: &str, port: u16) -> Result<()> {
+pub(crate) fn run(file: &Path, port: u16) -> Result<()> {
     let file = file.to_path_buf();
-    let shared = Arc::new(Shared::new());
+    let label = file.display().to_string();
+    let shared = Arc::new(Shared::new(label));
 
-    // 初回レンダリング (エラーでもサーバは起動し、画面にエラーを出す)。
-    shared.publish(render_once(&file, fn_name));
+    // 初回読み込み (エラーでもサーバは起動し、画面にエラーを出す)。
+    shared.reload(&file);
 
-    spawn_watcher(Arc::clone(&shared), file.clone(), fn_name.to_string())?;
+    spawn_watcher(Arc::clone(&shared), file.clone())?;
 
     let server = tiny_http::Server::http(("127.0.0.1", port))
         .map_err(|e| anyhow::anyhow!("サーバを起動できません: {e}"))?;
@@ -114,7 +218,7 @@ pub(crate) fn run(file: &Path, fn_name: &str, port: u16) -> Result<()> {
         tiny_http::ListenAddr::Unix(_) => port,
     };
     println!(
-        "serving http://127.0.0.1:{actual_port}/  ({} --fn {fn_name})",
+        "serving http://127.0.0.1:{actual_port}/  ({})",
         file.display()
     );
     // パイプ接続時はブロックバッファリングされるため明示 flush (テストが URL 行を待つ)。
@@ -127,34 +231,12 @@ pub(crate) fn run(file: &Path, fn_name: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
-/// 1回分の解析結果 (両式の SVG と書き起こしは同じ IR の射影なので必ず対で作る)。
-struct Rendered {
-    svg: String,
-    svg_belka: String,
-    transcript: String,
-}
-
-// serve は常にフィルタなしで描き、レイヤー切替はブラウザ側 CSS で行う (spec §5.3)。
-// 将来 serve が `--filter` を受けるときは render_with に切り替える (Phase 3 拡張点)。
-fn render_once(file: &Path, fn_name: &str) -> Result<Rendered, String> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| format!("ファイルを読み込めません: {}: {e}", file.display()))?;
-    let graph = parse_function(&source, fn_name).map_err(|e| e.to_string())?;
-    let placed = layout(&graph);
-    Ok(Rendered {
-        svg: render(&graph, &placed, RenderStyle::MidchildaConcentric),
-        // ベルカ式は三角配置を内部で決める (placed は使われないが API は共通)。
-        svg_belka: render(&graph, &placed, RenderStyle::Belka),
-        transcript: magia_core::transcript::transcribe(&graph),
-    })
-}
-
 /// ファイル監視スレッドを起動する。
 ///
 /// エディタの rename 保存 (テンポラリ書き込み → 置換) でも検知できるよう、
 /// ファイルそのものではなく**親ディレクトリ**を非再帰で監視し、
 /// イベントのパスをファイル名で照合する。
-fn spawn_watcher(shared: Arc<Shared>, file: PathBuf, fn_name: String) -> Result<()> {
+fn spawn_watcher(shared: Arc<Shared>, file: PathBuf) -> Result<()> {
     let parent = file
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -182,7 +264,7 @@ fn spawn_watcher(shared: Arc<Shared>, file: PathBuf, fn_name: String) -> Result<
             }
             // デバウンス: 静まるまで追加イベントを飲み込む。
             while rx.recv_timeout(DEBOUNCE).is_ok() {}
-            shared.publish(render_once(&file, &fn_name));
+            shared.reload(&file);
         }
     });
     Ok(())
@@ -194,17 +276,148 @@ fn event_touches(event: &notify::Result<notify::Event>, watched_name: &std::ffi:
             .paths
             .iter()
             .any(|path| path.file_name() == Some(watched_name)),
-        // 監視エラーは「変化したかもしれない」側に倒して再レンダリングする。
+        // 監視エラーは「変化したかもしれない」側に倒して再解析する。
         Err(_) => true,
     }
 }
 
 // ===== HTTP =====
 
-// レイヤーパレット (Phase 2.2, spec v0.2 §5.5):
-// - 切替は CSS (display / opacity) のみで行い、SVG は再生成しない (spec §5.3)
-// - 状態は URL クエリ `?layers=a,b&op=a:0.5` に反映し、リロード・共有で再現できる
-// - SSE による SVG 差し替え (innerHTML) 後はスタイルが消えるため毎回再適用する
+fn handle_request(request: tiny_http::Request, shared: &Shared) {
+    let url = request.url().to_string();
+    // ルーティングはパス部分のみで行う (`?fn=...` 等の状態クエリが付いても返す)。
+    let path = url.split('?').next().unwrap_or("/").to_string();
+    let result = match (request.method(), path.as_str()) {
+        (tiny_http::Method::Get, "/") => request.respond(
+            tiny_http::Response::from_string(INDEX_HTML)
+                .with_header(header("Content-Type", "text/html; charset=utf-8")),
+        ),
+        (tiny_http::Method::Get, "/state") => request.respond(
+            tiny_http::Response::from_string(shared.state_json())
+                .with_header(header("Content-Type", "application/json; charset=utf-8")),
+        ),
+        (tiny_http::Method::Get, spell) if spell.starts_with("/spell/") => {
+            let qualified = percent_decode(&spell["/spell/".len()..]);
+            request.respond(spell_response(shared, &qualified))
+        }
+        (tiny_http::Method::Get, "/events") => {
+            let (tx, rx) = channel::<u64>();
+            {
+                // 新規接続のたびに切断済みクライアントを掃除する (publish が無い間の
+                // Sender リーク防止)。現世代を送って生存判定を兼ねる (受信側は
+                // 冪等な refresh をするだけなので余分な1イベントは無害)。
+                let version = shared.version.load(Ordering::SeqCst);
+                let mut clients = lock_or_recover(&shared.clients);
+                clients.retain(|client| client.send(version).is_ok());
+                clients.push(tx);
+            }
+            let response = tiny_http::Response::new(
+                tiny_http::StatusCode(200),
+                vec![
+                    header("Content-Type", "text/event-stream"),
+                    header("Cache-Control", "no-cache"),
+                ],
+                SseStream::new(rx),
+                None, // 長さ不定 = チャンク転送
+                None,
+            );
+            request.respond(response)
+        }
+        _ => request.respond(tiny_http::Response::from_string("not found").with_status_code(404)),
+    };
+    // クライアント切断は正常系 (SSE はブラウザを閉じれば必ずここに来る)。
+    let _ = result;
+}
+
+/// `/spell/<fn>` の応答 (200 / 404 / 500)。
+fn spell_response(
+    shared: &Shared,
+    qualified: &str,
+) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let json_header = header("Content-Type", "application/json; charset=utf-8");
+    match shared.spell_json(qualified) {
+        Some(Ok(json)) => tiny_http::Response::from_string(json).with_header(json_header),
+        Some(Err(message)) => {
+            tiny_http::Response::from_string(serde_json::json!({ "error": message }).to_string())
+                .with_status_code(500)
+                .with_header(json_header)
+        }
+        None => tiny_http::Response::from_string(
+            serde_json::json!({ "error": format!("関数 `{qualified}` は索引にありません") })
+                .to_string(),
+        )
+        .with_status_code(404)
+        .with_header(json_header),
+    }
+}
+
+fn header(field: &str, value: &str) -> tiny_http::Header {
+    tiny_http::Header::from_bytes(field.as_bytes(), value.as_bytes()).expect("静的ヘッダは常に有効")
+}
+
+/// URL パスセグメントの最小パーセントデコード (`Foo%3A%3Abar` → `Foo::bar`)。
+/// 不正なエンコードは文字をそのまま通す (防御的、未知名は 404 側で吸収される)。
+fn percent_decode(segment: &str) -> String {
+    let bytes = segment.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && let Some(hex) = bytes.get(i + 1..i + 3)
+            && let Ok(hex_str) = std::str::from_utf8(hex)
+            && let Ok(value) = u8::from_str_radix(hex_str, 16)
+        {
+            out.push(value);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// SSE のイベント列を `Read` として供給するアダプタ。
+/// 更新通知が来るたびに `data: <version>` イベントを1つ吐く。
+/// 送信側が drop されたら EOF (接続終了)。
+struct SseStream {
+    rx: Receiver<u64>,
+    pending: Vec<u8>,
+}
+
+impl SseStream {
+    fn new(rx: Receiver<u64>) -> Self {
+        // 接続直後に1イベント流し、EventSource の onmessage → refresh を促す。
+        // ペイロードの「0」に意味はない (クライアントは値を見ず refresh するだけ)。
+        // 将来 version を差分処理に使う場合は接続直後イベントを実世代に変えること。
+        Self {
+            rx,
+            pending: b"data: 0\n\n".to_vec(),
+        }
+    }
+}
+
+impl Read for SseStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pending.is_empty() {
+            match self.rx.recv() {
+                Ok(version) => self.pending = format!("data: {version}\n\n").into_bytes(),
+                Err(_) => return Ok(0), // サーバ側終了 → EOF
+            }
+        }
+        let n = self.pending.len().min(buf.len());
+        buf[..n].copy_from_slice(&self.pending[..n]);
+        self.pending.drain(..n);
+        Ok(n)
+    }
+}
+
+// ===== フロントエンド =====
+
+// Phase 4.0 注記: ペアビュー UI (関数一覧・ソースペイン) は Phase 4.0.5 (Vue 基盤) で
+// 実装する (オーナー方針 2026-06-11、素 JS の二度書き回避)。本テンプレートは Phase 2.x
+// の UI を維持し、新 API (/state = メタ, /spell/<fn> = 描画素材) への薄い継ぎ目のみ持つ。
+// 注意: raw string の都合で本テンプレートに `"` + `#` の連接を書かないこと。
 const INDEX_HTML: &str = r#"<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><title>MagiaMagica dev-server</title>
 <style>
@@ -258,11 +471,13 @@ let visible = new Set(LAYERS);
 let opacity = {};
 // 式 (spec v0.3 §14.4)。切替は表示する SVG の選択のみで、両式ともサーバが常に生成する。
 let style = 'midchilda';
-let lastState = null;
+let lastSpell = null;   // /spell/<fn> の最新応答
+let currentFn = null;   // qualified 名。URL ?fn= が真実 (Phase 4.0 の薄い継ぎ目)
 
 function readQuery() {
   const params = new URLSearchParams(location.search);
   style = params.get('style') === 'belka' ? 'belka' : 'midchilda';
+  currentFn = params.get('fn');
   const layers = params.get('layers');
   visible = layers === null ? new Set(LAYERS)
                             : new Set(layers.split(',').filter(l => LAYERS.includes(l)));
@@ -278,6 +493,7 @@ function readQuery() {
 
 function writeQuery() {
   const params = new URLSearchParams();
+  if (currentFn) { params.set('fn', currentFn); }
   if (style === 'belka') { params.set('style', 'belka'); }
   if (visible.size < LAYERS.length) { params.set('layers', LAYERS.filter(l => visible.has(l)).join(',')); }
   const ops = LAYERS.filter(l => opacity[l] !== undefined && Math.abs(opacity[l] - 1) > 1e-9)
@@ -307,8 +523,8 @@ function apply() {
 
 // 選択中の式の SVG を描画する (レイヤー切替はミッドチルダ式の <g> にのみ効く)。
 function show() {
-  if (!lastState) { return; }
-  const svg = style === 'belka' ? lastState.svg_belka : lastState.svg;
+  if (!lastSpell) { return; }
+  const svg = style === 'belka' ? lastSpell.svg_belka : lastSpell.svg;
   if (svg) {
     const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
     document.getElementById('magia').replaceChildren(doc.documentElement);
@@ -362,11 +578,24 @@ document.getElementById('dsl-apply').addEventListener('click', () => {
   writeQuery(); apply();
 });
 
+// Phase 4.0 の薄い継ぎ目: /state はメタ (関数一覧 + エラー)、描画素材は /spell/<fn>。
+// ペアビュー UI (関数一覧・ソースペイン) は Phase 4.0.5 (Vue) で実装する。
 async function refresh() {
-  const response = await fetch('/state');
-  lastState = await response.json();
-  document.getElementById('status').textContent = lastState.error || '';
-  document.getElementById('transcript').textContent = lastState.transcript || '';
+  const state = await (await fetch('/state')).json();
+  const message = state.error
+    ? state.error.message + (state.error.line ? ' (' + state.error.line + '行目)' : '')
+    : '';
+  document.getElementById('status').textContent = message;
+  const names = (state.functions || []).map(f => f.qualified);
+  if (!currentFn || !names.includes(currentFn)) {
+    currentFn = names[0] || null;
+    writeQuery();
+  }
+  if (!currentFn) { return; }
+  const response = await fetch('/spell/' + encodeURIComponent(currentFn));
+  if (!response.ok) { return; }
+  lastSpell = await response.json();
+  document.getElementById('transcript').textContent = lastSpell.transcript || '';
   // innerHTML でなく DOMParser を使う (show 内): SVG 内に万一スクリプト類が
   // 混入しても実行されない (レンダラは XML エスケープ済みだが多層防御として)。
   show();
@@ -378,84 +607,26 @@ new EventSource('/events').onmessage = refresh;
 </body></html>
 "#;
 
-fn handle_request(request: tiny_http::Request, shared: &Shared) {
-    let url = request.url().to_string();
-    // ルーティングはパス部分のみで行う (`/?layers=...` のようにレイヤーパレットの
-    // 状態クエリが付いてもトップページを返す)。
-    let path = url.split('?').next().unwrap_or("/");
-    let result = match (request.method(), path) {
-        (tiny_http::Method::Get, "/") => request.respond(
-            tiny_http::Response::from_string(INDEX_HTML)
-                .with_header(header("Content-Type", "text/html; charset=utf-8")),
-        ),
-        (tiny_http::Method::Get, "/state") => request.respond(
-            tiny_http::Response::from_string(shared.state_json())
-                .with_header(header("Content-Type", "application/json; charset=utf-8")),
-        ),
-        (tiny_http::Method::Get, "/events") => {
-            let (tx, rx) = channel::<u64>();
-            {
-                // 新規接続のたびに切断済みクライアントを掃除する (publish が無い間の
-                // Sender リーク防止)。現世代を送って生存判定を兼ねる (受信側は
-                // 冪等な refresh をするだけなので余分な1イベントは無害)。
-                let version = shared.version.load(Ordering::SeqCst);
-                let mut clients = lock_or_recover(&shared.clients);
-                clients.retain(|client| client.send(version).is_ok());
-                clients.push(tx);
-            }
-            let response = tiny_http::Response::new(
-                tiny_http::StatusCode(200),
-                vec![
-                    header("Content-Type", "text/event-stream"),
-                    header("Cache-Control", "no-cache"),
-                ],
-                SseStream::new(rx),
-                None, // 長さ不定 = チャンク転送
-                None,
-            );
-            request.respond(response)
-        }
-        _ => request.respond(tiny_http::Response::from_string("not found").with_status_code(404)),
-    };
-    // クライアント切断は正常系 (SSE はブラウザを閉じれば必ずここに来る)。
-    let _ = result;
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn header(field: &str, value: &str) -> tiny_http::Header {
-    tiny_http::Header::from_bytes(field.as_bytes(), value.as_bytes()).expect("静的ヘッダは常に有効")
-}
-
-/// SSE のイベント列を `Read` として供給するアダプタ。
-/// 更新通知が来るたびに `data: <version>` イベントを1つ吐く。
-/// 送信側が drop されたら EOF (接続終了)。
-struct SseStream {
-    rx: Receiver<u64>,
-    pending: Vec<u8>,
-}
-
-impl SseStream {
-    fn new(rx: Receiver<u64>) -> Self {
-        // 接続直後に1イベント流し、EventSource の onmessage → refresh を促す。
-        // ペイロードの「0」に意味はない (クライアントは値を見ず refresh するだけ)。
-        // 将来 version を差分処理に使う場合は接続直後イベントを実世代に変えること。
-        Self {
-            rx,
-            pending: b"data: 0\n\n".to_vec(),
-        }
+    #[test]
+    fn percent_decode_handles_qualified_names() {
+        assert_eq!(percent_decode("Foo%3A%3Abar"), "Foo::bar");
+        assert_eq!(percent_decode("plain_name"), "plain_name");
     }
-}
 
-impl Read for SseStream {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if self.pending.is_empty() {
-            match self.rx.recv() {
-                Ok(version) => self.pending = format!("data: {version}\n\n").into_bytes(),
-                Err(_) => return Ok(0), // サーバ側終了 → EOF
-            }
-        }
-        let n = self.pending.len().min(buf.len());
-        buf[..n].copy_from_slice(&self.pending[..n]);
-        self.pending.drain(..n);
-        Ok(n)
+    #[test]
+    fn percent_decode_passes_incomplete_sequences_through() {
+        // 不正・不完全なエンコードは文字をそのまま通す (404 側で吸収される)。
+        assert_eq!(percent_decode("Foo%3"), "Foo%3");
+        assert_eq!(percent_decode("Foo%"), "Foo%");
+        assert_eq!(percent_decode("Foo%ZZ"), "Foo%ZZ");
+    }
+
+    #[test]
+    fn source_lines_clamps_reversed_range() {
+        assert_eq!(source_lines("a\nb\nc\n", 2, 1), "b\n");
     }
 }

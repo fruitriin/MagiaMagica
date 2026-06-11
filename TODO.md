@@ -8,7 +8,7 @@
 **Phase 3 (3.0〜3.5) は全完了 (2026-06-11)** — Spell Diff 系譜 + CI 統合 + ベルカ式。
 残存する判定待ち: Phase 1.8 / 3.2 / 3.5 の意匠判定素材 (オーナー送付済み)。
 2026-06-11 にオーナー要望から **Phase 4 系 (フロントエンド充実) ストリームを立ち上げ**、
-4.0 (ソース連動ビュー) を計画化した。次は 4.0 (オーナーの優先度確認待ちのまま暫定着手可)。
+4.0 (ソース連動ビュー) は**サーバ側 API まで完了** (2026-06-11、スコープ縮小はオーナー指示)。次は 4.0.5 (Vue 基盤 — UI 実装をここに集約)。
 Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow 一括昇格 PR) は
 オーナー判定が出揃った節目に実施する。
 
@@ -22,18 +22,20 @@ Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow
 | 4 | 3.3 | [docs/plans/phase3.3-ci-integration.md](docs/plans/phase3.3-ci-integration.md) | 完了 |
 | 5 | 3.4 | [docs/plans/phase3.4-dataflow-ir.md](docs/plans/phase3.4-dataflow-ir.md) | 完了 |
 | 6 | 3.5 | [docs/plans/phase3.5-belka-style.md](docs/plans/phase3.5-belka-style.md) | 完了（意匠判定待ち） |
-| 7 | 4.0 | [docs/plans/phase4.0-source-paired-view.md](docs/plans/phase4.0-source-paired-view.md) | 未着手 |
-| 8 | 4.1 | [docs/plans/phase4.1-pinned-focus-view.md](docs/plans/phase4.1-pinned-focus-view.md) | 未着手 |
-| 9 | 4.2 | [docs/plans/phase4.2-proximity-model.md](docs/plans/phase4.2-proximity-model.md) | 未着手 |
-| 10 | 4.3 | [docs/plans/phase4.3-composite-still-render.md](docs/plans/phase4.3-composite-still-render.md) | 未着手 |
-| 11 | 4.4 | [docs/plans/phase4.4-call-jump.md](docs/plans/phase4.4-call-jump.md) | 未着手（イメージ感のみ） |
-| 12 | 4.5 | [docs/plans/phase4.5-workspace-overview.md](docs/plans/phase4.5-workspace-overview.md) | 未着手（イメージ感のみ） |
-| 13 | 4.6 | [docs/plans/phase4.6-theme-and-diff-overlay.md](docs/plans/phase4.6-theme-and-diff-overlay.md) | 未着手（イメージ感のみ） |
+| 7 | 4.0.5 | [docs/plans/phase4.0.5-frontend-foundation.md](docs/plans/phase4.0.5-frontend-foundation.md) | 未着手（**4.0 の前段**） |
+| 8 | 4.0 | [docs/plans/phase4.0-source-paired-view.md](docs/plans/phase4.0-source-paired-view.md) | 完了（サーバ側 API まで。UI は 4.0.5 に移管） |
+| 9 | 4.1 | [docs/plans/phase4.1-pinned-focus-view.md](docs/plans/phase4.1-pinned-focus-view.md) | 未着手 |
+| 10 | 4.2 | [docs/plans/phase4.2-proximity-model.md](docs/plans/phase4.2-proximity-model.md) | 未着手 |
+| 11 | 4.3 | [docs/plans/phase4.3-composite-still-render.md](docs/plans/phase4.3-composite-still-render.md) | 未着手 |
+| 12 | 4.4 | [docs/plans/phase4.4-call-jump.md](docs/plans/phase4.4-call-jump.md) | 未着手（イメージ感のみ） |
+| 13 | 4.5 | [docs/plans/phase4.5-workspace-overview.md](docs/plans/phase4.5-workspace-overview.md) | 未着手（イメージ感のみ） |
+| 14 | 4.6 | [docs/plans/phase4.6-theme-and-diff-overlay.md](docs/plans/phase4.6-theme-and-diff-overlay.md) | 未着手（イメージ感のみ） |
 
 依存関係:
 - 3.0 (仕様化) は全ての前提。3.1 → 3.2 → 3.3 が Spell Diff の系譜
 - 3.4 → 3.5 がベルカ式の系譜 (3.1〜3.3 と独立して進められる)
 - 3.4 は EdgeLayerData の破壊的再設計 (spec v0.2 §4.3 の既定方針) を含む
+- **4.0.5 が Phase 4 全体の前提**。Vue 3 + Vite+ 基盤を立ち上げ、Phase 2.x の inline HTML/JS を Vue 化する。4.0 以降は本基盤の上に構築
 - **4.0 → 4.1 → 4.2 が「ピン中心ビュー」のコア系譜**。4.0 はペアビュー基盤、4.1 はフォーカス + リング配置、4.2 は近接度モデルを 4.1 のスタブから本実装に差し替え
 - **4.3 (静止画) は 4.1 のレイアウト関数を共有** — `magia render --focus` で動的UIと同じ構図を1枚 SVG に
 - **4.4 (呼び出しジャンプ) は 4.1 + 4.2 + Phase 3.4 データフロー IR に依存**
