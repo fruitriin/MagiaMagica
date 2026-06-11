@@ -8,6 +8,7 @@
 
 ## オーナーフィードバック
 
+- **報告 (Phase 4.0.9 完了, 2026-06-11)**: IR JSON エクスポート + Vue IR ビルダ (案2) が判定合格で完了しました (「左右同じに見える」)。**「Vue 1本化」コア系譜 (4.0.5 → 4.0.7 → 4.0.9) が完成** — SVG パーサは削除され、魔法陣は Rust の配置済み IR (spec v0.3 §16) を Vue が描画します。ベルカ式は判定どおり SVG 温存 + 保守方針コメント済み (4.3 でリメイク)。**4.1 (ピン中心ビュー) と 4.3 (Vue SSR) の前提が揃いました**。次タスクは 4.0.6 前半 (凡例パネル — 先行可) か 4.1 です
 - **報告 (Phase 4.0.7 完了, 2026-06-11)**: SVG → 境界スキーマ + Vue コンポーネントツリー (案1) が判定合格で完了しました (等価性「同じに見える」、ホバー/選択「いいね」)。v-html は撤去され、魔法陣は `MagicCircleSchema` を受ける `<MagicCircle>` ツリーで描画されます。SVG パーサは converters/ に隔離済みで、**次の 4.0.9 (案2: IR JSON エクスポート + Vue ビルダ) ではこのファイルだけ差し替えれば移行完了**します。計画書の前提 (data-* 属性) が実装と不一致だったため class + 出現順 id 方式に変更した点は計画書の実装結果メモに記録済みです
 - **報告 (Phase 4.0.5 完了, 2026-06-11)**: フロントエンド実行基盤 (Vue 3 + Vite+ + UnoCSS + Bun) が**全マイルストーン判定合格で完了**しました。`magia` バイナリ単体で Vue UI 全機能が動く配布形態です (旧 inline HTML 削除済み、CI も Bun 化、Vitest 18本 + Playwright E2E 8本)。判定での決定事項は反映済み: ルーティングは明示的クエリベース / ペイン並びは魔法陣最優先 / パレット折りたたみ / バイナリサイズ基準撤廃 (CLAUDE.repo.md に方針化) / SVG 描画系アフォーダンスは 4.3 後。**次は 4.0.7 (案1: SVG → 境界スキーマ + Vue コンポーネント)** です。リリースを行う場合は `/addf-release` を実行してください
 - **報告 (SSE 潜在バグ修正, 2026-06-11)**: Phase 2.1 から SSE (`/events`) がクライアントに配信されていなかった潜在バグを M2 の E2E 確認中に発見・修正しました (tiny_http チャンク経路の二重バッファ問題)。live-reload は実際には動いていませんでした。修正後は E2E でファイル保存 → Vue 自動再描画を確認済み、回帰テストも追加済みです
@@ -31,6 +32,8 @@
 - Phase 3.3 で先送りした項目: spec §9.1「メトリクス変化のテーブル併記」は PR コメント内のテキスト行で代替中。Markdown テーブル化は運用フィードバック (Phase 3 振り返り) で判断
 - Phase 4.0.5 のコントリビューション検出より: 昇格候補に **7件目 = minimal-dev-server-pattern.md の SSE 訂正版** (既存候補の内容差し替え — 最新版を PR に含める)、**8件目 = viteplus-bun-frontend-bootstrap.md** (Vite+/Bun の Web 系新規。Playwright の Rust バイナリ webServer 構成・Bun+Rust ハイブリッド CI 節を含む) を追加。Rust 系 (1〜7) と Web 系 (8) で **PR を分ける**のが推奨。addf-knowhow.md チェックリスト追記候補に4例目「ストリーミング機能は実際にストリームを読むテストを受け入れ基準に」を追加
 - Phase 4.0.7 のコントリビューション検出より: 昇格候補に **9件目 = milestone-gated-ui-plan.md** (画素等価検証の方法論・toBeHidden 偽陽性を含む完全版)、**10件目 = viteplus-bun-frontend-bootstrap.md の 4.0.7 追記分** (happy-dom / e2e exclude 罠 / playwright screenshot CLI / pkill -f 自殺) を追加 — 8件目と同じ「Web 系 PR」に同梱。addf-knowhow.md 追記候補に**5例目「捨てる前提のファイル隔離 (Temporary Isolation Pattern)」** (svgToSchema.ts の実例) を追加
+- Phase 4.0.9 のコントリビューション検出より: 昇格候補に **11件目 = milestone-gated-ui-plan.md の 4.0.9 追記分** (撮影条件の罠・リメイク境界判断・クロス検証テスト — 9件目と同一ファイルの最新版として扱う)、**12件目 = 「deprecated モジュールへの保守方針コメント」パターン** (belka.rs の実例 — 削除 Phase 明記 + 保守方針節 + 投資優先ルールの3点セット。`docs/knowhow/ADDF/deprecated-module-maintenance-policy.md` として1ページ knowhow 化を推奨) を追加
+- Phase 4.0.9 のレビューで先送りした項目: EffectCategory 増加時の TS 側 (型 + COLOR_BY_EFFECT) 追従は手動 (型網羅で missing は検出される)。RawElement 型は IR 直結では常に空 — 4.3 のリメイク時に型ごと削除を判断
 - Phase 4.0.7 のレビューで先送りした項目: 操作の安定参照 (出現順 id でなく IR 由来 id) は 4.0.9 で。`EFFECT_BY_COLOR` の3箇所手動同期 (palette.rs / uno.config.ts / svgToSchema.ts) も 4.0.9 の IR 直結で解消される
 - Phase 4.0.5 のレビューで先送りした項目: SPA に Vue Router のパスベースビューを足すときは serve.rs の 404 → index.html フォールバックが要る (serve.rs にコメント済み)。`?fn=` 連打競合は世代ガードで対応済みだが、AbortController による fetch キャンセルは未実装 (必要になったら 4.1 で)
 - Phase 3.4 のコントリビューション検出より: `syn-visitor-patterns.md` の「近似データフロー解析」節と `rust-ir-skeleton-pattern.md` の「Edge 種別追加時の kind フィルタ」節は、両ファイルが既に昇格候補に含まれるため**同一 PR にセクションごと同梱**。`addf-knowhow.exp.md` の「1知見セットの複数ファイル分配」も addf-knowhow.md 追記候補の3例目として同梱
