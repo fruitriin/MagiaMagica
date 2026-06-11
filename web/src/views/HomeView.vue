@@ -5,6 +5,7 @@
 // 初回ロードは SSE 接続直後イベント (serve.rs 仕様) の refresh に一本化する。
 import FunctionToc from "../components/FunctionToc.vue";
 import LayerPalette from "../components/LayerPalette.vue";
+import SymbolLegend from "../components/SymbolLegend.vue";
 import MagicCircleView from "../components/MagicCircleView.vue";
 import SourcePane from "../components/SourcePane.vue";
 import TranscriptRegion from "../components/TranscriptRegion.vue";
@@ -51,6 +52,7 @@ useMagiaSync();
       <SourcePane min-w-0 class="flex-[1]" border-l border-gray-200 />
       <aside flex w-56 shrink-0 flex-col border-l border-gray-200>
         <LayerPalette shrink-0 border-b border-gray-200 />
+        <SymbolLegend shrink-0 border-b border-gray-200 />
         <FunctionToc min-h-0 flex-1 />
       </aside>
     </main>

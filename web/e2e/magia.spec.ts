@@ -125,6 +125,18 @@ test("操作ドットのホバー/選択がリアクティブに反映される 
   await expect(dot).not.toHaveClass(/op-selected/);
 });
 
+test("凡例: 開閉式で色と記号の意味が参照できる (Phase 4.0.6)", async ({ page }) => {
+  await page.goto("/?fn=greet");
+  const legend = page.locator("aside details", { hasText: "凡例" });
+  // 既定は閉 — 開くと効果カテゴリと図形の説明が見える。
+  await expect(legend.getByText("純粋")).toBeHidden();
+  await legend.locator("summary").click();
+  await expect(legend.getByText("純粋")).toBeVisible();
+  await expect(legend.getByText("メインリング = 関数本体", { exact: false })).toBeVisible();
+  await expect(legend.getByText("シアン輪郭 = ホバー中")).toBeVisible();
+  await expect(legend.getByText("生成 (値の誕生)")).toBeVisible();
+});
+
 test("書き起こし: スクリーンリーダー向け region が存在し内容を持つ", async ({ page }) => {
   await page.goto("/?fn=greet");
   const region = page.getByRole("region", { name: "呪文書き起こし" });
