@@ -102,6 +102,7 @@ describe("irToSchema (合成ケース)", () => {
           symbol: null,
           early_return: [-1, 0],
           operations: [],
+          guard_span: null,
         },
       ],
       glyphs: [],

@@ -36,6 +36,7 @@ const sampleRing = (role: "main" | "aux"): Circle => ({
   radius: 11,
   strokeWidth: role === "main" ? 2 : 1.5,
   layer: null,
+  irId: null,
 });
 
 const sampleOp = (color: string): Operation => ({

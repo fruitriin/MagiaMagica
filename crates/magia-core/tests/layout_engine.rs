@@ -27,6 +27,7 @@ fn aux_ring(id: u32, ops: usize, anchor: u32, ordinal: u32) -> Sigil {
                 anchor_operation: anchor,
                 ordinal,
                 label: None,
+                guard_location: None,
             }),
             ..ControlFlowInfo::default()
         }),

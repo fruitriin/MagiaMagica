@@ -111,3 +111,11 @@ const ASYNC_INNER_RING_OFFSET = 5;
     stroke-width="1"
   />
 </template>
+
+<style scoped>
+/* 制御記号は装飾 — リング・ドットのホバー/クリック判定を奪わない
+   (シグネチャ円弧と同じ原則、オーナー指摘 2026-06-12)。 */
+* {
+  pointer-events: none;
+}
+</style>

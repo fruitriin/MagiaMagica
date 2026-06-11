@@ -31,6 +31,9 @@ export type Circle = Placed & {
   layer: SchemaLayer | null;
   /** 描画順 (SVG の出現順)。重なりの z-order を元レンダラと一致させる。 */
   z: number;
+  /** IR 上のリング id。`SpellResponse.ring_excerpts` (ガード・ヘッダの断片) の
+   *  引き当てに使う。IR 由来でないリング (凡例サンプル等) は null。 */
+  irId: number | null;
 };
 
 /** リング上の操作 (術式の1ステップ)。ホバー・選択・ピンの対象。 */
@@ -198,6 +201,9 @@ export type IrRing = {
   symbol: "branch" | "loop" | null;
   early_return: [number, number] | null;
   operations: IrOperation[];
+  /** 補助リングのガード・ヘッダの原文位置 (`if cond` / `pat if guard` /
+   *  `for pat in expr`)。メインリング・無条件の腕 (`else`) は null。 */
+  guard_span: IrSourceSpan | null;
 };
 
 export type IrGlyph = {
@@ -263,6 +269,9 @@ export type SpellResponse = {
   /** 操作ドットの原文断片 (`<ring_id>-<出現順>` = Operation.irKey →
    *  syntect ハイライト済み HTML)。ホバープレビュー用。 */
   op_excerpts: Record<string, string>;
+  /** 補助リングのガード・ヘッダ断片 (ring id → syntect ハイライト済み HTML)。
+   *  分岐の腕の条件・ループヘッダをリングホバーで見せる。 */
+  ring_excerpts: Record<string, string>;
   /** ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。 */
   svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */

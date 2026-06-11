@@ -62,6 +62,10 @@ pub struct AuxRingRole {
     pub ordinal: u32,
     /// 表示用ラベル (match アームのパターン等)。
     pub label: Option<String>,
+    /// この腕のガード・ヘッダの原文位置 (`if cond` / `pat if guard` /
+    /// `for pat in expr` 等)。`else` のような無条件の腕は `None`。
+    /// 補助リングのホバープレビューに使う (Phase 4.1 追加要望4)。
+    pub guard_location: Option<super::SourceSpan>,
 }
 
 /// AuxRing の分岐種別 (spec §6.1.3 の制御構造記号に対応)。

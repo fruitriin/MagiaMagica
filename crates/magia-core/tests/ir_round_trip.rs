@@ -54,6 +54,9 @@ fn deserialize_minimal_json_uses_defaults() {
     assert_eq!(decoded, MagiaGraph::default());
 }
 
+// 全レイヤーを1箇所で組む round-trip fixture — 分割すると「何が往復するか」が
+// 追えなくなるため行数 lint は許容する。
+#[allow(clippy::too_many_lines)]
 fn sample_phase1_graph() -> MagiaGraph {
     let main_ring = Sigil {
         id: SigilId(0),
@@ -115,6 +118,7 @@ fn sample_phase1_graph() -> MagiaGraph {
                     anchor_operation: 0,
                     ordinal: 0,
                     label: None,
+                    guard_location: None,
                 }),
                 ..ControlFlowInfo::default()
             }),

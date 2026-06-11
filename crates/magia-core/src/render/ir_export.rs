@@ -51,6 +51,10 @@ pub struct RingIr {
     pub early_return: Option<[f64; 2]>,
     /// リング上の操作ドット (3時起点・反時計回りの配置済み座標、spec §6.1.2)。
     pub operations: Vec<OperationIr>,
+    /// 補助リングのガード・ヘッダの原文位置 (`if cond` / `pat if guard` /
+    /// `for pat in expr`)。メインリング・無条件の腕 (`else`) は None。
+    /// serve 層がホバープレビュー用の切り出しに使う (Phase 4.1 追加要望4)。
+    pub guard_span: Option<SpanIr>,
 }
 
 #[derive(Serialize)]
@@ -258,6 +262,13 @@ fn ring_ir(
         .concurrency
         .as_ref()
         .is_some_and(|c| c.is_async);
+    let guard_span = sigil
+        .layers
+        .control_flow
+        .as_ref()
+        .and_then(|info| info.role.as_ref())
+        .and_then(|role| role.guard_location.as_ref())
+        .and_then(span_ir);
     RingIr {
         id: sigil.id.0,
         role: if is_main {
@@ -272,6 +283,7 @@ fn ring_ir(
         symbol,
         early_return,
         operations,
+        guard_span,
     }
 }
 

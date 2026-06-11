@@ -222,6 +222,9 @@ test("ホバープレビュー: 召喚印で呼び出し式 + 固定ヒント、
   await page.locator(".pin-view circle.op-dot").first().hover();
   await expect(preview).toContainText("let sum = a + b;");
   await expect(preview).not.toContainText("クリックで固定");
+  // 分岐の補助リング (線上ホバー): 腕のガード条件が出る (追加要望4)。
+  await page.locator(".pin-view circle.aux-ring").first().hover();
+  await expect(preview).toContainText("if sum > 10");
   // 離れると消える。
   await page.mouse.move(10, 500);
   await expect(preview).toBeHidden();

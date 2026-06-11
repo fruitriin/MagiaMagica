@@ -104,6 +104,15 @@
 - [x] C6. CallInspector: 薄幕廃止 → window click/Esc で閉じる (固定中も他ノードへホバーが届く)。glyph クリックとポップオーバー内クリックは stopPropagation
 - [x] C7. テスト: serve 統合 (op_excerpts 契約 — syntect はトークン分割するため HTML 構造のみ照合、中身は span_excerpt unit 4本が担保)、e2e 3本追加 (op-dot 断片 / 固定+ホバー併存 / シグネチャ pointer-events)。Stage 1 全通過 (cargo 17 / clippy / fmt / ADDF / vp check / vitest 33 / build / playwright 18)。素材2点送付
 
+**追加要望 4 (オーナー、2026-06-12): 分岐ブロック (補助リング) のホバーで条件を表示 + 結節点シンボルの計画登録**
+- [x] D1. AuxRingRole に guard_location (`if cond` / `pat if guard` / ループヘッダの原文位置。else は None)。spawn_if_chain / spawn_match_arms / ループ3種に span を積む
+- [x] D2. build_ring の行数超過 (clippy) → For/While 腕を spawn_for_loop / spawn_while_loop に切り出し
+- [x] D3. RingIr.guard_span + serve ring_excerpts (ring id → syntect HTML)
+- [x] D4. RingCircle ホバーで ring_excerpts をプレビュー。fill: transparent でリング面全体を判定に (線上 1.5px では狙えない。内部のドットは上のレイヤーなので個別ホバー優先)
+- [x] D5. SymbolMark (分岐 Y 字・ループ三角等) に pointer-events: none — リング中心のホバーを奪っていた (シグネチャと同型の問題、E2E が検出)
+- [x] D6. e2e (aux-ring ホバー → `if sum > 10`)。Stage 1 全通過 (cargo 17 / clippy / fmt / vp check / vitest 33 / build / playwright 18)
+- [x] D7. **結節点シンボル (分岐記号を補助リング中央 → メイン側結節点の小円バッジへ) は 4.3 後の計画として登録** — docs/plans/phase4.3.5-junction-symbols.md + TODO.md (オーナー指定どおり実装はしない)
+
 **品質検証 + 完了処理**
 - [ ] 14. Stage 2 レビュー + 指摘対応 (4.1 全体 — 最終判定が出たら実施)
 - [ ] 15. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット

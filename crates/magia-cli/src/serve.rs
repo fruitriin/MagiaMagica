@@ -250,6 +250,16 @@ fn render_spell(
             Some((format!("{ring_id}-{index}"), excerpt_html(span)?))
         })
         .collect();
+    // 補助リング (分岐の腕・ループ本体) のガード・ヘッダ (ring id →
+    // ハイライト済み HTML)。リングのホバーで条件が見える (Phase 4.1 追加要望4)。
+    let ring_excerpts: serde_json::Map<String, serde_json::Value> = spell
+        .rings
+        .iter()
+        .filter_map(|ring| {
+            let span = ring.guard_span.as_ref()?;
+            Some((ring.id.to_string(), excerpt_html(span)?))
+        })
+        .collect();
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
     let mut response = serde_json::json!({
         "qualified": entry.qualified,
@@ -257,6 +267,7 @@ fn render_spell(
         "ir": ir,
         "call_excerpts": call_excerpts,
         "op_excerpts": op_excerpts,
+        "ring_excerpts": ring_excerpts,
         "svg_belka": render(&graph, &placed, RenderStyle::Belka),
         "source_html": highlight_rust(&snippet),
         "transcript": magia_core::transcript::transcribe(&graph),

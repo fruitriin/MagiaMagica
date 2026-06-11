@@ -77,6 +77,7 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
       radius: ring.radius,
       strokeWidth: ring.role === "main" ? 2 : 1.5,
       layer: "control_flow",
+      irId: ring.id,
     });
     const symbol = (kind: ControlSymbol["kind"], direction: [number, number] = [0, 0]) => {
       schema.symbols.push({

@@ -196,52 +196,29 @@ impl RingBuilder<'_> {
                     self.spawn_match_arms(id, node, anchor);
                 }
                 Some(ControlStmt::For(node)) => {
-                    let head = format!(
-                        "for {} in {}",
-                        node.pat.to_token_stream(),
-                        node.expr.to_token_stream()
-                    );
-                    let mut op = self.control_operation(
-                        OperationKind::Loop,
-                        head,
-                        Some(&node.expr),
-                        source_span_between(node.for_token.span, node.expr.span()),
-                    );
-                    op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.expr));
-                    // ループ変数の誕生は構文上ここ (説明可能性)。スコープは本体リング側。
-                    let seeds = pattern_idents(&node.pat);
-                    op.payload.defs.clone_from(&seeds);
-                    content.push(op);
+                    content.push(self.spawn_for_loop(id, node, anchor));
                     info.loop_count += 1;
-                    self.spawn_glyphs(id, collect_calls_in_expr(&node.expr, self.uses));
-                    let role = aux_role(AuxRingKind::LoopBody(LoopKind::For), anchor, 0, None);
-                    self.spawn_block_child(id, role, &node.body, &seeds);
                 }
                 Some(ControlStmt::While(node)) => {
-                    let head = format!("while {}", node.cond.to_token_stream());
-                    let mut op = self.control_operation(
-                        OperationKind::Loop,
-                        head,
-                        Some(&node.cond),
-                        source_span_between(node.while_token.span, node.cond.span()),
-                    );
-                    op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.cond));
-                    content.push(op);
+                    content.push(self.spawn_while_loop(id, node, anchor));
                     info.loop_count += 1;
-                    self.spawn_glyphs(id, collect_calls_in_expr(&node.cond, self.uses));
-                    let role = aux_role(AuxRingKind::LoopBody(LoopKind::While), anchor, 0, None);
-                    // while let の束縛は本体スコープで生まれる。
-                    self.spawn_block_child(id, role, &node.body, &if_let_seeds(&node.cond));
                 }
                 Some(ControlStmt::Loop(node)) => {
+                    let header = source_span(node.loop_token.span);
                     content.push(self.control_operation(
                         OperationKind::Loop,
                         "loop".to_string(),
                         None,
-                        source_span(node.loop_token.span),
+                        header.clone(),
                     ));
                     info.loop_count += 1;
-                    let role = aux_role(AuxRingKind::LoopBody(LoopKind::Loop), anchor, 0, None);
+                    let role = aux_role(
+                        AuxRingKind::LoopBody(LoopKind::Loop),
+                        anchor,
+                        0,
+                        None,
+                        Some(header),
+                    );
                     self.spawn_block_child(id, role, &node.body, &[]);
                 }
                 None => {
@@ -323,12 +300,63 @@ impl RingBuilder<'_> {
         resolved.into_iter().collect()
     }
 
+    /// `for` ループ: ヘッダ Operation を作り、本体を AuxRing 化する。
+    fn spawn_for_loop(&mut self, ring: SigilId, node: &syn::ExprForLoop, anchor: u32) -> Operation {
+        let head = format!(
+            "for {} in {}",
+            node.pat.to_token_stream(),
+            node.expr.to_token_stream()
+        );
+        let header = source_span_between(node.for_token.span, node.expr.span());
+        let mut op =
+            self.control_operation(OperationKind::Loop, head, Some(&node.expr), header.clone());
+        op.payload.uses = self.resolve_uses(ring, &expr_use_candidates(&node.expr));
+        // ループ変数の誕生は構文上ここ (説明可能性)。スコープは本体リング側。
+        let seeds = pattern_idents(&node.pat);
+        op.payload.defs.clone_from(&seeds);
+        self.spawn_glyphs(ring, collect_calls_in_expr(&node.expr, self.uses));
+        let role = aux_role(
+            AuxRingKind::LoopBody(LoopKind::For),
+            anchor,
+            0,
+            None,
+            Some(header),
+        );
+        self.spawn_block_child(ring, role, &node.body, &seeds);
+        op
+    }
+
+    /// `while` / `while let` ループ: ヘッダ Operation を作り、本体を AuxRing 化する。
+    fn spawn_while_loop(&mut self, ring: SigilId, node: &syn::ExprWhile, anchor: u32) -> Operation {
+        let head = format!("while {}", node.cond.to_token_stream());
+        let header = source_span_between(node.while_token.span, node.cond.span());
+        let mut op =
+            self.control_operation(OperationKind::Loop, head, Some(&node.cond), header.clone());
+        op.payload.uses = self.resolve_uses(ring, &expr_use_candidates(&node.cond));
+        self.spawn_glyphs(ring, collect_calls_in_expr(&node.cond, self.uses));
+        let role = aux_role(
+            AuxRingKind::LoopBody(LoopKind::While),
+            anchor,
+            0,
+            None,
+            Some(header),
+        );
+        // while let の束縛は本体スコープで生まれる。
+        self.spawn_block_child(ring, role, &node.body, &if_let_seeds(&node.cond));
+        op
+    }
+
     /// `if` / `else if` / `else` の連鎖を左から順に AuxRing 化する。
     fn spawn_if_chain(&mut self, parent: SigilId, expr_if: &ExprIf, anchor: u32) {
         let mut ordinal = 0u32;
         let mut current = expr_if;
         loop {
-            let role = aux_role(AuxRingKind::IfBranch, anchor, ordinal, None);
+            // 腕のガード (`if cond`) — 補助リングのホバープレビューで条件を見せる。
+            let guard = Some(source_span_between(
+                current.if_token.span,
+                current.cond.span(),
+            ));
+            let role = aux_role(AuxRingKind::IfBranch, anchor, ordinal, None, guard);
             // if let の束縛は then 節のスコープで生まれる。
             self.spawn_block_child(
                 parent,
@@ -348,13 +376,14 @@ impl RingBuilder<'_> {
                     current = next;
                 }
                 Expr::Block(block) => {
-                    let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None);
+                    // else は無条件の腕 — ガードなし。
+                    let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None, None);
                     self.spawn_block_child(parent, role, &block.block, &[]);
                     break;
                 }
                 // 文法上 else の直後は block か if のみだが、防御的に単一式リングで受ける。
                 other => {
-                    let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None);
+                    let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None, None);
                     self.spawn_expr_child(parent, role, other);
                     break;
                 }
@@ -373,7 +402,13 @@ impl RingBuilder<'_> {
                 self.resolve_uses(parent, &expr_use_candidates(guard));
             }
             let label = Some(arm.pat.to_token_stream().to_string());
-            let role = aux_role(AuxRingKind::MatchArm, anchor, ordinal, label);
+            // 腕のヘッダ = パターン (+ アームガードがあれば `pat if guard` まで)。
+            let guard_end = arm
+                .guard
+                .as_ref()
+                .map_or_else(|| arm.pat.span(), |(_, guard)| guard.span());
+            let guard = Some(source_span_between(arm.pat.span(), guard_end));
+            let role = aux_role(AuxRingKind::MatchArm, anchor, ordinal, label, guard);
             // アームパターンの束縛 (`Some(x) =>` の x) はアーム本体のスコープで生まれる。
             let seeds = pattern_idents(&arm.pat);
             match arm.body.as_ref() {
@@ -530,12 +565,14 @@ fn aux_role(
     anchor_operation: u32,
     ordinal: u32,
     label: Option<String>,
+    guard_location: Option<SourceSpan>,
 ) -> AuxRingRole {
     AuxRingRole {
         kind,
         anchor_operation,
         ordinal,
         label,
+        guard_location,
     }
 }
 
