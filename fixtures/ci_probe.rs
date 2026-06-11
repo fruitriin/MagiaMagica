@@ -7,7 +7,3 @@ fn ci_probe(x: u32) -> u32 {
     }
     shimmer(x)
 }
-
-unsafe fn ci_probe_unsafe(p: *const u8) -> u8 {
-    *p
-}
