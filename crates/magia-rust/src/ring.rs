@@ -165,8 +165,12 @@ impl RingBuilder<'_> {
             match classify(stmt) {
                 Some(ControlStmt::If(node)) => {
                     let head = format!("if {}", node.cond.to_token_stream());
-                    let mut op =
-                        self.control_operation(OperationKind::Branch, head, Some(&node.cond));
+                    let mut op = self.control_operation(
+                        OperationKind::Branch,
+                        head,
+                        Some(&node.cond),
+                        source_span_between(node.if_token.span, node.cond.span()),
+                    );
                     // 条件式は本リングのスコープで評価される (use は本リングに計上)。
                     op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.cond));
                     content.push(op);
@@ -178,8 +182,12 @@ impl RingBuilder<'_> {
                 }
                 Some(ControlStmt::Match(node)) => {
                     let head = format!("match {}", node.expr.to_token_stream());
-                    let mut op =
-                        self.control_operation(OperationKind::Match, head, Some(&node.expr));
+                    let mut op = self.control_operation(
+                        OperationKind::Match,
+                        head,
+                        Some(&node.expr),
+                        source_span_between(node.match_token.span, node.expr.span()),
+                    );
                     op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.expr));
                     content.push(op);
                     info.branch_count += u32::try_from(node.arms.len().saturating_sub(1))
@@ -193,8 +201,12 @@ impl RingBuilder<'_> {
                         node.pat.to_token_stream(),
                         node.expr.to_token_stream()
                     );
-                    let mut op =
-                        self.control_operation(OperationKind::Loop, head, Some(&node.expr));
+                    let mut op = self.control_operation(
+                        OperationKind::Loop,
+                        head,
+                        Some(&node.expr),
+                        source_span_between(node.for_token.span, node.expr.span()),
+                    );
                     op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.expr));
                     // ループ変数の誕生は構文上ここ (説明可能性)。スコープは本体リング側。
                     let seeds = pattern_idents(&node.pat);
@@ -207,8 +219,12 @@ impl RingBuilder<'_> {
                 }
                 Some(ControlStmt::While(node)) => {
                     let head = format!("while {}", node.cond.to_token_stream());
-                    let mut op =
-                        self.control_operation(OperationKind::Loop, head, Some(&node.cond));
+                    let mut op = self.control_operation(
+                        OperationKind::Loop,
+                        head,
+                        Some(&node.cond),
+                        source_span_between(node.while_token.span, node.cond.span()),
+                    );
                     op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.cond));
                     content.push(op);
                     info.loop_count += 1;
@@ -222,6 +238,7 @@ impl RingBuilder<'_> {
                         OperationKind::Loop,
                         "loop".to_string(),
                         None,
+                        source_span(node.loop_token.span),
                     ));
                     info.loop_count += 1;
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::Loop), anchor, 0, None);
@@ -442,6 +459,7 @@ impl RingBuilder<'_> {
                     effects,
                     payload: OperationPayload {
                         source_excerpt: Some(call.excerpt),
+                        source_span: Some(source_span(call.span)),
                         call_target: Some(call.target),
                         early_return: false,
                         ..OperationPayload::default()
@@ -469,11 +487,13 @@ impl RingBuilder<'_> {
     /// `guard` は条件式・被検査式・イテレータ式のみ。本体ブロックは AuxRing 側で
     /// 処理されるため渡さない (二重計上の防止)。`if f()? { .. }` のように条件に
     /// `?` がある場合は kind を Branch のまま `early_return` フラグで伝える。
+    /// `location` は head と同じ範囲 (キーワード〜ガード式) の原文位置。
     fn control_operation(
         &self,
         kind: OperationKind,
         head: String,
         guard: Option<&Expr>,
+        location: SourceSpan,
     ) -> Operation {
         let scan = guard.map(scan_expression);
         let early_return = scan.as_ref().is_some_and(|s| s.has_try);
@@ -487,6 +507,7 @@ impl RingBuilder<'_> {
             effects,
             payload: OperationPayload {
                 source_excerpt: Some(head),
+                source_span: Some(location),
                 call_target: None,
                 early_return,
                 ..OperationPayload::default()
@@ -518,9 +539,16 @@ fn aux_role(
     }
 }
 
-fn source_span(span: proc_macro2::Span) -> SourceSpan {
-    let start_line = u32::try_from(span.start().line).unwrap_or(0);
-    let end_line = u32::try_from(span.end().line).unwrap_or(start_line);
+pub(crate) fn source_span(span: proc_macro2::Span) -> SourceSpan {
+    source_span_between(span, span)
+}
+
+/// 2つの span をまたぐ範囲 (`start` の先頭〜`end` の末尾) を `SourceSpan` 化する。
+/// `Span::join` が stable に無いための行・列ベースの合成 — 制御 Operation の
+/// 「キーワード〜ガード式」(`if cond` / `for pat in expr`) の切り出しに使う。
+pub(crate) fn source_span_between(start: proc_macro2::Span, end: proc_macro2::Span) -> SourceSpan {
+    let start_line = u32::try_from(start.start().line).unwrap_or(0);
+    let end_line = u32::try_from(end.end().line).unwrap_or(start_line);
     SourceSpan {
         file: String::new(),
         start_line,
@@ -529,7 +557,7 @@ fn source_span(span: proc_macro2::Span) -> SourceSpan {
         // 文字位置 (inclusive)、end().column は**既に最後の文字の直後 (exclusive)**。
         // SourceSpan の規約は 1-based・end exclusive なので、どちらも +1 だけで
         // 変換が成立する (end にさらに +1 してはならない)。
-        start_column: u32::try_from(span.start().column + 1).ok(),
-        end_column: u32::try_from(span.end().column + 1).ok(),
+        start_column: u32::try_from(start.start().column + 1).ok(),
+        end_column: u32::try_from(end.end().column + 1).ok(),
     }
 }

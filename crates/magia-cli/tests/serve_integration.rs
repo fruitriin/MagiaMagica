@@ -181,6 +181,18 @@ fn spell_endpoint_renders_function_on_demand() {
     assert!(spell["source_html"].as_str().unwrap().contains("watched"));
     assert!(spell["transcript"].as_str().unwrap().contains("関数 "));
     assert!(spell["signature"].as_str().unwrap().contains("fn watched"));
+    // Phase 4.1 追加要望3: 操作ドットの原文断片 (`<ring_id>-<出現順>` →
+    // ハイライト済み HTML、改行・列込みの原文切り出し)。
+    let main_id = main["id"].as_u64().unwrap();
+    let op_excerpt = spell["op_excerpts"][format!("{main_id}-0")]
+        .as_str()
+        .expect("メインリング先頭の操作に断片が付く");
+    // 切り出し内容の正確さは span_excerpt の unit テストが担保する。
+    // ここでは「ハイライト済み HTML が付く」契約だけ見る (syntect はトークン
+    // ごとに span 分割するため連続文字列では照合できない)。
+    assert!(op_excerpt.contains("<pre"));
+    // 操作 IR にも原文位置が載る (1-based・列あり)。
+    assert!(main["operations"][0]["source_span"]["start_column"].as_u64() > Some(0));
 
     // impl メソッドは qualified 名 (URL エンコード) で引ける。
     let method = body_json_at(server.port, "/spell/Caster%3A%3Acast");

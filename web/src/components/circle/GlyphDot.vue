@@ -13,7 +13,25 @@ const isHovered = computed(() => focus.hoveredOperationId === props.glyph.id);
 
 function onClick(event: MouseEvent) {
   if (!props.glyph.selectable || props.glyph.callTarget === null) return;
+  // 固定 (インスペクタ) を開く — window の「外側クリックで閉じる」に拾わせない
+  event.stopPropagation();
   focus.inspectCall(props.glyph.callTarget, props.glyph.irId, event.clientX, event.clientY);
+}
+
+function onEnter(event: MouseEvent) {
+  if (!props.glyph.selectable) return;
+  focus.hoverOperation(props.glyph.id);
+  // 呼び出し式のホバープレビュー (固定よりも上の層 — 追加要望3)
+  const html = focus.spell?.call_excerpts[String(props.glyph.irId)] ?? null;
+  if (html !== null) {
+    focus.showHoverExcerpt(html, event.clientX, event.clientY, props.glyph.callTarget !== null);
+  }
+}
+
+function onLeave() {
+  if (!props.glyph.selectable) return;
+  focus.hoverOperation(null);
+  focus.hideHoverExcerpt();
 }
 </script>
 
@@ -26,8 +44,8 @@ function onClick(event: MouseEvent) {
     :r="glyph.radius"
     :fill="glyph.color"
     :style="glyph.selectable && glyph.callTarget !== null ? { cursor: 'pointer' } : {}"
-    @mouseenter="glyph.selectable && focus.hoverOperation(glyph.id)"
-    @mouseleave="glyph.selectable && focus.hoverOperation(null)"
+    @mouseenter="onEnter"
+    @mouseleave="onLeave"
     @click="onClick"
   />
 </template>

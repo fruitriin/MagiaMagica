@@ -218,6 +218,11 @@ fn render_spell(
             .collect();
         focus_layout(spell.view_box, &with_meta)
     });
+    // 壊れた span で空になった断片は載せない (クライアントは欠落として扱う)。
+    let excerpt_html = |span: &SpanIr| {
+        let excerpt = span_excerpt(source, span);
+        (!excerpt.trim().is_empty()).then(|| serde_json::Value::String(highlight_rust(&excerpt)))
+    };
     // 召喚印インスペクタの呼び出し式 (glyph id → ハイライト済み HTML)。
     // レシーバ・引数込みの式全体を原文 (改行・インデント込み) から切り出す
     // (Phase 4.1 オーナー要望 — `sigil.map(|role| role.kind)` の形で見せる)。
@@ -226,13 +231,23 @@ fn render_spell(
         .iter()
         .filter_map(|glyph| {
             let span = glyph.source_span.as_ref()?;
-            let excerpt = call_excerpt(source, span);
-            // 壊れた span で空になった式は載せない (クライアントは欠落として扱う)
-            if excerpt.trim().is_empty() {
-                return None;
-            }
-            let html = highlight_rust(&excerpt);
-            Some((glyph.id.to_string(), serde_json::Value::String(html)))
+            Some((glyph.id.to_string(), excerpt_html(span)?))
+        })
+        .collect();
+    // 操作ドットのホバープレビュー (`<ring_id>-<出現順>` → ハイライト済み HTML)。
+    // キーの形は Vue 側スキーマの Operation.irKey と同語彙 (Phase 4.1 追加要望3)。
+    let op_excerpts: serde_json::Map<String, serde_json::Value> = spell
+        .rings
+        .iter()
+        .flat_map(|ring| {
+            ring.operations
+                .iter()
+                .enumerate()
+                .map(move |(index, op)| (ring.id, index, op))
+        })
+        .filter_map(|(ring_id, index, op)| {
+            let span = op.source_span.as_ref()?;
+            Some((format!("{ring_id}-{index}"), excerpt_html(span)?))
         })
         .collect();
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
@@ -241,6 +256,7 @@ fn render_spell(
         "signature": entry.signature,
         "ir": ir,
         "call_excerpts": call_excerpts,
+        "op_excerpts": op_excerpts,
         "svg_belka": render(&graph, &placed, RenderStyle::Belka),
         "source_html": highlight_rust(&snippet),
         "transcript": magia_core::transcript::transcribe(&graph),
@@ -252,11 +268,12 @@ fn render_spell(
     Ok(response.to_string())
 }
 
-/// 呼び出し式の原文を span で切り出す (行・列とも 1-based・文字単位、
-/// `end_column` は exclusive — `SpanIr` の規約)。式は行の途中から始まるため
-/// 1行目は列頭を落とし、2行目以降は共通の先頭空白を除いて左端を揃える
+/// span の範囲の原文を切り出す (行・列とも 1-based・文字単位、
+/// `end_column` は exclusive — `SpanIr` の規約)。呼び出し式・操作ドットの
+/// プレビューに使う。式は行の途中から始まるため 1行目は列頭を落とし、
+/// 2行目以降は共通の先頭空白を除いて左端を揃える
 /// (ポップオーバー内で元ファイルの深いインデントを引きずらない)。
-fn call_excerpt(source: &str, span: &SpanIr) -> String {
+fn span_excerpt(source: &str, span: &SpanIr) -> String {
     let start_line = span.start_line as usize;
     let end_line = (span.end_line as usize).max(start_line);
     let lines: Vec<&str> = source
@@ -599,34 +616,34 @@ mod tests {
     }
 
     #[test]
-    fn call_excerpt_clips_single_line_by_columns() {
+    fn span_excerpt_clips_single_line_by_columns() {
         // `return helper(sum);` の `helper(sum)` 部分 (列 12〜23、end exclusive)
         let source = "fn f() {\n    return helper(sum);\n}\n";
-        assert_eq!(call_excerpt(source, &span(2, 12, 2, 23)), "helper(sum)\n");
+        assert_eq!(span_excerpt(source, &span(2, 12, 2, 23)), "helper(sum)\n");
     }
 
     #[test]
-    fn call_excerpt_dedents_continuation_lines() {
+    fn span_excerpt_dedents_continuation_lines() {
         // メソッドチェーンの継続行は共通インデントを除いて左端を揃える
         let source = "fn f() {\n    let x = sigil\n        .layers\n        .map(|r| r.kind);\n}\n";
         assert_eq!(
-            call_excerpt(source, &span(2, 13, 4, 25)),
+            span_excerpt(source, &span(2, 13, 4, 25)),
             "sigil\n.layers\n.map(|r| r.kind)\n"
         );
     }
 
     #[test]
-    fn call_excerpt_clamps_columns_beyond_line_end() {
+    fn span_excerpt_clamps_columns_beyond_line_end() {
         // 壊れた span (列が行長を超える) でも panic せず行内に丸める
         let source = "call()\n";
-        assert_eq!(call_excerpt(source, &span(1, 1, 1, 99)), "call()\n");
+        assert_eq!(span_excerpt(source, &span(1, 1, 1, 99)), "call()\n");
     }
 
     #[test]
-    fn call_excerpt_collapses_reversed_columns_to_empty() {
+    fn span_excerpt_collapses_reversed_columns_to_empty() {
         // 壊れた span (end < start) は空へフォールバックする (panic しない。
         // クライアントは空の式ブロックを表示しないので欠落として扱われる)
         let source = "call()\n";
-        assert_eq!(call_excerpt(source, &span(1, 5, 1, 2)), "\n");
+        assert_eq!(span_excerpt(source, &span(1, 5, 1, 2)), "\n");
     }
 }

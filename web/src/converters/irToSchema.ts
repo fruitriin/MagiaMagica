@@ -108,6 +108,7 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
         effect: op.effect,
         selectable: true,
         layer: "effects",
+        irKey: `${ring.id}-${index}`,
       });
     }
   }

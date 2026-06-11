@@ -7,6 +7,7 @@ import { onMounted, onUnmounted } from "vue";
 
 import CallInspector from "../components/CallInspector.vue";
 import FunctionToc from "../components/FunctionToc.vue";
+import HoverPreview from "../components/HoverPreview.vue";
 import LayerPalette from "../components/LayerPalette.vue";
 import SymbolLegend from "../components/SymbolLegend.vue";
 import MagicCircleView from "../components/MagicCircleView.vue";
@@ -60,6 +61,7 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
 
     <TranscriptRegion />
     <CallInspector />
+    <HoverPreview />
 
     <main flex min-h-0 flex-1>
       <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く。

@@ -66,6 +66,7 @@ fn sample_phase1_graph() -> MagiaGraph {
             },
             payload: OperationPayload {
                 source_excerpt: Some("println!(\"hello\")".to_string()),
+                source_span: None,
                 call_target: Some("std::println".to_string()),
                 early_return: false,
                 defs: vec!["greeting".to_string()],

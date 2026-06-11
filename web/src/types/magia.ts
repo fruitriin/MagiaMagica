@@ -45,6 +45,9 @@ export type Operation = Placed & {
   selectable: boolean;
   layer: SchemaLayer | null;
   z: number;
+  /** `SpellResponse.op_excerpts` の引き当てキー (`<ring_id>-<出現順>`)。
+   *  IR 由来でない操作 (凡例サンプル等) は null。 */
+  irKey: string | null;
 };
 
 /** 召喚印 (外部呼び出しを示す大きめの円、効果カテゴリ色)。
@@ -166,12 +169,22 @@ export type StateResponse = {
 
 // ===== 配置済み IR (spec v0.3 §16、Phase 4.0.9) =====
 
+/** 原文上の位置範囲 (1-based、end_column は exclusive — SpanIr の写し)。 */
+export type IrSourceSpan = {
+  start_line: number;
+  end_line: number;
+  start_column: number;
+  end_column: number;
+};
+
 /** リング上の操作ドット (配置済み)。 */
 export type IrOperation = {
   x: number;
   y: number;
   radius: number;
   effect: EffectCategory;
+  /** 操作の原文位置。切り出し + ハイライトはサーバが行う (op_excerpts)。 */
+  source_span: IrSourceSpan | null;
 };
 
 export type IrRing = {
@@ -195,14 +208,9 @@ export type IrGlyph = {
   effect: EffectCategory;
   /** 呼び出し先の名前。ピン可能判定はクライアントが関数一覧と照合する。 */
   call_target: string | null;
-  /** 呼び出し式全体の原文位置 (1-based、end_column は exclusive)。
-   *  切り出し + ハイライトはサーバが行う (call_excerpts) — クライアントは未使用。 */
-  source_span: {
-    start_line: number;
-    end_line: number;
-    start_column: number;
-    end_column: number;
-  } | null;
+  /** 呼び出し式全体の原文位置。切り出し + ハイライトはサーバが行う
+   *  (call_excerpts) — クライアントは未使用。 */
+  source_span: IrSourceSpan | null;
 };
 
 export type IrEdge = {
@@ -252,6 +260,9 @@ export type SpellResponse = {
   /** 召喚印の呼び出し式 (glyph id → syntect ハイライト済み HTML)。
    *  レシーバ・引数込みの式全体を原文 (改行込み) から切り出した断片。 */
   call_excerpts: Record<string, string>;
+  /** 操作ドットの原文断片 (`<ring_id>-<出現順>` = Operation.irKey →
+   *  syntect ハイライト済み HTML)。ホバープレビュー用。 */
+  op_excerpts: Record<string, string>;
   /** ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。 */
   svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */

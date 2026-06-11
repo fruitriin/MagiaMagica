@@ -6,7 +6,7 @@
 // 同ファイルの関数に解決できれば定義コード断片 (syntect HTML) も出し、
 // クリックでピン遷移 — 外周にピン用シンボルを別建てせず、図の中の「呼び出し」
 // からそのまま潜れる (オーナー要望 2026-06-11。厳密な呼び出し解決は Phase 4.4)。
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { fetchSpell } from "../composables/api.ts";
@@ -65,16 +65,31 @@ function pinResolved() {
   void router.push({ query: { ...route.query, pin: target } });
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape") focus.closeInspector();
+// 外側クリック / Esc で閉じる。薄幕 (全画面の透明 div) は使わない —
+// 固定ポップオーバーを出したまま他のドットへホバー/クリックできるようにする
+// (オーナー要望 2026-06-12: ホバープレビューは固定の上に重なる)。
+// ポップオーバー内と召喚印クリックは stopPropagation でここに届かない。
+function onWindowClick() {
+  if (focus.inspectedCall !== null) focus.closeInspector();
 }
+function onWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && focus.inspectedCall !== null) focus.closeInspector();
+}
+onMounted(() => {
+  window.addEventListener("click", onWindowClick);
+  window.addEventListener("keydown", onWindowKeydown);
+});
+onUnmounted(() => {
+  window.removeEventListener("click", onWindowClick);
+  window.removeEventListener("keydown", onWindowKeydown);
+});
 </script>
 
 <template>
   <Teleport to="body">
     <template v-if="focus.inspectedCall">
-      <!-- 外側クリックで閉じる薄幕 (視覚的には透明) -->
-      <div fixed inset-0 z-40 @click="focus.closeInspector()" />
+      <!-- クリック固定のポップオーバー (z-50)。ホバープレビュー (z-60) が上に重なる。
+           内側クリックは window の「外側クリックで閉じる」に拾わせない -->
       <div
         fixed
         z-50
@@ -89,7 +104,7 @@ function onKeydown(event: KeyboardEvent) {
         :style="popoverStyle"
         role="dialog"
         aria-label="呼び出し先"
-        @keydown="onKeydown"
+        @click.stop
       >
         <div flex items-baseline justify-between gap-3>
           <code text-xs font-bold>{{ focus.inspectedCall.callTarget }}</code>

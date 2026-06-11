@@ -47,7 +47,7 @@ function spellFor(qualified: string): SpellResponse {
           is_async: false,
           symbol: null,
           early_return: null,
-          operations: [{ x: 104, y: 0, radius: 3.5, effect: "pure" }],
+          operations: [{ x: 104, y: 0, radius: 3.5, effect: "pure", source_span: null }],
         },
       ],
       glyphs: [],
@@ -56,6 +56,7 @@ function spellFor(qualified: string): SpellResponse {
       return_branch: null,
     },
     call_excerpts: {},
+    op_excerpts: {},
     svg_belka: `<svg data-belka="${qualified}"></svg>`,
     transcript: `関数 ${qualified}`,
   };

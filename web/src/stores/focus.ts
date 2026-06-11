@@ -53,6 +53,25 @@ export const useFocusStore = defineStore("focus", () => {
     inspectedCall.value = null;
   }
 
+  // ホバープレビュー (Phase 4.1 追加要望3): 召喚印・操作ドットのホバーで
+  // 原文断片を読み専用ポップオーバー表示する。クリック固定 (inspectedCall) とは
+  // 独立の層で、固定の上に重なる (z: ホバー > 固定 — オーナー指定)。
+  // pinnable はヒント文言用 (召喚印 = クリックで固定してピン操作ができる)。
+  const hoverExcerpt = ref<{
+    html: string;
+    clientX: number;
+    clientY: number;
+    pinnable: boolean;
+  } | null>(null);
+
+  function showHoverExcerpt(html: string, clientX: number, clientY: number, pinnable: boolean) {
+    hoverExcerpt.value = { html, clientX, clientY, pinnable };
+  }
+
+  function hideHoverExcerpt() {
+    hoverExcerpt.value = null;
+  }
+
   /** 呼び出し名を同ファイルの関数に解決する (`charge` → `Wand::charge` など)。
    *  名前一致が複数あるときは先頭 (定義順) — 厳密な解決は Phase 4.4 で。 */
   function resolveCall(callTarget: string): string | null {
@@ -97,6 +116,8 @@ export const useFocusStore = defineStore("focus", () => {
       if (seq !== selectSeq) return; // 古い応答 — 後発の選択が優先
       spell.value = next;
       loadError.value = null;
+      // 図が差し替わるとホバー元のドットが消えて mouseleave が来ないことがある
+      hoverExcerpt.value = null;
       useSourceStore().setSource(next.source_html, next.start_line);
     } catch (e) {
       if (seq !== selectSeq) return;
@@ -139,6 +160,9 @@ export const useFocusStore = defineStore("focus", () => {
     inspectedCall,
     inspectCall,
     closeInspector,
+    hoverExcerpt,
+    showHoverExcerpt,
+    hideHoverExcerpt,
     resolveCall,
     setInitialFn,
     loadState,

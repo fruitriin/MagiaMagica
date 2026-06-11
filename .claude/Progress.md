@@ -95,6 +95,15 @@
 - [x] B8. Stage 2 レビュー (追加要望2分): Critical/High なし。対応 — W1 proc_macro2 の end().column が既に exclusive である旨をコメント明記 / W2 逆転列の回帰テスト + 空 excerpt はサーバ側で除外 / S3 SSE refresh で glyphIrId が旧 id を指す問題を修正 (同名一意なら付け替え・曖昧なら閉じる、vitest 3本)。S1 Clone/Copy derive は「将来のため」のみが根拠で見送り (POSD)、S2 凡例の irId: -1 は selectable: false で参照されず実害なし、S4 は clippy 通過済みで非該当。contribution 検出: 候補なし (ADDF 仕組みに非接触)
 - [x] B9. ゲート再実行全通過 (cargo 17 / clippy / fmt / vp check / vitest 33 / build / playwright 15)
 
+**追加要望 3 (オーナー、2026-06-12): ホバープレビュー化 + 操作ドットにも断片 + シグネチャのクリック判定除去**
+- [x] C1. SignatureArc: pointer-events: none (円弧テキストが召喚印のクリックを奪う問題)
+- [x] C2. Rust: OperationPayload.source_span + ring.rs の Operation 生成3経路に span (plain = 文全体 / 制御 = キーワード〜ガード式の source_span_between 合成 — Span::join が stable に無いため行・列で合成 / call は式全体)
+- [x] C3. OperationIr に source_span、serve に op_excerpts (`<ring_id>-<出現順>` = Vue の Operation.irKey と同語彙 → syntect HTML)。call_excerpt は span_excerpt にリネーム (用途拡大)
+- [x] C4. focus store: hoverExcerpt (読み専用プレビュー)。固定 (inspectedCall) と2層 — ホバーが上 (z-60 > z-50、オーナー指定)。selectFunction 成功時にクリア (図差し替えで mouseleave が来ない対策)
+- [x] C5. HoverPreview コンポーネント (pointer-events: none — プレビュー自身がマウスを奪うチラつき防止) + GlyphDot / OperationDot の mouseenter 連動。glyph プレビューに「クリックで固定」ヒント (固定しないとピン操作できない表現)
+- [x] C6. CallInspector: 薄幕廃止 → window click/Esc で閉じる (固定中も他ノードへホバーが届く)。glyph クリックとポップオーバー内クリックは stopPropagation
+- [x] C7. テスト: serve 統合 (op_excerpts 契約 — syntect はトークン分割するため HTML 構造のみ照合、中身は span_excerpt unit 4本が担保)、e2e 3本追加 (op-dot 断片 / 固定+ホバー併存 / シグネチャ pointer-events)。Stage 1 全通過 (cargo 17 / clippy / fmt / ADDF / vp check / vitest 33 / build / playwright 18)。素材2点送付
+
 **品質検証 + 完了処理**
 - [ ] 14. Stage 2 レビュー + 指摘対応 (4.1 全体 — 最終判定が出たら実施)
 - [ ] 15. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット

@@ -207,6 +207,51 @@ test("召喚印インスペクタ: 外部呼び出しは定義なしの案内に
   await expect(popover).toBeHidden();
 });
 
+test("ホバープレビュー: 召喚印で呼び出し式 + 固定ヒント、操作ドットで文の断片が出る", async ({
+  page,
+}) => {
+  await page.goto("/?pin=compute");
+  const preview = page.locator(".hover-preview");
+  // 召喚印 (helper 呼び出し): 呼び出し式 + 「クリックで固定」ヒント。
+  const glyph = page.locator(".pin-view circle.summon-glyph").first();
+  await expect(glyph).toBeVisible();
+  await glyph.hover();
+  await expect(preview).toContainText("helper(sum)");
+  await expect(preview).toContainText("クリックで固定");
+  // 操作ドット (plain statement): 文全体の断片。ピン操作はないのでヒントなし。
+  await page.locator(".pin-view circle.op-dot").first().hover();
+  await expect(preview).toContainText("let sum = a + b;");
+  await expect(preview).not.toContainText("クリックで固定");
+  // 離れると消える。
+  await page.mouse.move(10, 500);
+  await expect(preview).toBeHidden();
+});
+
+test("固定インスペクタの上にホバープレビューが重なり、固定は出しっぱなしになる", async ({
+  page,
+}) => {
+  await page.goto("/?pin=compute");
+  const glyph = page.locator(".pin-view circle.summon-glyph").first();
+  await glyph.click(); // 固定
+  const popover = page.getByRole("dialog", { name: "呼び出し先" });
+  await expect(popover).toBeVisible();
+  // 固定したままホバー → プレビューが固定の上に併存する (薄幕なし)。
+  // ポップオーバーはクリック地点 +12px に出るため、クリックした召喚印自体は
+  // 覆われずホバーできる (覆われたドットに届かないのは実ブラウザと同じ)。
+  await page.mouse.move(10, 500); // いったん離れて mouseenter を再発火させる
+  await glyph.hover();
+  await expect(page.locator(".hover-preview")).toBeVisible();
+  await expect(popover).toBeVisible();
+});
+
+test("シグネチャ円弧はクリック判定を持たない (pointer-events: none)", async ({ page }) => {
+  await page.goto("/?pin=compute");
+  const signature = page.locator(".pin-view text.signature").first();
+  await expect(signature).toBeVisible();
+  const pointerEvents = await signature.evaluate((el) => getComputedStyle(el).pointerEvents);
+  expect(pointerEvents).toBe("none");
+});
+
 test("凡例: 開閉式で色と記号の意味が参照できる (Phase 4.0.6)", async ({ page }) => {
   await page.goto("/?pin=greet");
   const legend = page.locator("details", { hasText: "凡例" }); // 魔法陣ペイン下 (4.0.6 判定)

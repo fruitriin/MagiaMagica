@@ -28,7 +28,10 @@ pub enum OperationKind {
 
 /// 処理単位に紐づく追加情報。Phase 1 では最小限。
 ///
-/// - `source_excerpt`: 元ソースの抜粋 (デバッグ・ホバー用)
+/// - `source_excerpt`: 元ソースの抜粋 (ToTokens 正規化形。デバッグ用)
+/// - `source_span`: 元ソース上の位置。原文 (改行込み) の切り出しに使う —
+///   plain statement は文全体、制御 Operation はキーワード〜ガード式
+///   (本体ブロックは AuxRing 側に出るため含めない)、Call は呼び出し式全体
 /// - `call_target`: `OperationKind::Call` のときに呼び出し先のフルパス候補を保持
 /// - `early_return`: `?` 演算子のような早期リターンであるかを示すフラグ
 /// - `defs` / `uses`: この Operation が定義・使用する変数名 (Phase 3.4 のデータフロー
@@ -39,6 +42,7 @@ pub enum OperationKind {
 #[serde(default)]
 pub struct OperationPayload {
     pub source_excerpt: Option<String>,
+    pub source_span: Option<super::SourceSpan>,
     pub call_target: Option<String>,
     pub early_return: bool,
     pub defs: Vec<String>,

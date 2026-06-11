@@ -48,6 +48,7 @@ const sampleOp = (color: string): Operation => ({
   effect: null,
   selectable: false,
   layer: null,
+  irKey: null,
 });
 
 // async_inner はリング本体と組で初めて意味を成す (単体サンプル不可) ため凡例から省略。

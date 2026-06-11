@@ -35,3 +35,11 @@ const arcId = `sig-arc-${useId()}`;
     {{ signature.text }}
   </text>
 </template>
+
+<style scoped>
+/* シグネチャは装飾 — 外周の円弧テキストが召喚印に重なってクリック判定を
+   奪わないようにする (オーナー指摘 2026-06-12)。 */
+.signature {
+  pointer-events: none;
+}
+</style>

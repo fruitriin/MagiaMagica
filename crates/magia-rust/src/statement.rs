@@ -6,8 +6,11 @@
 
 use magia_core::ir::{EffectSet, Operation, OperationKind, OperationPayload};
 use quote::ToTokens;
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{Expr, ExprUnsafe, Stmt};
+
+use crate::ring::source_span;
 
 /// 関数解析全体で引き回すコンテキスト。
 ///
@@ -30,12 +33,15 @@ pub(crate) fn statement_to_operation(stmt: &Stmt, ctx: ParseContext) -> Operatio
     let is_return_stmt = expression_is_return(stmt);
     let mut visitor = StatementVisitor::default();
     visitor.visit_stmt(stmt);
-    build_operation(
+    let mut op = build_operation(
         is_return_stmt || visitor.has_try,
         visitor.has_unsafe,
         excerpt(stmt),
         ctx,
-    )
+    );
+    // 文全体の原文位置 (操作ドットのホバープレビュー用 — Phase 4.1 追加要望3)。
+    op.payload.source_span = Some(source_span(stmt.span()));
+    op
 }
 
 /// 式のサブツリーを1回走査し、`?` と `unsafe` の有無を返す。

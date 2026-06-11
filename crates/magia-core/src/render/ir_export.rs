@@ -73,6 +73,9 @@ pub struct OperationIr {
     pub y: f64,
     pub radius: f64,
     pub effect: EffectCategory,
+    /// 操作の原文位置 (plain statement = 文全体、制御 = キーワード〜ガード式)。
+    /// serve 層がホバープレビュー用の切り出し + ハイライトに使う (Phase 4.1)。
+    pub source_span: Option<SpanIr>,
 }
 
 /// 召喚印 (外部呼び出し)。GateGlyph も描画上は同形なのでまとめる。
@@ -246,6 +249,7 @@ fn ring_ir(
                 y: nz(center.y - track * angle.sin()),
                 radius: OPERATION_DOT_RADIUS,
                 effect: palette::category_of(&op.effects),
+                source_span: op.payload.source_span.as_ref().and_then(span_ir),
             }
         })
         .collect();

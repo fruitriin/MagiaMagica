@@ -16,6 +16,22 @@ function onClick() {
   if (!props.op.selectable) return;
   focus.selectOperation(isSelected.value ? null : props.op.id);
 }
+
+function onEnter(event: MouseEvent) {
+  if (!props.op.selectable) return;
+  focus.hoverOperation(props.op.id);
+  // 操作の原文断片プレビュー (純粋処理ノードも「コードブロック」— 追加要望3)
+  const html = props.op.irKey !== null ? (focus.spell?.op_excerpts[props.op.irKey] ?? null) : null;
+  if (html !== null) {
+    focus.showHoverExcerpt(html, event.clientX, event.clientY, false);
+  }
+}
+
+function onLeave() {
+  if (!props.op.selectable) return;
+  focus.hoverOperation(null);
+  focus.hideHoverExcerpt();
+}
 </script>
 
 <template>
@@ -27,8 +43,8 @@ function onClick() {
     :r="op.radius"
     :fill="op.color"
     :style="op.selectable ? { cursor: 'pointer' } : {}"
-    @mouseenter="op.selectable && focus.hoverOperation(op.id)"
-    @mouseleave="op.selectable && focus.hoverOperation(null)"
+    @mouseenter="onEnter"
+    @mouseleave="onLeave"
     @click="onClick"
   />
 </template>
