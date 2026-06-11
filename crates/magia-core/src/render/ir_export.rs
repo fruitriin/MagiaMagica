@@ -87,6 +87,33 @@ pub struct GlyphIr {
     /// 同ファイル関数への解決 (ピン可能判定) はクライアントが関数一覧と照合する
     /// (Phase 4.1 の召喚印インスペクタ / Phase 4.4 呼び出しジャンプの入力)。
     pub call_target: Option<String>,
+    /// 呼び出し式全体 (レシーバ・引数込み) の原文位置。serve 層が原文の
+    /// 切り出し + ハイライトに使う (Phase 4.1 インスペクタの呼び出し式表示)。
+    pub source_span: Option<SpanIr>,
+}
+
+/// 原文上の位置範囲 (行・列とも 1-based・文字単位、`end_column` は最後の文字の
+/// 直後 = exclusive — `SourceSpan` の規約をそのまま写す)。列が取れない解析器では
+/// span ごと省略するため、ここでは全フィールド必須。
+#[derive(Serialize)]
+pub struct SpanIr {
+    pub start_line: u32,
+    pub end_line: u32,
+    pub start_column: u32,
+    pub end_column: u32,
+}
+
+/// `SourceSpan` から完全な位置範囲だけを取り出す (行未確定・列欠落は None)。
+fn span_ir(loc: &crate::ir::SourceSpan) -> Option<SpanIr> {
+    if loc.start_line == 0 {
+        return None;
+    }
+    Some(SpanIr {
+        start_line: loc.start_line,
+        end_line: loc.end_line,
+        start_column: loc.start_column?,
+        end_column: loc.end_column?,
+    })
 }
 
 /// 制御フローの接続。端点 (リング表面) の計算は from/to の中心 + 半径から
@@ -169,6 +196,7 @@ pub fn spell_ir(graph: &MagiaGraph, layout: &LayoutResult) -> SpellIr {
                         radius,
                         effect,
                         call_target,
+                        source_span: span_ir(&sigil.source_location),
                     });
                 }
             }

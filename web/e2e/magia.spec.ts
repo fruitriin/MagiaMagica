@@ -181,10 +181,11 @@ test("召喚印インスペクタ: クリックでコードが出て、そこか
   const glyph = page.locator(".pin-view circle.summon-glyph").first();
   await expect(glyph).toBeVisible();
   await glyph.click();
-  // ポップオーバーに呼び出し名とコード断片 (syntect HTML) が出る。
+  // ポップオーバーに呼び出し名・呼び出し式 (引数込み原文)・コード断片が出る。
   const popover = page.getByRole("dialog", { name: "呼び出し先" });
   await expect(popover).toBeVisible();
   await expect(popover.locator("code").first()).toContainText("helper");
+  await expect(popover.locator(".call-excerpt")).toContainText("helper(sum)");
   await expect(popover).toContainText("fn helper");
   // コード断片クリックでピン遷移し、ポップオーバーは閉じる。
   await popover.locator("[title*='をピン']").click();
@@ -199,6 +200,8 @@ test("召喚印インスペクタ: 外部呼び出しは定義なしの案内に
   await page.locator(".pin-view circle.summon-glyph").first().click();
   const popover = page.getByRole("dialog", { name: "呼び出し先" });
   await expect(popover).toContainText("定義がない外部呼び出し");
+  // 外部呼び出しでも呼び出し式 (引数込み原文) は出る。
+  await expect(popover.locator(".call-excerpt")).toContainText('format!("Hello, {name}")');
   // Esc ではなく外側クリックで閉じる。
   await page.mouse.click(10, 500);
   await expect(popover).toBeHidden();

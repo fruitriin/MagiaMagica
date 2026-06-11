@@ -525,7 +525,11 @@ fn source_span(span: proc_macro2::Span) -> SourceSpan {
         file: String::new(),
         start_line,
         end_line,
-        start_column: None,
-        end_column: None,
+        // proc_macro2 の LineColumn は 0-based (文字単位)。start().column は
+        // 文字位置 (inclusive)、end().column は**既に最後の文字の直後 (exclusive)**。
+        // SourceSpan の規約は 1-based・end exclusive なので、どちらも +1 だけで
+        // 変換が成立する (end にさらに +1 してはならない)。
+        start_column: u32::try_from(span.start().column + 1).ok(),
+        end_column: u32::try_from(span.end().column + 1).ok(),
     }
 }

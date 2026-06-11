@@ -1,9 +1,11 @@
 <script setup lang="ts">
-// 召喚印インスペクタ (Phase 4.1)。召喚印クリックで呼び出し先のコードを
-// ポップオーバー表示する。同ファイルの関数に解決できればコード断片
-// (syntect HTML) を出し、クリックでピン遷移 — 外周にピン用シンボルを
-// 別建てせず、図の中の「呼び出し」からそのまま潜れる (オーナー要望 2026-06-11。
-// クレート外への解決・厳密な呼び出し解決は Phase 4.4)。
+// 召喚印インスペクタ (Phase 4.1)。召喚印クリックで「呼び出し式」と
+// 呼び出し先のコードをポップオーバー表示する。呼び出し式はレシーバ・引数込みの
+// 式全体 (改行込み原文、サーバ切り出し) — `.map` のようなメソッド召喚印でも
+// `sigil.map(|role| role.kind)` の形で文脈が見える (オーナー要望 2026-06-12)。
+// 同ファイルの関数に解決できれば定義コード断片 (syntect HTML) も出し、
+// クリックでピン遷移 — 外周にピン用シンボルを別建てせず、図の中の「呼び出し」
+// からそのまま潜れる (オーナー要望 2026-06-11。厳密な呼び出し解決は Phase 4.4)。
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -17,6 +19,13 @@ const router = useRouter();
 const resolved = computed(() => {
   if (focus.inspectedCall === null) return null;
   return focus.resolveCall(focus.inspectedCall.callTarget);
+});
+
+/** 呼び出し式 (サーバ切り出し済み HTML)。span が取れなかった召喚印では null。 */
+const excerptHtml = computed(() => {
+  const call = focus.inspectedCall;
+  if (call === null) return null;
+  return focus.spell?.call_excerpts[String(call.glyphIrId)] ?? null;
 });
 
 /** 解決先のコード断片 (syntect HTML)。インスペクタを開くたびに取得する。 */
@@ -89,10 +98,29 @@ function onKeydown(event: KeyboardEvent) {
           </button>
         </div>
 
+        <!-- 呼び出し式 (レシーバ・引数込み、改行込み原文)。解決の成否に関わらず出す -->
+        <div v-if="excerptHtml" mt-2>
+          <div text-xs text-gray-400>呼び出し式</div>
+          <div
+            class="call-excerpt"
+            mt-1
+            max-h-48
+            overflow-auto
+            rounded
+            border
+            border-gray-200
+            text-xs
+            leading-relaxed
+            p-2
+            v-html="excerptHtml"
+          />
+        </div>
+
         <template v-if="resolved">
           <!-- コード断片クリックでピン (縦可変・大きめ。オーナー要望) -->
+          <div v-if="excerptHtml" mt-2 text-xs text-gray-400>定義</div>
           <div
-            mt-2
+            mt-1
             max-h-96
             cursor-pointer
             overflow-auto

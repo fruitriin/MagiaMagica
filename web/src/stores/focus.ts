@@ -34,13 +34,19 @@ export const useFocusStore = defineStore("focus", () => {
     selectedOperationId.value = id;
   }
 
-  // 召喚印インスペクタ (Phase 4.1): 召喚印クリックで呼び出し先のコードを
-  // ポップオーバー表示し、同ファイル関数ならそこからピンできる。
+  // 召喚印インスペクタ (Phase 4.1): 召喚印クリックで呼び出し式と呼び出し先の
+  // コードをポップオーバー表示し、同ファイル関数ならそこからピンできる。
+  // glyphIrId は呼び出し式 (spell.call_excerpts) の引き当てに使う。
   // 画面座標はポップオーバーの表示位置 (クリック地点) に使う。
-  const inspectedCall = ref<{ callTarget: string; clientX: number; clientY: number } | null>(null);
+  const inspectedCall = ref<{
+    callTarget: string;
+    glyphIrId: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
 
-  function inspectCall(callTarget: string, clientX: number, clientY: number) {
-    inspectedCall.value = { callTarget, clientX, clientY };
+  function inspectCall(callTarget: string, glyphIrId: number, clientX: number, clientY: number) {
+    inspectedCall.value = { callTarget, glyphIrId, clientX, clientY };
   }
 
   function closeInspector() {
@@ -102,11 +108,21 @@ export const useFocusStore = defineStore("focus", () => {
   async function refresh() {
     // id は再パースで再採番されるため、選択を持ち越すと別の操作に
     // ハローが移る誤挙動になる — 更新前にクリアする。
-    // インスペクタ (inspectedCall) は名前ベースで再採番の影響を受けないため
-    // クリアしない (SSE 更新のたびにポップオーバーが閉じる誤挙動になる)。
+    // インスペクタ (inspectedCall) はクリアしない (SSE 更新のたびに
+    // ポップオーバーが閉じる誤挙動になる)。呼び出し名は再採番の影響を
+    // 受けないが、glyphIrId は受けるため取得後に付け替える (下記)。
     selectedOperationId.value = null;
     await loadState();
     await selectFunction(currentFn.value);
+    // 開いているインスペクタの glyph id を新しい呪文に付け替える。
+    // 同 id が同名のまま残っていればそのまま。消えていたら同名の召喚印が
+    // 一意のときだけ移し、曖昧 (同名複数) なら式の取り違えを避けて閉じる。
+    const call = inspectedCall.value;
+    if (call === null) return;
+    const matches = spell.value?.ir.glyphs.filter((g) => g.call_target === call.callTarget) ?? [];
+    if (matches.some((g) => g.id === call.glyphIrId)) return;
+    const only = matches.length === 1 ? matches[0] : undefined;
+    inspectedCall.value = only ? { ...call, glyphIrId: only.id } : null;
   }
 
   return {

@@ -17,8 +17,9 @@ pub struct SourceSpan {
     pub start_line: u32,
     /// 終了行 (1-based, inclusive)。
     pub end_line: u32,
-    /// 開始列 (1-based)。`None` は解析器から列情報が得られなかったことを示す。
+    /// 開始列 (1-based、文字単位)。`None` は解析器から列情報が得られなかったことを示す。
     pub start_column: Option<u32>,
-    /// 終了列 (1-based)。`None` は解析器から列情報が得られなかったことを示す。
+    /// 終了列 (1-based、文字単位、**最後の文字の直後 = exclusive**)。
+    /// `None` は解析器から列情報が得られなかったことを示す。
     pub end_column: Option<u32>,
 }

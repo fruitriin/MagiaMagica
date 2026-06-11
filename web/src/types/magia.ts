@@ -59,6 +59,9 @@ export type EffectGlyph = Placed & {
   z: number;
   /** 呼び出し先の名前 (召喚印インスペクタの入力)。 */
   callTarget: string | null;
+  /** IR 上の glyph id。`SpellResponse.call_excerpts` の引き当てに使う
+   *  (セッション内の一時識別子 — 永続化しない)。 */
+  irId: number;
 };
 
 /** 制御フローの接続線。Phase 4.0.7 (SVG 由来) は座標のみ。
@@ -192,6 +195,14 @@ export type IrGlyph = {
   effect: EffectCategory;
   /** 呼び出し先の名前。ピン可能判定はクライアントが関数一覧と照合する。 */
   call_target: string | null;
+  /** 呼び出し式全体の原文位置 (1-based、end_column は exclusive)。
+   *  切り出し + ハイライトはサーバが行う (call_excerpts) — クライアントは未使用。 */
+  source_span: {
+    start_line: number;
+    end_line: number;
+    start_column: number;
+    end_column: number;
+  } | null;
 };
 
 export type IrEdge = {
@@ -238,6 +249,9 @@ export type SpellResponse = {
   start_line: number;
   /** 配置済み IR (ミッドチルダ式、spec v0.3 §16)。 */
   ir: IrSpell;
+  /** 召喚印の呼び出し式 (glyph id → syntect ハイライト済み HTML)。
+   *  レシーバ・引数込みの式全体を原文 (改行込み) から切り出した断片。 */
+  call_excerpts: Record<string, string>;
   /** ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。 */
   svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */

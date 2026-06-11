@@ -28,7 +28,7 @@ use magia_core::layout::layout;
 use magia_core::proximity::{NeighborSeed, classify_neighbors};
 use magia_core::render::{
     RenderStyle,
-    ir_export::{NeighborMeta, focus_layout, spell_ir},
+    ir_export::{NeighborMeta, SpanIr, focus_layout, spell_ir},
     render,
 };
 use magia_rust::{FunctionEntry, function_index, parse_function};
@@ -218,11 +218,29 @@ fn render_spell(
             .collect();
         focus_layout(spell.view_box, &with_meta)
     });
+    // 召喚印インスペクタの呼び出し式 (glyph id → ハイライト済み HTML)。
+    // レシーバ・引数込みの式全体を原文 (改行・インデント込み) から切り出す
+    // (Phase 4.1 オーナー要望 — `sigil.map(|role| role.kind)` の形で見せる)。
+    let call_excerpts: serde_json::Map<String, serde_json::Value> = spell
+        .glyphs
+        .iter()
+        .filter_map(|glyph| {
+            let span = glyph.source_span.as_ref()?;
+            let excerpt = call_excerpt(source, span);
+            // 壊れた span で空になった式は載せない (クライアントは欠落として扱う)
+            if excerpt.trim().is_empty() {
+                return None;
+            }
+            let html = highlight_rust(&excerpt);
+            Some((glyph.id.to_string(), serde_json::Value::String(html)))
+        })
+        .collect();
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
     let mut response = serde_json::json!({
         "qualified": entry.qualified,
         "signature": entry.signature,
         "ir": ir,
+        "call_excerpts": call_excerpts,
         "svg_belka": render(&graph, &placed, RenderStyle::Belka),
         "source_html": highlight_rust(&snippet),
         "transcript": magia_core::transcript::transcribe(&graph),
@@ -232,6 +250,65 @@ fn render_spell(
         response["focus_layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
     }
     Ok(response.to_string())
+}
+
+/// 呼び出し式の原文を span で切り出す (行・列とも 1-based・文字単位、
+/// `end_column` は exclusive — `SpanIr` の規約)。式は行の途中から始まるため
+/// 1行目は列頭を落とし、2行目以降は共通の先頭空白を除いて左端を揃える
+/// (ポップオーバー内で元ファイルの深いインデントを引きずらない)。
+fn call_excerpt(source: &str, span: &SpanIr) -> String {
+    let start_line = span.start_line as usize;
+    let end_line = (span.end_line as usize).max(start_line);
+    let lines: Vec<&str> = source
+        .lines()
+        .skip(start_line.saturating_sub(1))
+        .take(end_line - start_line + 1)
+        .collect();
+    let last = lines.len().saturating_sub(1);
+    let clipped: Vec<String> = lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            // 列は proc_macro2 と同じ文字単位 — バイト境界で切らない (UTF-8 防御)
+            let chars: Vec<char> = line.chars().collect();
+            let from = if i == 0 {
+                (span.start_column as usize)
+                    .saturating_sub(1)
+                    .min(chars.len())
+            } else {
+                0
+            };
+            let to = if i == last {
+                (span.end_column as usize)
+                    .saturating_sub(1)
+                    .clamp(from, chars.len())
+            } else {
+                chars.len()
+            };
+            chars[from..to].iter().collect()
+        })
+        .collect();
+    let indent = clipped
+        .iter()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.chars().take_while(|c| c.is_whitespace()).count())
+        .min()
+        .unwrap_or(0);
+    let mut snippet = clipped
+        .into_iter()
+        .enumerate()
+        .map(|(i, line)| {
+            if i == 0 {
+                line
+            } else {
+                line.chars().skip(indent).collect()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    snippet.push('\n');
+    snippet
 }
 
 /// 1始まり・両端含みの行範囲を切り出す (関数スニペット)。
@@ -510,5 +587,46 @@ mod tests {
     #[test]
     fn source_lines_clamps_reversed_range() {
         assert_eq!(source_lines("a\nb\nc\n", 2, 1), "b\n");
+    }
+
+    fn span(sl: u32, sc: u32, el: u32, ec: u32) -> SpanIr {
+        SpanIr {
+            start_line: sl,
+            end_line: el,
+            start_column: sc,
+            end_column: ec,
+        }
+    }
+
+    #[test]
+    fn call_excerpt_clips_single_line_by_columns() {
+        // `return helper(sum);` の `helper(sum)` 部分 (列 12〜23、end exclusive)
+        let source = "fn f() {\n    return helper(sum);\n}\n";
+        assert_eq!(call_excerpt(source, &span(2, 12, 2, 23)), "helper(sum)\n");
+    }
+
+    #[test]
+    fn call_excerpt_dedents_continuation_lines() {
+        // メソッドチェーンの継続行は共通インデントを除いて左端を揃える
+        let source = "fn f() {\n    let x = sigil\n        .layers\n        .map(|r| r.kind);\n}\n";
+        assert_eq!(
+            call_excerpt(source, &span(2, 13, 4, 25)),
+            "sigil\n.layers\n.map(|r| r.kind)\n"
+        );
+    }
+
+    #[test]
+    fn call_excerpt_clamps_columns_beyond_line_end() {
+        // 壊れた span (列が行長を超える) でも panic せず行内に丸める
+        let source = "call()\n";
+        assert_eq!(call_excerpt(source, &span(1, 1, 1, 99)), "call()\n");
+    }
+
+    #[test]
+    fn call_excerpt_collapses_reversed_columns_to_empty() {
+        // 壊れた span (end < start) は空へフォールバックする (panic しない。
+        // クライアントは空の式ブロックを表示しないので欠落として扱われる)
+        let source = "call()\n";
+        assert_eq!(call_excerpt(source, &span(1, 5, 1, 2)), "\n");
     }
 }

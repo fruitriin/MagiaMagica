@@ -13,7 +13,7 @@ const isHovered = computed(() => focus.hoveredOperationId === props.glyph.id);
 
 function onClick(event: MouseEvent) {
   if (!props.glyph.selectable || props.glyph.callTarget === null) return;
-  focus.inspectCall(props.glyph.callTarget, event.clientX, event.clientY);
+  focus.inspectCall(props.glyph.callTarget, props.glyph.irId, event.clientX, event.clientY);
 }
 </script>
 

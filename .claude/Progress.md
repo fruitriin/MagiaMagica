@@ -84,6 +84,17 @@
 - [x] A5. e2e 2本 (解決 → コード表示 → ピン遷移 / 外部呼び出し案内)。SSE refresh がインスペクタを閉じる誤挙動を修正 (名前ベースなので再採番の影響なし → クリアしない)、ピンビュー svg に .pin-view クラス (テストセレクタ安定化)
 - [x] A6. ゲート再実行全通過 (playwright 15)
 
+**追加要望 2 (オーナー、2026-06-12): インスペクタに呼び出し式 (レシーバ + 引数、改行込み) を表示**
+- [x] B1. ring.rs source_span(): proc_macro2 の列情報を SourceSpan に埋める (0-based → 1-based、end は exclusive と規約明記)。式 span はレシーバ込み (`node.span()`)
+- [x] B2. GlyphIr に source_span (SpanIr — 行・列とも揃ったときだけ Some)
+- [x] B3. serve: call_excerpt (列クリップ + 継続行の共通インデント除去、文字単位で UTF-8 防御) + 応答に call_excerpts (glyph id → syntect HTML)。unit 3本
+- [x] B4. CallInspector: 「呼び出し式」ブロックを解決の成否に関わらず表示 (解決済みは「定義」ラベルで併記)。inspectedCall に glyphIrId 追加
+- [x] B5. e2e 更新 (解決済み `helper(sum)` / 外部 `format!("Hello, {name}")` の式表示)。playwright 15 通過
+- [x] B6. Stage 1 ゲート全通過 (cargo 17 / ADDF / vp check / vitest 30 / build / playwright 15)
+- [x] B7. 素材撮影 (.map のチェーン全体 sigil.layers...map(|role| role.kind) 改行込み / write_defs の呼び出し式 + 定義併記) → 送付
+- [x] B8. Stage 2 レビュー (追加要望2分): Critical/High なし。対応 — W1 proc_macro2 の end().column が既に exclusive である旨をコメント明記 / W2 逆転列の回帰テスト + 空 excerpt はサーバ側で除外 / S3 SSE refresh で glyphIrId が旧 id を指す問題を修正 (同名一意なら付け替え・曖昧なら閉じる、vitest 3本)。S1 Clone/Copy derive は「将来のため」のみが根拠で見送り (POSD)、S2 凡例の irId: -1 は selectable: false で参照されず実害なし、S4 は clippy 通過済みで非該当。contribution 検出: 候補なし (ADDF 仕組みに非接触)
+- [x] B9. ゲート再実行全通過 (cargo 17 / clippy / fmt / vp check / vitest 33 / build / playwright 15)
+
 **品質検証 + 完了処理**
-- [ ] 14. Stage 2 レビュー + 指摘対応
+- [ ] 14. Stage 2 レビュー + 指摘対応 (4.1 全体 — 最終判定が出たら実施)
 - [ ] 15. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット
