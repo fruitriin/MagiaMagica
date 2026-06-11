@@ -213,6 +213,25 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
   意図的な例外として明記する)。list / parse / serve の3者が同じ walker を共有すれば
   「列挙された名前は必ず再発見できる」規約が一点で守れる (`magia-rust/src/index.rs`)
 
+## span から原文を切り出す (Phase 4.1 呼び出し式表示)
+
+`node.span()` の範囲で元ソースから式を抜き出してユーザーに見せる定型
+(`serve.rs` の `call_excerpt`):
+
+- **proc_macro2 の `LineColumn` は 0-based・文字単位**。`start().column` は文字位置
+  (inclusive)、**`end().column` は既に最後の文字の直後 (exclusive)**。1-based 規約へは
+  どちらも +1 だけで変換が成立する — end にさらに +1 すると1文字余る
+- **列はバイトでなく文字で数える**: 行を `chars().collect::<Vec<_>>()` してから
+  スライスする。文字列リテラル内の日本語などで `&line[a..b]` は char boundary panic
+- **`ExprMethodCall::span()` はレシーバ込みの式全体** — `.map` の召喚印から
+  `sigil.layers...map(|role| role.kind)` のチェーン全体が取れる。`OperationPayload.
+  source_excerpt` (ToTokens 文字列化) はスペース区切りの正規化形で改行が失われる
+  ため、**人に見せる断片は span + 原文切り出しの方が良い**
+- **継続行の dedent**: 式は行の途中から始まるため 1 行目は列頭を落とし、2 行目以降は
+  共通の先頭空白 (空行は除外して min) を削ると左端が揃う
+- **壊れた span は丸めて欠落扱い**: 列の clamp で panic を避け、空になった断片は
+  応答に載せない (クライアント側は「無い」として隠す — 半端な式を見せない)
+
 ## 関連文書
 
 - `docs/plans/phase1.2-syn-to-ir.md`
