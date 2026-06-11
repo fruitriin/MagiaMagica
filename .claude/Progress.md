@@ -92,8 +92,17 @@
 - [x] M3-6. ゲート: vp check + bun run build 通過 (Rust 側は今回無変更 — M2 で全通過済み)。E2E: TOC 切替 / URL 同期 / 戻る進む / SSE 新関数反映 / エラーバナー全て確認、クリーンロードでコンソールエラーなし (HMR 編集中限定の警告は knowhow に記録)
 - [x] M3-7. 素材送付 (4 fixture のペアビュー 2x2) → M3 判定受領
 - [x] M3-8. **判定対応**: ペイン並び替え (魔法陣を左端 + flex 1.6 で最大幅、コード中央、関数一覧右端)。別スコープ要望4点は計画化 — ①②③ (凡例 / 入口・回転サイン / 補助陣関数名) → phase4.0.6-circle-affordances.md 新規、④ (TOC ピンフィルタ / ツリー表示) → phase4.1 に追補。TODO 登録済み
-- [ ] M3-9. 並び替え後の確認 → **M3 修正版の確認待ち** (「関数リストいい感じ」は受領済み)
-- [ ] M4: Phase 2.x 機能の Vue 移植（LayerPalette / DslEditor / TranscriptRegion）→ 判定待ち
+- [x] M3-9. 並び替え対応済み。SVG 描画系アフォーダンス (入口サイン・補助陣ラベル) は **4.3 後で確定** (オーナー判定) — 4.0.6 計画書・TODO に反映済み
+
+**M4 (同サイクル続行、2026-06-11)**
+- [x] M4-1. palette store 拡張: レイヤー語彙を Rust 側 FilterSpec と同一に修正 (control_flow / effects / type_info)、setVisible/setOpacity/showAll/hideAll/setVisibleSet
+- [x] M4-2. lib/magiaDsl.ts: parseDsl / exportDsl 純関数 (Vitest 対象として分離、M6)。エラーメッセージは inline 版と同文言 (行番号付き、hide カテゴリ禁止、未知レイヤー名)
+- [x] M4-3. LayerPalette (式 radio + checkbox + opacity slider + 全表示/全非表示 + .magia details)。右カラム上部 (TOC の上) に配置
+- [x] M4-4. TranscriptRegion (visually-hidden、role=region、spec §15 準拠の完全形)
+- [x] M4-5. MagicCircleView にレイヤー適用 (g.layer-* へ display/opacity、位置不変 spec §5.4。v-html のため watch + nextTick — 4.0.7 で宣言化)
+- [x] M4-6. useQuerySync: URL クエリ ↔ store 双方向同期 (?fn / ?style / ?layers / ?op、inline 版と完全互換形式)。HomeView の watch 2本を統合
+- [x] M4-7. E2E 確認: toggle → ?layers= / slider → ?op= / ベルカ切替 → ?style= / リロード完全復元 / URL 直開きで状態再現 / DSL エクスポート→適用→カテゴリ注記→エラー行番号 / transcript region (visually-hidden + 内容)。vp check + build 通過
+- [ ] M4-8. 素材送付 (既定 / レイヤー操作 / ベルカの3状態) → **M4 判定待ち**
 - [ ] M5: rust-embed 統合 + 旧 inline HTML 削除 + build.rs + CI + バイナリサイズ → 判定待ち
 - [ ] M6: Vitest + Playwright + Stage 1 ゲート + 知見記録
 - [ ] Stage 2 レビュー + 完了処理（4.1 以降の計画書へ Vue 前提を追補）

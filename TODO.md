@@ -26,7 +26,7 @@ Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow
 | 8 | 4.0 | [docs/plans/phase4.0-source-paired-view.md](docs/plans/phase4.0-source-paired-view.md) | 完了（サーバ側 API まで。UI は 4.0.5 に移管） |
 | 9 | 4.0.7 | [docs/plans/phase4.0.7-svg-to-vue-schema.md](docs/plans/phase4.0.7-svg-to-vue-schema.md) | 未着手（**案1**: 境界スキーマ + Vue コンポーネント） |
 | 10 | 4.0.9 | [docs/plans/phase4.0.9-ir-json-export-and-vue-builder.md](docs/plans/phase4.0.9-ir-json-export-and-vue-builder.md) | 未着手（**案2**: IR JSON + Vue ビルダ、SVG パーサ廃止） |
-| 11 | 4.0.6 | [docs/plans/phase4.0.6-circle-affordances.md](docs/plans/phase4.0.6-circle-affordances.md) | 未着手（凡例・入口/回転サイン・補助陣ラベル。**優先度はオーナー確認**、凡例のみ先行可） |
+| 11 | 4.0.6 | [docs/plans/phase4.0.6-circle-affordances.md](docs/plans/phase4.0.6-circle-affordances.md) | 未着手（2段階: 凡例は先行可 / 入口・回転サイン + 補助陣ラベルは **4.3 の後** — オーナー確定 2026-06-11） |
 | 12 | 4.1 | [docs/plans/phase4.1-pinned-focus-view.md](docs/plans/phase4.1-pinned-focus-view.md) | 未着手（**4.0.9 前提**で書き直し済。TOC ピンフィルタ/ツリー表示を追補済） |
 | 13 | 4.2 | [docs/plans/phase4.2-proximity-model.md](docs/plans/phase4.2-proximity-model.md) | 未着手 |
 | 14 | 4.3 | [docs/plans/phase4.3-composite-still-render.md](docs/plans/phase4.3-composite-still-render.md) | 未着手（**全面改稿**: Vue SSR + Bun、Rust SVG レンダラ廃止） |
@@ -43,7 +43,7 @@ Phase 3 振り返り (二式並置ビュー・レイヤー差分分解・knowhow
 - **4.0.9 完了時点で Rust SVG レンダラに deprecate マーク**。**4.3 で削除** (`[break]`)
 - **4.1 → 4.2 が「ピン中心ビュー」のコア系譜**。4.0.9 前提で書き直し済 (`MagicCircleSchema` + `<Transition>` で宣言的に書く)
 - **4.3 は Vue SSR + Bun に全面改稿**。`magia render` / `magia diff` / `magia ci` の SVG 出力を Vue SSR 経路に統一、Rust SVG レンダラ削除 (`[break]`)。Phase 3.1〜3.3 / 3.5 も同経路に移行
-- **4.0.6 (読み方アフォーダンス) はオーナー要望 (2026-06-11、M3 判定時)**。凡例パネルは 4.0.5 のみに依存し先行可。入口サイン・補助陣ラベルは SVG 描画なので、Rust レンダラ先行 (4.0.9 で書き直し) か 4.0.9 後の Vue 実装かを着手時にオーナーと確認
+- **4.0.6 (読み方アフォーダンス) はオーナー要望 (2026-06-11、M3 判定時)**。凡例パネルは 4.0.5 のみに依存し先行可。**入口サイン・補助陣ラベル (SVG 描画系) は 4.3 (Vue SSR 一本化) の後に実施** (オーナー確定 — Rust レンダラには足さない)
 - **4.4 (呼び出しジャンプ) は 4.1 + 4.2 + Phase 3.4 データフロー IR に依存**
 - **4.5 (ワークスペース俯瞰) は 4.0〜4.4 完了後に詳細精緻化**
 - **4.6 (テーマ + Spell Diff overlay) は Phase 3.2 / 3.5 完了済成果物を 4.x 上に重ねる**

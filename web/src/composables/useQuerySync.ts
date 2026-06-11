@@ -1,0 +1,90 @@
+// URL クエリ ↔ store 群の双方向同期。クエリ形式は Phase 2.x inline 版と完全互換:
+//   ?fn=<qualified> ?style=belka ?layers=a,b (全表示時は省略) ?op=layer:0.5,... (1.0 は省略)
+// URL を唯一の状態源とする一方向ループ: UI は store を変え、store → URL (replace)、
+// URL → store (watch)。関数切替 (?fn=) だけは FunctionToc が push して履歴に積む。
+
+import { watch } from "vue";
+import { type LocationQuery, useRoute, useRouter } from "vue-router";
+
+import { useFocusStore } from "../stores/focus.ts";
+import { LAYERS, type LayerName, usePaletteStore } from "../stores/palette.ts";
+
+function asString(value: LocationQuery[string] | undefined): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+export function useQuerySync() {
+  const route = useRoute();
+  const router = useRouter();
+  const focus = useFocusStore();
+  const palette = usePaletteStore();
+
+  function applyQueryToStores(query: LocationQuery) {
+    palette.setStyle(asString(query["style"]) === "belka" ? "belka" : "midchilda");
+
+    const layers = asString(query["layers"]);
+    const visible =
+      layers === null
+        ? new Set<LayerName>(LAYERS)
+        : new Set<LayerName>(
+            layers
+              .split(",")
+              .filter((l): l is LayerName => (LAYERS as readonly string[]).includes(l)),
+          );
+    palette.setVisibleSet(visible);
+
+    for (const layer of LAYERS) palette.setOpacity(layer, 1);
+    for (const pair of (asString(query["op"]) ?? "").split(",").filter(Boolean)) {
+      const sep = pair.indexOf(":");
+      if (sep === -1) continue;
+      const layer = pair.slice(0, sep);
+      const value = Number.parseFloat(pair.slice(sep + 1));
+      if ((LAYERS as readonly string[]).includes(layer) && !Number.isNaN(value)) {
+        palette.setOpacity(layer as LayerName, value);
+      }
+    }
+
+    const fn = asString(query["fn"]);
+    if (fn !== null && fn !== focus.currentFn) {
+      void focus.selectFunction(fn);
+    }
+  }
+
+  function buildQuery(): Record<string, string> {
+    const params: Record<string, string> = {};
+    if (focus.currentFn !== null) params["fn"] = focus.currentFn;
+    if (palette.style === "belka") params["style"] = "belka";
+    const shown = LAYERS.filter((l) => palette.layers[l].visible);
+    if (shown.length < LAYERS.length) params["layers"] = shown.join(",");
+    const ops = LAYERS.filter((l) => Math.abs(palette.layers[l].opacity - 1) > 1e-9)
+      .map((l) => `${l}:${palette.layers[l].opacity}`)
+      .join(",");
+    if (ops !== "") params["op"] = ops;
+    return params;
+  }
+
+  // 初期 URL → store (?fn= は希望値として先置きし、実ロードは SSE 初回イベントに任せる)
+  focus.setInitialFn(asString(route.query["fn"]));
+  applyQueryToStores(route.query);
+
+  // store → URL。状態微調整は履歴を汚さない (replace)。同値ならスキップしてループを断つ
+  watch(
+    [() => focus.currentFn, () => palette.style, () => palette.layers],
+    () => {
+      const next = buildQuery();
+      const current = Object.fromEntries(
+        Object.entries(route.query).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : [])),
+      );
+      if (JSON.stringify(next) !== JSON.stringify(current)) {
+        void router.replace({ query: next });
+      }
+    },
+    { deep: true },
+  );
+
+  // URL → store (戻る/進む・FunctionToc の push がここを通る)
+  watch(
+    () => route.query,
+    (query) => applyQueryToStores(query),
+  );
+}

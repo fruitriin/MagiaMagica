@@ -310,6 +310,21 @@ UI 実装中はオーナーの細かい確認が入る (オーナー指定)。**
 - E2E 確認済み: TOC 切替 / URL 同期 / 戻る進む / fallback 書き戻し / SSE で新関数が目次に出現 / 構文エラーバナー + last-good + 復旧 (一時 fixture)。HMR 編集中限定の警告は knowhow へ
 - 素材: write_document / write_control_flow / medium_render_doc / dense_dispatch の4ペアビュー (2x2) を送付済み
 
+### M3 判定 (2026-06-11): 並び替え指示 + 別スコープ要望 → 対応済み
+
+- ペインを「魔法陣 (左・flex 1.6) | コード (中) | 関数一覧 (右端)」へ並び替え (一番見せたいのは魔法陣)
+- 別スコープ要望は phase4.0.6-circle-affordances.md (凡例/入口サイン/補助陣ラベル — SVG 描画系は 4.3 後とオーナー確定) と phase4.1 追補 (TOC ピンフィルタ/ツリー) に計画化
+- 「関数リストいい感じ」受領
+
+### M4 (2026-06-11 実施、判定待ち)
+
+- `<LayerPalette>` (式 radio / レイヤー checkbox + opacity slider / 全表示・全非表示 / .magia DSL details) を右カラム上部に、`<TranscriptRegion>` (visually-hidden) を配置
+- palette store のレイヤー語彙を Rust 側 FilterSpec と同一に修正 (`control_flow / effects / type_info` — M2 スケルトンの `control/effects/types` は誤り)
+- DSL は `lib/magiaDsl.ts` の純関数 (parseDsl / exportDsl) に分離 — M6 Vitest の対象。文言は inline 版と同一
+- レイヤー適用は MagicCircleView が `g.layer-*` に display/opacity を当てる (位置不変 spec §5.4)。v-html のため watch + nextTick (4.0.7 で宣言化予定)
+- `useQuerySync` で URL クエリ ↔ store を双方向同期。**形式は inline 版と完全互換** (?fn / ?style=belka / ?layers=a,b / ?op=l:v) — URL 直開き・リロードで全状態が再現される
+- E2E 確認済み: toggle/slider/式切替/リロード復元/URL 直開き/DSL 往復 (エクスポート・適用・カテゴリ注記・行番号エラー)/transcript region
+
 ## 想定リスク
 
 - **Vite+ alpha の API 変動**: アルファ期間 (2026-03〜) のため後方互換破壊あり。実装時に最新リリースノート確認 + 計画書に確認日を記録。Vite+ が破壊的変更を出したら本計画に「Vite+ X.Y 対応」の追補をつける

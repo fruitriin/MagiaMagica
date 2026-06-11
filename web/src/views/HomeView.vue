@@ -1,48 +1,20 @@
 <script setup lang="ts">
-// M3: ペアビュー (関数目次 | ソース | 魔法陣)。URL (?fn=) を唯一の状態源とし、
-// TOC クリックも 戻る/進む も「query 変更 → watch → selectFunction」の一方向で流す。
+// ペアビュー (魔法陣 | ソース | パレット + 関数目次)。URL を唯一の状態源とし、
+// UI 操作 → store → URL (replace) → watch → store の一方向で流す (useQuerySync)。
+// 関数切替 (?fn=) だけは FunctionToc が push して履歴に積む。
 // 初回ロードは SSE 接続直後イベント (serve.rs 仕様) の refresh に一本化する。
-import { watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-
 import FunctionToc from "../components/FunctionToc.vue";
+import LayerPalette from "../components/LayerPalette.vue";
 import MagicCircleView from "../components/MagicCircleView.vue";
 import SourcePane from "../components/SourcePane.vue";
+import TranscriptRegion from "../components/TranscriptRegion.vue";
 import { useMagiaSync } from "../composables/useMagiaSync.ts";
+import { useQuerySync } from "../composables/useQuerySync.ts";
 import { useFocusStore } from "../stores/focus.ts";
 
-const route = useRoute();
-const router = useRouter();
 const focus = useFocusStore();
-
-function queryFn(): string | null {
-  const fn = route.query["fn"];
-  return typeof fn === "string" ? fn : null;
-}
-
-focus.setInitialFn(queryFn());
+useQuerySync();
 useMagiaSync();
-
-// URL → store (TOC クリック・戻る/進む・手入力の全経路がここを通る)。
-watch(
-  () => route.query["fn"],
-  (fn) => {
-    if (typeof fn === "string" && fn !== focus.currentFn) {
-      void focus.selectFunction(fn);
-    }
-  },
-);
-
-// store → URL (fn 未指定で先頭関数に fallback したときの書き戻し)。
-// 履歴は汚さない (replace)。同一値ガードで watch との往復ループは止まる。
-watch(
-  () => focus.currentFn,
-  (fn) => {
-    if (fn !== null && fn !== queryFn()) {
-      void router.replace({ query: { ...route.query, fn } });
-    }
-  },
-);
 </script>
 
 <template>
@@ -71,11 +43,16 @@ watch(
       取得エラー: {{ focus.loadError }} — 直前の表示を保持しています
     </div>
 
+    <TranscriptRegion />
+
     <main flex min-h-0 flex-1>
       <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く -->
       <MagicCircleView min-w-0 class="flex-[1.6]" overflow-auto />
       <SourcePane min-w-0 class="flex-[1]" border-l border-gray-200 />
-      <FunctionToc w-48 shrink-0 border-l border-gray-200 />
+      <aside flex w-56 shrink-0 flex-col border-l border-gray-200>
+        <LayerPalette shrink-0 border-b border-gray-200 />
+        <FunctionToc min-h-0 flex-1 />
+      </aside>
     </main>
   </div>
 </template>
