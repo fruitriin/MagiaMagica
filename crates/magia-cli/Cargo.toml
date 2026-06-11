@@ -10,6 +10,8 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 readme.workspace = true
+# web/dist (Vue SPA) を bun でビルドして同梱する (Phase 4.0.5 M5)。
+build = "build.rs"
 
 [[bin]]
 name = "magia"
@@ -24,6 +26,7 @@ clap = { version = "4.6.1", features = ["derive"] }
 magia-core = { path = "../magia-core", version = "0.1.0" }
 magia-rust = { path = "../magia-rust", version = "0.1.0" }
 notify = "8.2.0"
+rust-embed = "8.11.0"
 serde_json = "1.0.150"
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "html", "regex-fancy"] }
 tiny_http = "0.12.0"

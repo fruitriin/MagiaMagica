@@ -118,21 +118,21 @@ fn serves_function_index_api() {
     let file = temp_fixture("initial.rs", INITIAL);
     let server = spawn_server(&file);
 
-    // Phase 4.0 はサーバ側 API まで (ペアビュー UI は Phase 4.0.5 / Vue)。
-    // 既存 UI (パレット・式トグル・書き起こし・DSL 往復) は維持される。
+    // Phase 4.0.5 M5: UI は rust-embed 同梱の Vue SPA (web/dist)。
+    // UI の振る舞い (パレット・DSL・書き起こし) は Playwright (M6) が担い、
+    // ここでは「SPA シェルと静的アセットが配信される」契約だけを見る。
     let index = http_get(server.port, "/");
     assert!(index.contains("200"));
-    assert!(index.contains(r#"<div id="magia">"#));
-    assert!(index.contains("EventSource"));
-    for layer in ["control_flow", "effects", "type_info"] {
-        assert!(index.contains(&format!(r#"data-layer="{layer}""#)));
-    }
-    for style in ["midchilda", "belka"] {
-        assert!(index.contains(&format!(r#"data-style="{style}""#)));
-    }
-    assert!(index.contains(r#"id="dsl""#) && index.contains("visually-hidden"));
-    // 薄い継ぎ目: 旧 UI が新 API を呼ぶ。
-    assert!(index.contains("/spell/"));
+    assert!(index.contains(r#"<div id="app">"#));
+    let asset = index
+        .split(r#"src="/"#)
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("index.html がバンドル JS を参照している");
+    let js = http_get(server.port, &format!("/{asset}"));
+    assert!(js.contains("200") && js.contains("text/javascript"));
+    // 存在しない静的ファイルは 404。
+    assert!(http_get(server.port, "/no_such_file.js").contains("404"));
 
     // /state はメタ + 関数一覧 (impl メソッドは qualified 名)。
     let state = state_json(server.port);
@@ -150,7 +150,7 @@ fn serves_function_index_api() {
 
     // ?fn= 付き URL でもトップページが返る (リロード・共有経路)。
     let with_fn = http_get(server.port, "/?fn=Caster%3A%3Acast&style=belka");
-    assert!(with_fn.contains("200") && with_fn.contains(r#"<div id="magia">"#));
+    assert!(with_fn.contains("200") && with_fn.contains(r#"<div id="app">"#));
 }
 
 #[test]

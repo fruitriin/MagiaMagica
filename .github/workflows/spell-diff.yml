@@ -24,6 +24,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # magia-cli の build.rs が web/dist (Vue SPA) を bun で組み立てる (Phase 4.0.5 M5)。
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
       - name: magia をビルド
         run: cargo build -p magia-cli
 

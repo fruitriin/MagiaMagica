@@ -102,7 +102,17 @@
 - [x] M4-5. MagicCircleView にレイヤー適用 (g.layer-* へ display/opacity、位置不変 spec §5.4。v-html のため watch + nextTick — 4.0.7 で宣言化)
 - [x] M4-6. useQuerySync: URL クエリ ↔ store 双方向同期 (?fn / ?style / ?layers / ?op、inline 版と完全互換形式)。HomeView の watch 2本を統合
 - [x] M4-7. E2E 確認: toggle → ?layers= / slider → ?op= / ベルカ切替 → ?style= / リロード完全復元 / URL 直開きで状態再現 / DSL エクスポート→適用→カテゴリ注記→エラー行番号 / transcript region (visually-hidden + 内容)。vp check + build 通過
-- [ ] M4-8. 素材送付 (既定 / レイヤー操作 / ベルカの3状態) → **M4 判定待ち**
-- [ ] M5: rust-embed 統合 + 旧 inline HTML 削除 + build.rs + CI + バイナリサイズ → 判定待ち
+- [x] M4-8. 素材送付 → **M4 判定: 合格** (「めっちゃいいかんじ」+ パレット折りたたみ指示 → 対応済み、既定は閉)
+
+**M5 (同サイクル続行、2026-06-11)**
+- [x] M5-1. LayerPalette を折りたたみ式に (M4 判定対応。既定閉、開閉はローカル UI 状態で URL に載せない)
+- [x] M5-2. rust-embed 統合: `#[derive(Embed)] folder="../../web/dist"`、GET / と静的ファイルを embedded_response で配信 (拡張子 → Content-Type 最小マップ)。**旧 inline HTML (INDEX_HTML 194行) 削除**
+- [x] M5-3. build.rs: dist が src より新しければスキップ / 古ければ bun install + build / bun 不在は手順つき panic。rerun-if-changed は src のみ (dist を監視すると再実行ループ)
+- [x] M5-4. CI: ci.yml 新設 (Bun 1.3.9 + vp check + bun build + clippy/fmt/test)、spell-diff.yml に setup-bun 追加 (build.rs が bun を要求)
+- [x] M5-5. CLAUDE.repo.md に Bun 前提・開発フロー (二段構成 + rust-embed) 記載、scripts/dev-web.sh (並走 1コマンド)
+- [x] M5-6. 統合テスト更新: inline HTML の assert → SPA shell (`<div id="app">` + asset JS 200 + 未知ファイル 404)。UI の振る舞い検証は M6 Playwright に移譲
+- [x] M5-7. バイナリサイズ: strip + thin LTO 追加で 7.03 → **5.91MB**。**SPA 同梱の純増は +0.11MB** (M5 前 6.92MB — 5MB 超過は Phase 4.0 の syntect 由来と切り分け済み)。5MB 復帰には syntect のシンタックス定義削減が必要 → オーナー判定事項
+- [x] M5-8. cargo install 実機確認: インストール済み `magia` バイナリ単体で SPA + /state + SSE 全動作。Stage 1 ゲート全通過
+- [ ] M5-9. 素材送付 → **M5 判定待ち**
 - [ ] M6: Vitest + Playwright + Stage 1 ゲート + 知見記録
 - [ ] Stage 2 レビュー + 完了処理（4.1 以降の計画書へ Vue 前提を追補）

@@ -80,9 +80,10 @@
 ## ビルド・Lint・テスト
 
 Phase 1.0 で cargo workspace を立ち上げた。以後のマイルストーンはこの土台に積み増す。
+Phase 4.0.5 でフロントエンド (`web/`, Vue 3 + Vite+) が加わった。**ランタイム・パッケージマネージャは Bun** (Node.js / pnpm は不採用、オーナー指示 2026-06-11)。
 
 ```bash
-# ビルド
+# ビルド (magia-cli の build.rs が web/dist を bun で自動ビルドして rust-embed で同梱する)
 cargo build --workspace
 
 # Lint (clippy + rustfmt)
@@ -91,6 +92,9 @@ cargo fmt --check
 
 # テスト
 cargo test --workspace
+
+# フロントエンド検証 (fmt + lint + 型チェックの一括窓口) とビルド
+cd web && bun run vp check && bun run build
 ```
 
 ADDF フレームワーク自体のテストランナーも利用可能:
@@ -99,7 +103,13 @@ ADDF フレームワーク自体のテストランナーも利用可能:
 bash .claude/tests/run-all.sh
 ```
 
-品質ゲートの Stage 1 では、上記の cargo コマンド一式に加えて `bash .claude/tests/run-all.sh` を実行する。
+品質ゲートの Stage 1 では、上記の cargo コマンド一式に加えて `bash .claude/tests/run-all.sh` と `web/` の `vp check` + `bun run build` を実行する。
+
+### 開発フロー (フロントエンド)
+
+- **開発時は二段構成**: `magia serve <FILE>` (API、ポート 4747) + `cd web && bun run dev` (HMR、ポート 5173)。vite の proxy が `/state /spell /events` を 4747 へ転送するので、ブラウザは 5173 だけ見る。1コマンド起動は `scripts/dev-web.sh <FILE>`
+- **本番配信は rust-embed**: `cargo build` 後の `magia serve` は同梱済み SPA を配信する (HMR なし)。フロント変更を本番経路で確認するときは再ビルドする
+- Bun がない環境では cargo build が手順つきのエラーで止まる (https://bun.sh からインストール)
 
 ---
 

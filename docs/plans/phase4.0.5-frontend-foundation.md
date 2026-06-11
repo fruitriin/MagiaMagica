@@ -325,6 +325,18 @@ UI 実装中はオーナーの細かい確認が入る (オーナー指定)。**
 - `useQuerySync` で URL クエリ ↔ store を双方向同期。**形式は inline 版と完全互換** (?fn / ?style=belka / ?layers=a,b / ?op=l:v) — URL 直開き・リロードで全状態が再現される
 - E2E 確認済み: toggle/slider/式切替/リロード復元/URL 直開き/DSL 往復 (エクスポート・適用・カテゴリ注記・行番号エラー)/transcript region
 
+### M4 判定 (2026-06-11): 合格 (「めっちゃいいかんじ」) + パレット折りたたみ指示 → 対応済み (既定閉)
+
+### M5 (2026-06-11 実施、判定待ち)
+
+- rust-embed 統合 (`folder = "../../web/dist"`)、旧 inline HTML (INDEX_HTML 194行) 削除。GET / と静的ファイルは `embedded_response` (拡張子 → Content-Type 最小マップ)
+- build.rs: dist の鮮度判定 (src の最大 mtime と比較) → 古ければ `bun install --frozen-lockfile && bun run build`、bun 不在は手順つき panic。**rerun-if-changed に dist を入れない** (再実行ループ)
+- CI: `ci.yml` 新設 (Bun 1.3.9 / vp check / bun build / clippy / fmt / cargo test)。spell-diff.yml にも setup-bun (build.rs が bun を呼ぶため)
+- CLAUDE.repo.md に Bun 前提 + 開発フロー、`scripts/dev-web.sh` (magia serve + vite dev の並走)
+- 統合テスト: inline HTML 前提の assert を SPA shell 契約 (`<div id="app">` / asset JS 200 / 未知 404) に更新。UI の振る舞いは M6 Playwright が担う
+- **バイナリサイズ**: `strip = "symbols"` + `lto = "thin"` を workspace に追加し 7.03 → **5.91MB**。受け入れ基準 5MB は超過だが、**SPA 同梱の純増は +0.11MB** (M5 前 6.92MB) — 超過の主因は Phase 4.0 の syntect (シンタックス定義)。5MB 復帰には syntect の default-syntaxes を Rust だけに絞る最適化が必要 (別タスク候補、オーナー判定事項)
+- cargo install 実機確認: インストール済みバイナリ単体で SPA + API + SSE 全動作
+
 ## 想定リスク
 
 - **Vite+ alpha の API 変動**: アルファ期間 (2026-03〜) のため後方互換破壊あり。実装時に最新リリースノート確認 + 計画書に確認日を記録。Vite+ が破壊的変更を出したら本計画に「Vite+ X.Y 対応」の追補をつける

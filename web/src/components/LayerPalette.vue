@@ -29,8 +29,11 @@ function onApply() {
 </script>
 
 <template>
-  <section p-3 text-sm>
-    <strong text-xs text-gray-500>式</strong>
+  <!-- 折りたたみ式 (オーナー判定 M4)。既定は閉じて魔法陣・関数一覧にスペースを譲る。
+       開閉はローカル UI 状態で URL には載せない (状態というより作業中の道具箱)。 -->
+  <details px-3 py-2 text-sm>
+    <summary cursor-pointer select-none text-xs font-bold text-gray-600>⚙ パレット</summary>
+    <strong mt-2 block text-xs text-gray-500>式</strong>
     <div mt-1 flex gap-3>
       <label flex items-center gap-1>
         <input
@@ -123,5 +126,5 @@ function onApply() {
       </div>
       <div min-h-4 text-xs text-effect-filesystem>{{ dslNote }}</div>
     </details>
-  </section>
+  </details>
 </template>

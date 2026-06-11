@@ -1,0 +1,50 @@
+# CI — フロントエンド (Vue/Vite+/Bun) と Rust workspace の検証 (Phase 4.0.5 M5)
+#
+# 設計判断: ローカルの検証コマンドと同一のものを並べる (薄い YAML、git-ci-integration-pattern)。
+# ランタイムは Bun 1本 (Node.js 不採用、オーナー指示 2026-06-11)。
+# cargo build は build.rs 経由で web/dist を要求するため、web のビルドを先に行う。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9 # web/package.json の packageManager と同期
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: フロントエンド依存をインストール
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: フロントエンド検証 (fmt + lint + 型)
+        working-directory: web
+        run: bun run vp check
+
+      - name: フロントエンドビルド (web/dist — rust-embed の入力)
+        working-directory: web
+        run: bun run build
+
+      - name: Rust lint
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo fmt --check
+
+      - name: Rust テスト
+        run: cargo test --workspace

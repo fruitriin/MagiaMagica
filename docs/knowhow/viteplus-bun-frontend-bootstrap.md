@@ -71,6 +71,18 @@
 - `vp check` = oxfmt --check + oxlint + 型チェック。`vp check --fix` で fmt を自動修正
 - oxlint ルールは `vite.config.ts` の `lint.rules` に書く (.oxlintrc.json 不要)。`"typescript/consistent-type-definitions": ["error", "type"]` で type 統一規約を機械化
 
+### rust-embed + build.rs での SPA 同梱 (Phase 4.0.5 M5)
+
+- `#[derive(rust_embed::Embed)] #[folder = "../../web/dist"]` で dist をバイナリに同梱。
+  tiny_http 側は拡張子 → Content-Type の最小マップで配信 (dist に現れる種類だけで足りる)
+- **build.rs は「dist が src より新しければスキップ、古ければ bun でビルド、bun 不在なら手順つき panic」**。
+  rerun-if-changed には **dist を入れない** (成果物を監視すると bun build 自体が再実行ループを起こす)。
+  鮮度判定は src ツリーの最大 mtime と dist/index.html の mtime 比較で十分
+- バイナリサイズへの SPA 寄与は誤差 (+0.11MB)。膨らみの主因は他の依存 (本プロジェクトは syntect)。
+  `[profile.release] strip = "symbols"` + `lto = "thin"` で 7.0 → 5.9MB (約 -16%)
+- CI では cargo build の**前に** bun セットアップが要る (build.rs が bun を呼ぶため)。
+  spell-diff など cargo build する全 workflow に `oven-sh/setup-bun` を足す
+
 ## プロジェクトへの適用
 
 - `web/` が本パターンの実例 (Phase 4.0.5)。dev は `bun run --cwd web dev`、検証は `cd web && vp check && bun run build`

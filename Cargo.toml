@@ -29,3 +29,8 @@ missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 # プロジェクト名・ファンタジー語彙（MagiaMagica, Mystical, ミッドチルダ等）を多用するため許容
 doc_markdown = "allow"
+
+[profile.release]
+# 配布バイナリのサイズ削減 (Phase 4.0.5 M5: syntect + SPA 同梱でシンボルが膨らむ)
+strip = "symbols"
+lto = "thin"
