@@ -113,6 +113,11 @@
 - [x] M5-6. 統合テスト更新: inline HTML の assert → SPA shell (`<div id="app">` + asset JS 200 + 未知ファイル 404)。UI の振る舞い検証は M6 Playwright に移譲
 - [x] M5-7. バイナリサイズ: strip + thin LTO 追加で 7.03 → **5.91MB**。**SPA 同梱の純増は +0.11MB** (M5 前 6.92MB — 5MB 超過は Phase 4.0 の syntect 由来と切り分け済み)。5MB 復帰には syntect のシンタックス定義削減が必要 → オーナー判定事項
 - [x] M5-8. cargo install 実機確認: インストール済み `magia` バイナリ単体で SPA + /state + SSE 全動作。Stage 1 ゲート全通過
-- [ ] M5-9. 素材送付 → **M5 判定待ち**
-- [ ] M6: Vitest + Playwright + Stage 1 ゲート + 知見記録
+- [x] M5-9. **M5 判定: 合格** — バイナリサイズ基準は撤廃 (「意味のある機能の対価なら気にしない」を CLAUDE.repo.md に方針化、計画書の受け入れ基準も更新)
+
+**M6 (同サイクル続行、2026-06-11)**
+- [x] M6-1. Vitest 18本: magiaDsl (パース/エクスポート/エラー文言) / palette store / focus store (qualified 照合・fallback・分配・エラー保持・両式切替)。import は vite-plus/test (vitest 直接依存不要)
+- [x] M6-2. Playwright 8本: 既定表示 / TOC 切替 + 戻る / レイヤー toggle + URL 直開き / ベルカ切替 / DSL 往復 + エラー / SSE 自動更新 / 構文エラー + last-good + 復帰 / 書き起こし region。**対象は rust-embed 配信の本番経路** (webServer = magia バイナリ、workers: 1 で fixture 書き換えテストを直列化)
+- [x] M6-3. CI に vp test + Playwright (--with-deps chromium) を追加。package.json に test / test:e2e スクリプト
+- [x] M6-4. Stage 1 ゲート全通過 (vp check / build / vp test / clippy / fmt / cargo test 16 / ADDF) + 知見記録 (viteplus-bun-frontend-bootstrap.md にテスト基盤節を追記)
 - [ ] Stage 2 レビュー + 完了処理（4.1 以降の計画書へ Vue 前提を追補）

@@ -37,6 +37,10 @@ jobs:
         working-directory: web
         run: bun run vp check
 
+      - name: フロントエンドユニットテスト (Vitest)
+        working-directory: web
+        run: bun run vp test
+
       - name: フロントエンドビルド (web/dist — rust-embed の入力)
         working-directory: web
         run: bun run build
@@ -48,3 +52,11 @@ jobs:
 
       - name: Rust テスト
         run: cargo test --workspace
+
+      - name: Playwright ブラウザをインストール
+        working-directory: web
+        run: bunx playwright install --with-deps chromium
+
+      - name: E2E (Playwright — rust-embed 配信の本番経路)
+        working-directory: web
+        run: bun run test:e2e

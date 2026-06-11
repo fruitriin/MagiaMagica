@@ -105,6 +105,10 @@ bash .claude/tests/run-all.sh
 
 品質ゲートの Stage 1 では、上記の cargo コマンド一式に加えて `bash .claude/tests/run-all.sh` と `web/` の `vp check` + `bun run build` を実行する。
 
+### バイナリサイズの方針 (オーナー確定 2026-06-11)
+
+**バイナリサイズの肥大化は、それが意味のある機能 (syntect のハイライト、SPA 同梱など) の対価なら気にしない**。サイズを理由に機能や依存を削る判断はしない。`[profile.release]` の strip/lto のような「タダで縮む」最適化だけ維持する。
+
 ### 開発フロー (フロントエンド)
 
 - **開発時は二段構成**: `magia serve <FILE>` (API、ポート 4747) + `cd web && bun run dev` (HMR、ポート 5173)。vite の proxy が `/state /spell /events` を 4747 へ転送するので、ブラウザは 5173 だけ見る。1コマンド起動は `scripts/dev-web.sh <FILE>`

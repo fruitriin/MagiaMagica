@@ -183,7 +183,7 @@ Phase 4.0 が素 JS で先行着手中のため、本計画は完了時点の 4.
 - [ ] 既存 Rust 統合テスト (`cargo test --workspace`) 全本数通過
 - [ ] Vitest ユニットテスト + Playwright E2E が CI で走る
 - [ ] `cargo build --workspace` が `vite+ build` を自動で呼ぶ (or 明示手順が CLAUDE.repo.md に記載)
-- [ ] バイナリサイズが 5 MB 以下 (Phase 1.7 時点の `magia` バイナリ比 +3 MB 以内)
+- [x] ~~バイナリサイズが 5 MB 以下~~ → **基準撤廃 (オーナー判定 2026-06-11)**: 「意味のある機能の対価なら肥大化は気にしない」(CLAUDE.repo.md に方針化)。実測 5.91MB、SPA 同梱の純増 +0.11MB
 - [ ] CLAUDE.repo.md に **Bun** の前提と起動手順が記載される (Node.js は不採用)
 - [ ] **M1〜M5 の各マイルストーンでオーナー目視判定が通っている** (NG 残置で次へ進まない)
 

@@ -83,6 +83,22 @@
 - CI では cargo build の**前に** bun セットアップが要る (build.rs が bun を呼ぶため)。
   spell-diff など cargo build する全 workflow に `oven-sh/setup-bun` を足す
 
+### テスト基盤 (Phase 4.0.5 M6)
+
+- **Vitest は vp 統合済み** (`vp test`)。import は `"vitest"` でなく **`"vite-plus/test"`** —
+  `prefer-vite-plus-imports` ルールが自動書き換えする。vitest を devDependencies に
+  直接入れる必要はない (型解決も vite-plus が提供)
+- **Playwright は vp 非統合** → `@playwright/test` を直接追加し `bunx playwright install chromium`。
+  `playwright.config.ts` の webServer に **Rust バイナリ起動スクリプト**を置ける
+  (cargo build 込みなので timeout 180s)。E2E 対象を rust-embed 配信 (本番経路) にすると
+  「バイナリ単体で全機能」の受け入れ基準がそのまま回帰テストになる
+- ファイル書き換えを伴う SSE/エラーテストは `workers: 1` で直列化し、`test.beforeEach` で
+  fixture を既知内容に戻す (テスト間の持ち越し防止)
+- 入れ子 `<details>` の summary を Playwright で叩くとき、`aside details summary` は
+  strict mode violation になる — `getByText("⚙ パレット")` のようにテキストで特定する
+- Pinia store の単体テスト定型: `setActivePinia(createPinia())` (beforeEach) +
+  `vi.stubGlobal("fetch", vi.fn(...))`。store間分配 (focus → source) もこの形で検証できる
+
 ## プロジェクトへの適用
 
 - `web/` が本パターンの実例 (Phase 4.0.5)。dev は `bun run --cwd web dev`、検証は `cd web && vp check && bun run build`
