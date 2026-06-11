@@ -71,8 +71,17 @@
 - [x] M1-5. 動作確認: vp dev 起動（autoPort で 52669）+ proxy 経由 /state 200 + コンソール無エラー + vp check / bun run build 通過
 - [x] M1-6. 素材送付（スクショ + 構成サマリ）→ **M1 判定待ちでサイクル終了**（Stage 1 ゲート全通過: clippy / fmt / cargo test 16 スイート / ADDF テスト — web 追加分の cargo 影響なし）
 
-**次サイクル以降（判定が来てから）**
-- [ ] M2: Pinia stores スケルトン + api composable + MagicCircleView + ?fn= → 素材送付・判定待ち
+**M1 判定 (2026-06-11): 合格** — ①色よさそう (後から差し替え容易な構成も評価)、②トーンよさそう、③ルーティングは「ファイルベースが基本の好みだが、クエリ軸の複雑性に対応するため明示的・プログラマブルな現行方式」で確定 (router/index.ts に設計判断を記録、複雑性が収まればファイルベース化リファクタも将来検討)。
+
+**M2 (同サイクル続行、2026-06-11)**
+- [x] M2-1. Pinia stores スケルトン: useFocusStore / useSourceStore / useConnectionStore / usePaletteStore (型 = type)
+- [x] M2-2. api composable (composables/api.ts): fetchState / fetchSpell / connectEvents (SSE)
+- [x] M2-3. MagicCircleView (v-html 過渡対応、4.0.7 で schema 化予定)
+- [x] M2-4. 境界スキーマ MagicCircleSchema 型定義 (web/src/types/magia.ts) — circles / operations / edges / glyphs / signature / 配置済 (x,y) を意味論ベースで先置き
+- [x] M2-5. ?fn= パラメータ受け取り (Vue Router → focus store 初期同期)
+- [x] **【バグ修正】SSE が Phase 2.1 から配信されていなかった潜在バグを発見・修正** — tiny_http のチャンク経路は二重バッファ (Encoder 8KB + BufWriter 1KB) が flush されず、イベントが永遠に届かない。`request.into_writer()` + 自前ヘッダ + イベント毎 flush の `stream_sse` に置換。回帰テスト `sse_events_stream_immediately` 追加 (serve_integration.rs)。E2E でファイル変更 → Vue 再フェッチを確認
+- [x] M2-6. Stage 1 ゲート (cargo 一式 + vp check + bun run build) 全通過
+- [ ] M2-7. 素材送付 (Vue 版 vs inline 版の比較スクショ) → **M2 判定待ち**
 - [ ] M3: ペアビュー UI（SourcePane / FunctionToc / SSE / エラー表示 / URL 同期）→ 判定待ち
 - [ ] M4: Phase 2.x 機能の Vue 移植（LayerPalette / DslEditor / TranscriptRegion）→ 判定待ち
 - [ ] M5: rust-embed 統合 + 旧 inline HTML 削除 + build.rs + CI + バイナリサイズ → 判定待ち

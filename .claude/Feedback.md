@@ -8,7 +8,8 @@
 
 ## オーナーフィードバック
 
-- **判定依頼 (Phase 4.0.5 M1, 2026-06-11)**: Vue 3 + Vite+ + UnoCSS + Bun 基盤の起動スクショを送付済み。判定ポイント: ①スタイル基盤 (UnoCSS theme が palette.rs と同語彙 — スウォッチ3系統で目視可)、②proxy 経路 (`vp dev` → magia serve 4747、/state 200 確認済み)、③構成 (web/src/ = main.ts / App.vue / views / router、依存は全て実値ピン、vp check + build 通過)。**判定が来たら M2 (Pinia stores + MagicCircleView + `MagicCircleSchema` 型先置き) に進みます**
+- **判定依頼 (Phase 4.0.5 M2, 2026-06-11)**: M1 は合格 (色/トーン OK、ルーティングは明示的クエリベースで確定)。M2 素材として **Vue 版と inline HTML 版の write_document 比較スクショ**を送付済み。判定ポイント: ①魔法陣が Vue 側で inline 版と同一に出ているか (同じ SVG の v-html 素通しなので画素等価のはず)、②ヘッダ構成 (タイトル + 関数名 + ファイル名) の方向性。レイヤーパレット UI が Vue 版に無いのは想定どおり (M4 で移植)。**判定が来たら M3 (ペアビュー UI) に進みます**
+- **報告 (SSE 潜在バグ修正, 2026-06-11)**: Phase 2.1 から SSE (`/events`) がクライアントに配信されていなかった潜在バグを M2 の E2E 確認中に発見・修正しました (tiny_http チャンク経路の二重バッファ問題)。live-reload は実際には動いていませんでした。修正後は E2E でファイル保存 → Vue 自動再描画を確認済み、回帰テストも追加済みです
 - **報告 (Phase 3 完了, 2026-06-11)**: Phase 3 (3.0〜3.5) が全完了しました — Spell Diff (構造差分 + 視覚強調)、CI 統合 (PR 自動コメント + unsafe チェック)、データフロー IR、ベルカ式 (三角力場)。リリース (バージョン採番・チェンジログ) を行う場合は `/addf-release` を実行してください。次サイクルからはオーナー要望の Phase 4.0 (ソース連動ビュー) に着手します
 - **意匠判定依頼 (Phase 3.5, 2026-06-11)**: ベルカ式の素材3点を送付済み — ①loop_accumulate ②自己ホスティング measure ③Reducer 形。色 (空色/琥珀/臙脂)・三角の歪み・力場の濃淡・「Reducer 形で生成極が空円」の見せ方が判定ポイント。調整は `render/belka.rs` 冒頭の定数群と `palette.rs` の `BELKA_*` で対応
 - **意匠判定依頼 (Phase 3.2, 2026-06-11)**: 視覚的 Spell Diff の素材2点を送付済み — ①合成 fixture (process_order)、②自己ホスティング実例 (Phase 3.1 の metrics_sentence リファクタ実 diff)。意匠規約: 金ハロー=追加 / シアンハロー=変更 / 灰破線ゴースト=削除。色・線幅・破線パターンの調整指示があれば `render/palette.rs` の `DIFF_*` と `layout/constants.rs` の `DIFF_HALO_*` で対応
@@ -19,6 +20,7 @@
 
 ## 問題の記録
 
+- Phase 4.0.5 M2 で発覚: Phase 2.1 の SSE は統合テストが「HTML に EventSource の文字列が含まれる」という静的チェックだけだったため、**配信自体が壊れていることを2フェーズ以上見逃した**。ストリーミング系の機能は「実際にストリームを読むテスト」を受け入れ基準に含めること (回帰テスト `sse_events_stream_immediately` が定型、knowhow 訂正済み)。また「ブラウザで見た目が動く」確認は live-reload の動作確認の代わりにならない (初回ロードだけで画面は出る)
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
 - Phase 1.0 で「rust-cargo-workspace-bootstrap」ノウハウは現状プロジェクト固有 (`docs/knowhow/`) に置いたが、内容は ADDF 利用 Rust プロジェクト全般に役立つ。将来 `docs/knowhow/ADDF/` または ADDF 本体への昇格を検討
 - Phase 1.3 のコントリビューション検出より: `addf-knowhow.exp.md` に記録した「統合先ファイルの冒頭メタコメントも実態に合わせて更新する」「INDEX は reindex を待たず手動同期してよい」は汎用的な教訓。ADDF 本体の `addf-knowhow.md` Phase 3 チェックリストへの追記 PR 候補

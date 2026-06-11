@@ -212,6 +212,56 @@ fn file_change_updates_function_index_and_spells() {
     assert!(after["error"].is_null());
 }
 
+/// SSE (/events) はヘッダ + 接続直後イベントが**即座に**届き、ファイル変更で
+/// 追加イベントが流れる。Phase 4.0.5 M2 で発見した「tiny_http のチャンク転送経路は
+/// chunked_transfer::Encoder (8KB) + BufWriter (1KB) の二重バッファが flush されず、
+/// イベントがクライアントへ永遠に届かない」バグ (Phase 2.1 から潜在) の回帰テスト。
+/// read_line のタイムアウト (5秒) = 滞留の再発。
+#[test]
+fn sse_events_stream_immediately() {
+    let file = temp_fixture("sse.rs", INITIAL);
+    let server = spawn_server(&file);
+
+    let mut stream = TcpStream::connect(("127.0.0.1", server.port)).expect("接続できる");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    write!(stream, "GET /events HTTP/1.0\r\nHost: localhost\r\n\r\n").unwrap();
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+
+    // ステータス行 → text/event-stream ヘッダ → 接続直後イベントの順で届く。
+    reader.read_line(&mut line).expect("ステータス行が届く");
+    assert!(line.contains("200"), "SSE のステータス行: {line}");
+    let mut saw_content_type = false;
+    loop {
+        line.clear();
+        reader
+            .read_line(&mut line)
+            .expect("接続直後イベントまで滞留なく読める");
+        let trimmed = line.trim();
+        saw_content_type |= trimmed.eq_ignore_ascii_case("content-type: text/event-stream");
+        if trimmed == "data: 0" {
+            break;
+        }
+    }
+    assert!(saw_content_type, "Content-Type が SSE になっている");
+
+    // ファイル変更 → 新しい version のイベントが流れる。
+    std::fs::write(&file, CHANGED).unwrap();
+    loop {
+        line.clear();
+        reader.read_line(&mut line).expect("更新イベントが届く");
+        if let Some(version) = line.trim().strip_prefix("data: ") {
+            assert!(
+                version.parse::<u64>().is_ok(),
+                "イベントは version 数値: {version}"
+            );
+            break;
+        }
+    }
+}
+
 #[test]
 fn syntax_error_keeps_last_good_snapshot() {
     let file = temp_fixture("broken.rs", INITIAL);

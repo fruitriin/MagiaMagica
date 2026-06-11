@@ -14,7 +14,7 @@
 //! 構成は同期スレッドモデル: tiny_http の受信ループ + リクエストごとのスレッド
 //! (SSE 接続はスレッドを1本占有するが、ローカル開発ツールの同時接続数では問題ない)。
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -311,22 +311,46 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
                 clients.retain(|client| client.send(version).is_ok());
                 clients.push(tx);
             }
-            let response = tiny_http::Response::new(
-                tiny_http::StatusCode(200),
-                vec![
-                    header("Content-Type", "text/event-stream"),
-                    header("Cache-Control", "no-cache"),
-                ],
-                SseStream::new(rx),
-                None, // 長さ不定 = チャンク転送
-                None,
-            );
-            request.respond(response)
+            // SSE は tiny_http の Response 経路を使わない。チャンク転送経路は
+            // chunked_transfer::Encoder (8KB) と BufWriter (1KB) の二重バッファが
+            // flush されず、イベントがクライアントに届かないため (Phase 4.0.5 M2 で
+            // 発見した Phase 2.1 からの潜在バグ)。生 writer に自前でヘッダを書き、
+            // イベントごとに flush する。
+            stream_sse(request.into_writer(), &rx);
+            return;
         }
         _ => request.respond(tiny_http::Response::from_string("not found").with_status_code(404)),
     };
     // クライアント切断は正常系 (SSE はブラウザを閉じれば必ずここに来る)。
     let _ = result;
+}
+
+/// SSE ストリームを生 writer へ書き続ける。クライアント切断 (write/flush エラー)
+/// またはサーバ終了 (Sender 全 drop) まで返らない。
+/// `Connection: close` でこの接続をイベント専用にする (keep-alive の次リクエストを
+/// 同一接続に載せさせない — レスポンスは EOF 終端のストリームのため)。
+fn stream_sse(mut writer: Box<dyn Write + Send>, rx: &Receiver<u64>) {
+    let send = |writer: &mut Box<dyn Write + Send>, payload: &str| -> std::io::Result<()> {
+        writer.write_all(payload.as_bytes())?;
+        writer.flush()
+    };
+    // 接続直後に1イベント流し、EventSource の onmessage → refresh を促す。
+    // ペイロードの「0」に意味はない (クライアントは値を見ず refresh するだけ)。
+    // 将来 version を差分処理に使う場合は接続直後イベントを実世代に変えること。
+    if send(
+        &mut writer,
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\ndata: 0\n\n",
+    )
+    .is_err()
+    {
+        return;
+    }
+    while let Ok(version) = rx.recv() {
+        if send(&mut writer, &format!("data: {version}\n\n")).is_err() {
+            return; // クライアント切断 (正常系)
+        }
+    }
+    // サーバ側終了 → writer drop で接続クローズ
 }
 
 /// `/spell/<fn>` の応答 (200 / 404 / 500)。
@@ -375,41 +399,6 @@ fn percent_decode(segment: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
-}
-
-/// SSE のイベント列を `Read` として供給するアダプタ。
-/// 更新通知が来るたびに `data: <version>` イベントを1つ吐く。
-/// 送信側が drop されたら EOF (接続終了)。
-struct SseStream {
-    rx: Receiver<u64>,
-    pending: Vec<u8>,
-}
-
-impl SseStream {
-    fn new(rx: Receiver<u64>) -> Self {
-        // 接続直後に1イベント流し、EventSource の onmessage → refresh を促す。
-        // ペイロードの「0」に意味はない (クライアントは値を見ず refresh するだけ)。
-        // 将来 version を差分処理に使う場合は接続直後イベントを実世代に変えること。
-        Self {
-            rx,
-            pending: b"data: 0\n\n".to_vec(),
-        }
-    }
-}
-
-impl Read for SseStream {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if self.pending.is_empty() {
-            match self.rx.recv() {
-                Ok(version) => self.pending = format!("data: {version}\n\n").into_bytes(),
-                Err(_) => return Ok(0), // サーバ側終了 → EOF
-            }
-        }
-        let n = self.pending.len().min(buf.len());
-        buf[..n].copy_from_slice(&self.pending[..n]);
-        self.pending.drain(..n);
-        Ok(n)
-    }
 }
 
 // ===== フロントエンド =====

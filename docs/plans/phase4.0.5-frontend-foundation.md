@@ -287,6 +287,17 @@ UI 実装中はオーナーの細かい確認が入る (オーナー指定)。**
   - scaffold の罠 (bunx の bin 解決・spawn vp ENOENT・::1 listen) は `docs/knowhow/viteplus-bun-frontend-bootstrap.md` に記録
 - **M1 判定待ち素材**: Vue ページのスクショ (タイトル + palette.rs と同語彙のスウォッチ 3 系統) + 構成サマリを送付済み
 
+### M1 判定 (2026-06-11): 合格
+
+- 色・トーンとも OK。ルーティングは「ファイルベースが基本の好みだが、クエリ軸 (?pin/?theme/?diff/?style/?scope) の複雑性に対応するため明示的なクエリベースで進める」で確定 — `web/src/router/index.ts` に設計判断として記録。フェーズが進んで複雑性が収まるならファイルベース化リファクタを将来検討
+
+### M2 (2026-06-11 実施、判定待ち)
+
+- stores (focus / source / connection / palette) + `composables/api.ts` + `useMagiaSync` + `<MagicCircleView>` (v-html 過渡対応) + `MagicCircleSchema` 型先置き (`web/src/types/magia.ts`) + `?fn=` 受け取り
+- **SSE 配信の潜在バグを発見・修正 (Phase 2.1 から)**: tiny_http の Response (チャンク転送) 経路は `chunked_transfer::Encoder` (8KB) + `BufWriter` (1KB) の二重バッファが flush されず、SSE イベントがクライアントへ届かない。統合テストが「inline HTML に EventSource の文字列がある」ことしか見ておらず捕捉できていなかった。`request.into_writer()` + 自前ヘッダ + イベント毎 flush (`stream_sse`) に置換し、回帰テスト `sse_events_stream_immediately` を追加。knowhow (minimal-dev-server-pattern.md) の該当記述を訂正済み
+- E2E 確認: vite proxy 経由で `/events` 接続 → ファイル変更 → `/state` + `/spell` 再フェッチ → Vue 再描画
+- 既知の軽微事項 (M3 で整理): 初回ロード時に onMounted の selectFunction と SSE 接続直後イベントの refresh で `/spell` が2回走る (冪等なので実害なし)
+
 ## 想定リスク
 
 - **Vite+ alpha の API 変動**: アルファ期間 (2026-03〜) のため後方互換破壊あり。実装時に最新リリースノート確認 + 計画書に確認日を記録。Vite+ が破壊的変更を出したら本計画に「Vite+ X.Y 対応」の追補をつける

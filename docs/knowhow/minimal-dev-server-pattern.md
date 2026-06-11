@@ -1,15 +1,30 @@
 # 同期スレッドモデルの最小 dev-server パターン
 
-> Phase 2.1 (magia serve) で確立、Phase 4.0 (メタ + オンデマンドレンダへの再設計) で拡張。
+> Phase 2.1 (magia serve) で確立、Phase 4.0 (メタ + オンデマンドレンダへの再設計) で拡張、
+> Phase 4.0.5 (SSE 配信バグの修正) で訂正。
 > 「保存したらブラウザが自動更新される」live-reload を async ランタイムなしで実装する定型。
 
 ## 発見した知見
 
 - **tiny_http + SSE で live-reload が完結する**: tokio/axum 一式を入れなくてよい。
-  SSE は `mpsc::Receiver` を包む `Read` アダプタ (`recv()` でブロックし
-  `data: <n>\n\n` を返す) で実装でき、tiny_http の長さ不定 `Response` が
-  チャンク転送してくれる。WebSocket よりも部品が圧倒的に少ない
+  WebSocket よりも部品が圧倒的に少ない
   (spec が「WebSocket または SSE」を許すならまず SSE を検討する)
+- **【Phase 4.0.5 で訂正】SSE に tiny_http の Response (チャンク転送) 経路を使ってはいけない**:
+  当初は `mpsc::Receiver` を包む `Read` アダプタ + 長さ不定 `Response` で実装したが、
+  この経路は `chunked_transfer::Encoder` (8KB) と `BufWriter` (1KB、client.rs の
+  `with_capacity(1024, ..)`) の**二重バッファがどちらも flush されず** (response.rs
+  「does not flush the writer」、`io::copy` は flush しない)、小さいイベントは
+  クライアントへ永遠に届かない。Phase 2.1〜4.0 の間この状態で潜在していた
+  (live-reload は「動いているように見えて」実際は配信されていなかった)。
+  **正解は `request.into_writer()` で生 writer を取り、ステータス行 + ヘッダを自前で
+  書き、イベントごとに `flush()` する** (serve.rs の `stream_sse`)。`Connection: close`
+  を付けてその接続をイベント専用にする。`request.upgrade()` は `Connection: upgrade`
+  ヘッダが付き、中継 proxy (vite dev 等) が WebSocket 扱いしかねないので使わない
+- **SSE の統合テストは「ストリームが実際に届くこと」を読むテストにする**: inline HTML に
+  `EventSource` の文字列があるかのような静的チェックでは配信バグを捕捉できない。
+  生 `TcpStream` + `read_timeout` 付き `read_line` で「ヘッダ → 接続直後イベント →
+  ファイル変更後の追加イベント」を実際に読む (タイムアウト = 滞留の再発)。
+  serve_integration.rs の `sse_events_stream_immediately` が定型
 - **ファイル監視は親ディレクトリを非再帰監視 + ファイル名照合**:
   エディタの「テンポラリ書き込み → rename」保存は、ファイルを直接監視すると
   inode が変わって取り逃がす。デバウンスは「最後のイベントから 120ms 静まるまで
