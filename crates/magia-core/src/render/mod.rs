@@ -1,7 +1,11 @@
-//! SVG レンダラ (Phase 1.6, spec §6.1.3 / §6.1.5)。
+//! レンダラ群 (Phase 1.6〜, spec §6.1.3 / §6.1.5 / v0.3 §16)。
 //!
-//! `MagiaGraph` + `LayoutResult` から SVG 文字列を生成する。
-//! Phase 1 はミッドチルダ式 ConcentricRings バリアントのみ実装する。
+//! - SVG レンダラ (`render` / `render_with` / `render_diff`): `MagiaGraph` +
+//!   `LayoutResult` から SVG 文字列を生成する。CLI (`magia render` / `diff` / `ci`)
+//!   専用 — serve の動的 UI は Phase 4.0.9 で `ir_export` へ移行済み。
+//!   **Phase 4.3 (Vue SSR 一本化) で削除予定**
+//! - `ir_export`: 配置済み IR の JSON エクスポート (Vue クライアントの描画契約)。
+//!
 //! SVG 生成は `std::fmt::Write` ベースの自前ビルダー (tech-selection §2.4:
 //! 属性順序を固定でき、スナップショットテストが安定する)。
 

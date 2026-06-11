@@ -100,6 +100,13 @@ pub struct SignatureIr {
     pub arc_path: String,
 }
 
+/// 負のゼロを正の 0.0 に正規化する (IEEE 754: -0.0 + 0.0 = 0.0)。
+/// `screen_position` の y 反転 (`-p.y`) が原点で -0.0 を生み、JSON に "-0.0" が
+/// 混入するのを防ぐ (SVG レンダラの `num()` と同じ正規化 — クロス検証テストで固定)。
+fn nz(value: f64) -> f64 {
+    value + 0.0
+}
+
 /// `MagiaGraph` + `LayoutResult` から配置済み IR を構築する。
 ///
 /// 操作ドットの配置・シグネチャ円弧の生成条件は `midchilda.rs` の描画と
@@ -136,6 +143,9 @@ pub fn spell_ir(graph: &MagiaGraph, layout: &LayoutResult) -> SpellIr {
                     ir.rings
                         .push(ring_ir(module, layout, sigil, center, radius));
                     if sigil.kind == SigilKind::MainRing {
+                        // signature / return_branch は上書き代入 — parse_function は
+                        // 現状 1 モジュール (= MainRing 1つ) のみ返す前提。複数モジュール
+                        // 対応 (Phase 4.5+) ではフィールドをモジュール単位へ移すこと。
                         push_type_info(&mut ir, module, layout, sigil, center, radius);
                     }
                 }
@@ -146,8 +156,8 @@ pub fn spell_ir(graph: &MagiaGraph, layout: &LayoutResult) -> SpellIr {
                         .map_or(EffectCategory::Pure, |op| palette::category_of(&op.effects));
                     ir.glyphs.push(GlyphIr {
                         id: sigil.id.0,
-                        x: center.x,
-                        y: center.y,
+                        x: nz(center.x),
+                        y: nz(center.y),
                         radius,
                         effect,
                     });
@@ -195,8 +205,8 @@ fn ring_ir(
             let angle = TAU * usize_to_f64(index) / usize_to_f64(count.max(1));
             OperationIr {
                 // y 反転済み画面座標で反時計回りに見える向き。
-                x: center.x + track * angle.cos(),
-                y: center.y - track * angle.sin(),
+                x: nz(center.x + track * angle.cos()),
+                y: nz(center.y - track * angle.sin()),
                 radius: OPERATION_DOT_RADIUS,
                 effect: palette::category_of(&op.effects),
             }
@@ -214,8 +224,8 @@ fn ring_ir(
         } else {
             RingRole::Aux
         },
-        x: center.x,
-        y: center.y,
+        x: nz(center.x),
+        y: nz(center.y),
         radius,
         is_async,
         symbol,
@@ -246,6 +256,6 @@ fn push_type_info(
         });
     }
     if type_info.returns_result || type_info.returns_option {
-        ir.return_branch = Some([center.x - radius, center.y]);
+        ir.return_branch = Some([nz(center.x - radius), nz(center.y)]);
     }
 }

@@ -96,7 +96,8 @@ export type ControlSymbol = {
   radius: number;
   /** early_return の向き (単位ベクトル)。他種別では [0,0]。 */
   direction: [number, number];
-  layer: SchemaLayer | null;
+  /** 記号は必ずレイヤーに属する (control_flow か type_info — null は存在しない状態)。 */
+  layer: SchemaLayer;
   z: number;
 };
 

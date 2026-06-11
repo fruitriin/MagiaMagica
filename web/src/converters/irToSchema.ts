@@ -18,9 +18,9 @@ const COLOR_BY_EFFECT: Record<EffectCategory, string> = {
   unsafe: "#d92626",
 };
 
-/** 戻り値分岐線 (return_branch) の長さ。Rust 側 layout/constants.rs の
- *  RETURN_BRANCH_LENGTH と同値 (描画定数、spec §16)。 */
-export const RETURN_BRANCH_LENGTH = 30;
+/** 戻り値分岐線 (return_branch) の長さ。Rust 側 layout/constants.rs:65 の
+ *  RETURN_BRANCH_LENGTH (26.0) と同値必須 (描画定数、spec §16)。 */
+export const RETURN_BRANCH_LENGTH = 26;
 
 export function irToSchema(ir: IrSpell): MagicCircleSchema {
   let seq = 0;
