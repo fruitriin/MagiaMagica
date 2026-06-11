@@ -20,7 +20,7 @@ use kurbo::{Arc, Point, Rect, Shape, Vec2};
 
 use crate::diff::SpellDiff;
 use crate::filter::{EffectCategory, FilterSpec, LayerName};
-use crate::ir::{AuxRingKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
+use crate::ir::{AuxRingKind, EdgeKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::layout::constants::{
     ASYNC_INNER_RING_OFFSET, AUX_RING_STROKE, DIFF_GHOST_OPACITY, DIFF_HALO_OFFSET,
     DIFF_HALO_STROKE, EDGE_STROKE, MAIN_RING_STROKE, OPERATION_DOT_INSET, OPERATION_DOT_RADIUS,
@@ -318,6 +318,11 @@ fn write_control_flow(
 ) -> std::fmt::Result {
     // 接続線を先に描き、リングが上に重なるようにする。
     for edge in &module.edges {
+        // control-flow 層が描くのは ControlFlow Edge のみ。DataFlow Edge (Phase 3.4)
+        // の描画はベルカ式 (Phase 3.5) の仕事で、ミッドチルダ式では描かない。
+        if edge.kind != EdgeKind::ControlFlow {
+            continue;
+        }
         let from = screen_position(layout, edge.source);
         let to = screen_position(layout, edge.target);
         let from_radius = module_radius(module, edge.source);
@@ -624,7 +629,12 @@ fn module_radius(module: &Module, id: SigilId) -> f64 {
 
 /// AuxRing が親から離れる方向 (画面座標)。親が見つからなければ 3時方向。
 fn outward_direction(module: &Module, layout: &LayoutResult, id: SigilId) -> Vec2 {
-    let Some(edge) = module.edges.iter().find(|e| e.target == id) else {
+    // 親子関係は ControlFlow Edge のみ (DataFlow Edge が先に並ぶ入力でも誤らない)。
+    let Some(edge) = module
+        .edges
+        .iter()
+        .find(|e| e.kind == EdgeKind::ControlFlow && e.target == id)
+    else {
         return Vec2::new(1.0, 0.0);
     };
     let parent = screen_position(layout, edge.source);

@@ -42,7 +42,24 @@ fn transcribe_module(out: &mut String, module: &Module) {
     if let Some(sentence) = async_sentence(main) {
         let _ = writeln!(out, "  {sentence}");
     }
+    if let Some(sentence) = dataflow_sentence(module) {
+        let _ = writeln!(out, "  {sentence}");
+    }
     let _ = writeln!(out, "  {}", metrics_sentence(module));
+}
+
+/// データフローの要約 (Phase 3.4, spec §5.1)。チェーンが1本もなければ出さない
+/// (Phase 3.4 より前の IR や変数を使わない関数で文を増やさない)。
+fn dataflow_sentence(module: &Module) -> Option<String> {
+    let mut chains: u32 = 0;
+    let mut longest: u32 = 0;
+    for sigil in &module.sigils {
+        if let Some(info) = &sigil.layers.data_flow {
+            chains += info.use_def_chains;
+            longest = longest.max(info.longest_chain);
+        }
+    }
+    (chains > 0).then(|| format!("データフロー: 変数{chains}個、最長チェーン{longest}。"))
 }
 
 /// メインリングの規模 (notes §9.1 の「中規模 (12操作)」相当)。

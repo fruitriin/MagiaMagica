@@ -7,4 +7,5 @@ expression: text
   補助リングを9個持つ (分岐7、ループ2。入れ子を含む)。
   外部呼び出し: .is_empty (純粋、1回)、.map_or (純粋、1回)、audit (純粋、1回)、consume (純粋、1回)、default_code (純粋、1回)、drain_once (純粋、1回)、fallback_one (純粋、1回)、feed (純粋、1回)、finish (純粋、1回)、flush_all (純粋、1回)、log_unknown (純粋、1回)、normalize (純粋、1回)、pending (純粋、1回)、reload (純粋、1回)、reset_state (純粋、1回)、std::fs::metadata (ファイルシステム副作用、1回)。
   早期リターンが1経路。
+  データフロー: 変数4個、最長チェーン4。
   Phase 1 メトリクス: 複雑度9、副作用カテゴリ1種。

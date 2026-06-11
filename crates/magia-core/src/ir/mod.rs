@@ -26,7 +26,7 @@ pub mod operation;
 pub mod sigil;
 pub mod source;
 
-pub use edge::{Edge, EdgeKind, EdgeLayerData};
+pub use edge::{Edge, EdgeDataFlowInfo, EdgeKind, EdgeLayerData, EdgeProfileInfo};
 pub use graph::{MagiaGraph, Module, ModuleId, ProjectMetadata};
 pub use layers::{
     AiAnnotation, AuxRingKind, AuxRingRole, ChurnInfo, ConcurrencyInfo, ControlFlowInfo,

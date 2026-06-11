@@ -6,10 +6,10 @@
 //! - Phase 1 のレイヤーのみ埋めた `MagiaGraph` の round-trip
 
 use magia_core::ir::{
-    AuxRingKind, AuxRingRole, Cardinality, ConcurrencyInfo, ControlFlowInfo, Edge, EdgeKind,
-    EdgeLayerData, EffectSet, LayerData, LoopKind, MagiaGraph, Module, ModuleId, Operation,
-    OperationKind, OperationPayload, ProjectMetadata, Sigil, SigilId, SigilKind, SourceSpan,
-    TypeInfo,
+    AuxRingKind, AuxRingRole, Cardinality, ConcurrencyInfo, ControlFlowInfo, Edge,
+    EdgeDataFlowInfo, EdgeKind, EdgeLayerData, EffectSet, LayerData, LoopKind, MagiaGraph, Module,
+    ModuleId, Operation, OperationKind, OperationPayload, ProjectMetadata, Sigil, SigilId,
+    SigilKind, SourceSpan, TypeInfo,
 };
 
 #[test]
@@ -68,6 +68,8 @@ fn sample_phase1_graph() -> MagiaGraph {
                 source_excerpt: Some("println!(\"hello\")".to_string()),
                 call_target: Some("std::println".to_string()),
                 early_return: false,
+                defs: vec!["greeting".to_string()],
+                uses: vec!["name".to_string()],
             },
         }],
         layers: LayerData {
@@ -123,13 +125,28 @@ fn sample_phase1_graph() -> MagiaGraph {
         id: ModuleId(0),
         name: "demo".to_string(),
         sigils: vec![main_ring, aux_ring],
-        edges: vec![Edge {
-            source: SigilId(0),
-            target: SigilId(1),
-            kind: EdgeKind::ControlFlow,
-            cardinality: 1.0,
-            layers: EdgeLayerData::default(),
-        }],
+        edges: vec![
+            Edge {
+                source: SigilId(0),
+                target: SigilId(1),
+                kind: EdgeKind::ControlFlow,
+                cardinality: 1.0,
+                layers: EdgeLayerData::default(),
+            },
+            // Phase 3.4: DataFlow Edge は Option 積層の EdgeLayerData を持つ。
+            Edge {
+                source: SigilId(0),
+                target: SigilId(1),
+                kind: EdgeKind::DataFlow,
+                cardinality: 1.0,
+                layers: EdgeLayerData {
+                    data_flow: Some(EdgeDataFlowInfo {
+                        variables: vec!["total".to_string()],
+                    }),
+                    ..EdgeLayerData::default()
+                },
+            },
+        ],
     };
 
     MagiaGraph {

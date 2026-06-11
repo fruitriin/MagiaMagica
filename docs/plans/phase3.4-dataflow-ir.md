@@ -42,11 +42,34 @@
 
 ## 受け入れ基準
 
-- [ ] fixture 群で def/use 抽出が決定論的に動く (golden)
-- [ ] DataFlow Edge が生成され、既存レイヤー・レイアウトの出力が不変 (回帰)
-- [ ] EdgeLayerData の再設計が完了し、round-trip テストが更新されている
-- [ ] `cargo test --workspace` / clippy 警告0
+- [x] fixture 群で def/use 抽出が決定論的に動く (golden)
+- [x] DataFlow Edge が生成され、既存レイヤー・レイアウトの出力が不変 (回帰)
+- [x] EdgeLayerData の再設計が完了し、round-trip テストが更新されている
+- [x] `cargo test --workspace` / clippy 警告0
 
 ## 後続
 
 - 3.5 (ベルカ式) がこの DataFlow 情報を力場として描く
+
+## 実装結果メモ (2026-06-11)
+
+- `magia-rust/src/dataflow.rs` 新設: 「候補抽出 (純粋構文) とスコープ解決 (状態機械) の
+  分離」方式。関数名・unit variant・定数は**スコープに無いため自然に落ちる** —
+  大文字小文字ヒューリスティクスはパターン束縛の unit variant 曖昧性のみに限定できた
+- スコープ追跡は RingBuilder の再帰と並走 (別パス二重走査は Operation 添字との
+  対応付けが分岐するため不採用)。引数・for パターン・match アーム・if let の束縛は
+  `seeds` 引数でリング冒頭に def
+- **再代入 = 新 def (再代入が起きたリング由来)** とする設計が想定以上に効いた:
+  ループ内 `total += ...` の値が親へ還流する**上り方向の DataFlow Edge** が自然に出る
+  (ベルカ式 §14.2「変換 → 消費」の構造がそのまま IR に現れる)
+- EdgeLayerData は Option 積層へ破壊的再設計 ([break])。data_volume (f64) 廃止で
+  Eq も導出可能になった。spec v0.3 に §4.3 / §5.1 追補として追認済み
+- 回帰防御: edges 全走査の4箇所 (layout / midchilda 線描画 / diff 木構築 /
+  outward_direction) を ControlFlow フィルタ。SVG ゴールデン・レイアウト
+  ベースラインは**全て無変更で通過**。transcript ゴールデンのみ +1 行 (計画どおり)
+- レビュー (Stage 2): Critical 0 / Warning 1 (outward_direction のフィルタ漏れ —
+  ソート順の暗黙前提を排除) / Suggestion 4 → 全件対応 (doc 補足2件、AuxRing payload
+  の直接検証テスト、SigilId 生値依存の明記)
+- 既知の近似限界 (spec §5.1 追補に明記): クロージャ・マクロ内・let chains・
+  非ローカル代入は追わない。transcript の「変数N個」は再代入分が別チェーンとして
+  数えられる (説明可能性を優先した仕様)

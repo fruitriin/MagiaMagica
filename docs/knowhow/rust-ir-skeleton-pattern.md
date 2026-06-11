@@ -121,8 +121,18 @@ doc コメントの継続行を `+` や `-` で始めると箇条書きの続き
 - `pub` フィールドが直書きできる ID → 採番のアロケータ導入の判断を Phase 1.2 計画にメモする
 - `deny_unknown_fields` を**付けない**意図のコメント不在
 
+## 後続 Phase で IR に新しい Edge 種別を足すとき (Phase 3.4)
+
+- **既存の edges 全走査箇所を先に grep して kind フィルタを入れる**。MagiaMagica では
+  layout の隣接構築・レンダラの線描画・diff の木構築の3箇所が「edges = ControlFlow 木」
+  を暗黙に前提していた。フィルタを入れ忘れると多重親・余計な線・diff 子ノード混入が
+  無言で起きる
+- テストの不変条件 (「各子は親と1本の Edge を持つ」等) も kind 限定に更新が要る
+- 複数 kind の Edge ソートは `(kind 序列, target, source)` のタプルキーにし、
+  **既存 kind を序列 0** にすると既存出力 (スナップショット) が不変のまま決定論を保てる
+
 ## 関連文書
 
 - `docs/plans/phase1.1-ir-skeleton.md`
 - `docs/knowhow/rust-cargo-workspace-bootstrap.md`
-- `project-docs/magia/spec-v0.1.md` §4 (中間表現スキーマ)
+- `project-docs/magia/spec-v0.1.md` §4 (中間表現スキーマ) / `spec-v0.3.md` §4.3 追補

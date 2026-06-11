@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use crate::filter::EffectCategory;
-use crate::ir::{AuxRingKind, LoopKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
+use crate::ir::{AuxRingKind, EdgeKind, LoopKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::metrics::{Metrics, measure};
 
 /// 差分の結果 (spec v0.3 §9.2 の契約)。
@@ -165,6 +165,11 @@ impl<'a> Tree<'a> {
         let sigils: BTreeMap<SigilId, &Sigil> = module.sigils.iter().map(|s| (s.id, s)).collect();
         let mut children_of: BTreeMap<SigilId, Vec<SigilId>> = BTreeMap::new();
         for edge in &module.edges {
+            // 木構造を成すのは ControlFlow Edge のみ。DataFlow Edge (Phase 3.4) は
+            // スコープを跨ぐ別系統の線で、親子関係には使わない。
+            if edge.kind != EdgeKind::ControlFlow {
+                continue;
+            }
             children_of
                 .entry(edge.source)
                 .or_default()

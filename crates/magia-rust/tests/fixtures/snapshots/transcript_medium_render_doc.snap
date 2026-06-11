@@ -7,4 +7,5 @@ expression: text
   補助リングを3個持つ (分岐1、ループ2。入れ子を含む)。
   外部呼び出し: .len (純粋、1回)、.push (純粋、1回)、Ok (純粋、1回)、format! (IO副作用、1回)、needs_padding (純粋、1回)、push_row (純粋、1回)、truncate_tail (純粋、1回)、writeln! (IO副作用、2回)。
   早期リターンが2経路。Result型を返す。
+  データフロー: 変数3個、最長チェーン6。
   Phase 1 メトリクス: 複雑度4、副作用カテゴリ1種。

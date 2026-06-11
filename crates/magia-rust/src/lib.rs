@@ -7,6 +7,7 @@
 //! ヒューリスティック (tech-selection §2.1 Phase 1a) で EffectSet を付与する。
 
 mod allocator;
+mod dataflow;
 mod effects;
 mod error;
 mod ring;
@@ -201,10 +202,15 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), module.sigils.len(), "SigilId は一意");
         for sigil in aux.iter().chain(&glyphs) {
+            // DataFlow Edge (Phase 3.4) は木構造と別系統なので ControlFlow だけ数える。
             assert_eq!(
-                module.edges.iter().filter(|e| e.target == sigil.id).count(),
+                module
+                    .edges
+                    .iter()
+                    .filter(|e| e.kind == EdgeKind::ControlFlow && e.target == sigil.id)
+                    .count(),
                 1,
-                "各 AuxRing / SummonGlyph は親と1本の Edge を持つ"
+                "各 AuxRing / SummonGlyph は親と1本の ControlFlow Edge を持つ"
             );
         }
     }

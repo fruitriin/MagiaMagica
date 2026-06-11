@@ -24,7 +24,7 @@ use std::f64::consts::{PI, TAU};
 use kurbo::{Point, Rect, Vec2};
 use petgraph::graph::{DiGraph, NodeIndex};
 
-use crate::ir::{MagiaGraph, Module, Sigil, SigilId, SigilKind};
+use crate::ir::{EdgeKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::layout::constants::{
     AUX_RING_RADIUS, CANVAS_MARGIN, CROSSING_OPT_MAX_PASSES, CROSSING_OPT_ROTATION_STEP_RAD,
     GLYPH_GAP, GLYPH_MARGIN, MAIN_RING_RADIUS, RING_GAP, RING_MARGIN, SUMMON_GLYPH_RADIUS,
@@ -685,6 +685,11 @@ impl<'a> Adjacency<'a> {
             sigils.insert(sigil.id, sigil);
         }
         for edge in &module.edges {
+            // 配置の親子関係は ControlFlow Edge のみが定める。DataFlow Edge (Phase 3.4)
+            // を混ぜると同心円構造の親子が多重になりレイアウトが壊れる。
+            if edge.kind != EdgeKind::ControlFlow {
+                continue;
+            }
             if let (Some(&source), Some(&target)) =
                 (nodes.get(&edge.source), nodes.get(&edge.target))
             {

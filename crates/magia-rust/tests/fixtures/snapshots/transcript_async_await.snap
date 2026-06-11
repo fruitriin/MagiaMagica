@@ -7,4 +7,5 @@ expression: text
   外部呼び出し: fetch (純粋、1回)、fetch_more (純粋、1回)。
   早期リターンなし。
   async 関数 (await 2点)。
+  データフロー: 変数3個、最長チェーン2。
   Phase 1 メトリクス: 複雑度1、副作用カテゴリ0種。

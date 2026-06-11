@@ -21,6 +21,7 @@ use syn::spanned::Spanned;
 use syn::{Block, Expr, ExprIf, ExprMatch, ItemFn, Stmt};
 
 use crate::allocator::SigilIdAllocator;
+use crate::dataflow::{ScopeTracker, expr_use_candidates, pattern_idents, stmt_dataflow};
 use crate::statement::{ParseContext, scan_expression, statement_to_operation};
 use crate::summon::{CallSite, UseMap, collect_calls_in_expr, collect_calls_in_stmt};
 
@@ -43,28 +44,62 @@ pub(crate) fn build_rings(
         allocator,
         ctx,
         uses,
+        dataflow: ScopeTracker::default(),
         sigils: Vec::new(),
         edges: Vec::new(),
     };
+    // 関数引数は MainRing で生まれる値 (ベルカ式「生成」極の種、Phase 3.4)。
+    let param_seeds: Vec<String> = item_fn
+        .sig
+        .inputs
+        .iter()
+        .flat_map(|arg| match arg {
+            syn::FnArg::Receiver(_) => vec!["self".to_string()],
+            syn::FnArg::Typed(typed) => pattern_idents(&typed.pat),
+        })
+        .collect();
     builder.build_ring(
         SigilKind::MainRing,
         &item_fn.block.stmts,
         None,
         item_fn.span(),
+        &param_seeds,
     );
     // 再帰中は「子を先に push → 親を後で push」の順になるため、ID 順 (= ソース出現順の
     // 深さ優先) に並べ直して決定論的な出力にする。
     let mut sigils = builder.sigils;
     sigils.sort_by_key(|sigil| sigil.id);
+
+    // データフロー集計をリングへ充填する (Phase 3.4)。glyph は対象外。
+    let stats = builder.dataflow.ring_stats();
+    for sigil in &mut sigils {
+        if matches!(sigil.kind, SigilKind::MainRing | SigilKind::AuxRing) {
+            sigil.layers.data_flow = Some(stats.get(&sigil.id).cloned().unwrap_or_default());
+        }
+    }
+
     let mut edges = builder.edges;
-    edges.sort_by_key(|edge| edge.target);
+    edges.extend(builder.dataflow.dataflow_edges());
+    // ControlFlow (木構造、target 一意) → DataFlow の順。kind 内は (target, source) 昇順。
+    edges.sort_by_key(|edge| (edge_kind_rank(edge.kind), edge.target, edge.source));
     RingForest { sigils, edges }
+}
+
+/// Edge ソート用の kind 序列 (ControlFlow が先 — 既存出力の不変を保つ)。
+fn edge_kind_rank(kind: EdgeKind) -> u8 {
+    match kind {
+        EdgeKind::ControlFlow => 0,
+        EdgeKind::DataFlow => 1,
+        EdgeKind::Dependency | EdgeKind::Inheritance | EdgeKind::Implementation => 2,
+    }
 }
 
 struct RingBuilder<'a> {
     allocator: &'a mut SigilIdAllocator,
     ctx: ParseContext,
     uses: &'a UseMap,
+    /// 変数スコープとデータフローの追跡 (Phase 3.4)。リング再帰と並走する。
+    dataflow: ScopeTracker,
     sigils: Vec<Sigil>,
     edges: Vec<Edge>,
 }
@@ -98,14 +133,23 @@ fn classify(stmt: &Stmt) -> Option<ControlStmt<'_>> {
 
 impl RingBuilder<'_> {
     /// statement 列から1個のリングを構築し、子 (AuxRing) を再帰的に生成する。
+    ///
+    /// `seeds` はこのリングのスコープ冒頭で生まれる変数 (関数引数・for のパターン・
+    /// match アームの束縛・if let の束縛)。リング本体に対応する Operation を
+    /// 持たないため、ここでまとめて def する (Phase 3.4)。
     fn build_ring(
         &mut self,
         kind: SigilKind,
         stmts: &[Stmt],
         role: Option<AuxRingRole>,
         span: proc_macro2::Span,
+        seeds: &[String],
     ) -> SigilId {
         let id = self.allocator.allocate();
+        self.dataflow.push_frame();
+        for seed in seeds {
+            self.dataflow.define(id, seed);
+        }
         let mut content: Vec<Operation> = Vec::new();
         let mut info = ControlFlowInfo {
             role,
@@ -121,11 +165,11 @@ impl RingBuilder<'_> {
             match classify(stmt) {
                 Some(ControlStmt::If(node)) => {
                     let head = format!("if {}", node.cond.to_token_stream());
-                    content.push(self.control_operation(
-                        OperationKind::Branch,
-                        head,
-                        Some(&node.cond),
-                    ));
+                    let mut op =
+                        self.control_operation(OperationKind::Branch, head, Some(&node.cond));
+                    // 条件式は本リングのスコープで評価される (use は本リングに計上)。
+                    op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.cond));
+                    content.push(op);
                     // else if / else を含む連鎖全体で1分岐と数える (ControlFlowInfo の規約)。
                     info.branch_count += 1;
                     // ガード式中の call は本リング側に係留する (本体は AuxRing 側)。
@@ -134,11 +178,10 @@ impl RingBuilder<'_> {
                 }
                 Some(ControlStmt::Match(node)) => {
                     let head = format!("match {}", node.expr.to_token_stream());
-                    content.push(self.control_operation(
-                        OperationKind::Match,
-                        head,
-                        Some(&node.expr),
-                    ));
+                    let mut op =
+                        self.control_operation(OperationKind::Match, head, Some(&node.expr));
+                    op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.expr));
+                    content.push(op);
                     info.branch_count += u32::try_from(node.arms.len().saturating_sub(1))
                         .expect("match のアーム数が u32 を超えることはない");
                     self.spawn_glyphs(id, collect_calls_in_expr(&node.expr, self.uses));
@@ -150,27 +193,29 @@ impl RingBuilder<'_> {
                         node.pat.to_token_stream(),
                         node.expr.to_token_stream()
                     );
-                    content.push(self.control_operation(
-                        OperationKind::Loop,
-                        head,
-                        Some(&node.expr),
-                    ));
+                    let mut op =
+                        self.control_operation(OperationKind::Loop, head, Some(&node.expr));
+                    op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.expr));
+                    // ループ変数の誕生は構文上ここ (説明可能性)。スコープは本体リング側。
+                    let seeds = pattern_idents(&node.pat);
+                    op.payload.defs.clone_from(&seeds);
+                    content.push(op);
                     info.loop_count += 1;
                     self.spawn_glyphs(id, collect_calls_in_expr(&node.expr, self.uses));
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::For), anchor, 0, None);
-                    self.spawn_block_child(id, role, &node.body);
+                    self.spawn_block_child(id, role, &node.body, &seeds);
                 }
                 Some(ControlStmt::While(node)) => {
                     let head = format!("while {}", node.cond.to_token_stream());
-                    content.push(self.control_operation(
-                        OperationKind::Loop,
-                        head,
-                        Some(&node.cond),
-                    ));
+                    let mut op =
+                        self.control_operation(OperationKind::Loop, head, Some(&node.cond));
+                    op.payload.uses = self.resolve_uses(id, &expr_use_candidates(&node.cond));
+                    content.push(op);
                     info.loop_count += 1;
                     self.spawn_glyphs(id, collect_calls_in_expr(&node.cond, self.uses));
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::While), anchor, 0, None);
-                    self.spawn_block_child(id, role, &node.body);
+                    // while let の束縛は本体スコープで生まれる。
+                    self.spawn_block_child(id, role, &node.body, &if_let_seeds(&node.cond));
                 }
                 Some(ControlStmt::Loop(node)) => {
                     content.push(self.control_operation(
@@ -180,15 +225,28 @@ impl RingBuilder<'_> {
                     ));
                     info.loop_count += 1;
                     let role = aux_role(AuxRingKind::LoopBody(LoopKind::Loop), anchor, 0, None);
-                    self.spawn_block_child(id, role, &node.body);
+                    self.spawn_block_child(id, role, &node.body, &[]);
                 }
                 None => {
-                    content.push(statement_to_operation(stmt, self.ctx));
+                    content.push(self.plain_statement(id, stmt));
                     self.spawn_glyphs(id, collect_calls_in_stmt(stmt, self.uses));
                 }
             }
         }
 
+        self.seal_ring(id, kind, content, info, span);
+        id
+    }
+
+    /// リングの Sigil を確定して push し、スコープフレームを閉じる。
+    fn seal_ring(
+        &mut self,
+        id: SigilId,
+        kind: SigilKind,
+        content: Vec<Operation>,
+        mut info: ControlFlowInfo,
+        span: proc_macro2::Span,
+    ) {
         // `return` 文と `?` 演算子はどちらも early_return フラグ経由で計上される。
         info.early_return_count =
             u32::try_from(content.iter().filter(|op| op.payload.early_return).count())
@@ -212,7 +270,40 @@ impl RingBuilder<'_> {
                 density: None,
             },
         });
-        id
+        self.dataflow.pop_frame();
+    }
+
+    /// 制御構造でない statement を Operation 化し、def/use を解決する (Phase 3.4)。
+    fn plain_statement(&mut self, ring: SigilId, stmt: &Stmt) -> Operation {
+        let mut op = statement_to_operation(stmt, self.ctx);
+        let flow = stmt_dataflow(stmt);
+        // 解決順序が要: `let x = x + 1` (シャドーイング) は旧 x の use を
+        // 数えてから新 x を def する。
+        op.payload.uses = self.resolve_uses(ring, &flow.uses);
+        for name in &flow.reassigns {
+            self.dataflow.redefine(ring, name);
+        }
+        for name in &flow.defs {
+            self.dataflow.define(ring, name);
+        }
+        let mut defs = flow.defs;
+        defs.extend(flow.reassigns);
+        defs.sort();
+        defs.dedup();
+        op.payload.defs = defs;
+        op
+    }
+
+    /// use 候補をスコープで解決し、解決できた変数名 (辞書順・重複なし) を返す。
+    /// 出現1回ごとに use として数える (チェーン長は出現回数を反映、payload は重複排除)。
+    fn resolve_uses(&mut self, ring: SigilId, candidates: &[String]) -> Vec<String> {
+        let mut resolved = std::collections::BTreeSet::new();
+        for name in candidates {
+            if self.dataflow.use_var(ring, name) {
+                resolved.insert(name.clone());
+            }
+        }
+        resolved.into_iter().collect()
     }
 
     /// `if` / `else if` / `else` の連鎖を左から順に AuxRing 化する。
@@ -221,16 +312,27 @@ impl RingBuilder<'_> {
         let mut current = expr_if;
         loop {
             let role = aux_role(AuxRingKind::IfBranch, anchor, ordinal, None);
-            self.spawn_block_child(parent, role, &current.then_branch);
+            // if let の束縛は then 節のスコープで生まれる。
+            self.spawn_block_child(
+                parent,
+                role,
+                &current.then_branch,
+                &if_let_seeds(&current.cond),
+            );
             ordinal += 1;
             let Some((_, else_expr)) = &current.else_branch else {
                 break;
             };
             match else_expr.as_ref() {
-                Expr::If(next) => current = next,
+                Expr::If(next) => {
+                    // else if の条件は親スコープで評価される。対応する Operation は
+                    // 連鎖先頭の1個だけなので payload には載らないが、フローには数える。
+                    self.resolve_uses(parent, &expr_use_candidates(&next.cond));
+                    current = next;
+                }
                 Expr::Block(block) => {
                     let role = aux_role(AuxRingKind::ElseBranch, anchor, ordinal, None);
-                    self.spawn_block_child(parent, role, &block.block);
+                    self.spawn_block_child(parent, role, &block.block, &[]);
                     break;
                 }
                 // 文法上 else の直後は block か if のみだが、防御的に単一式リングで受ける。
@@ -251,26 +353,45 @@ impl RingBuilder<'_> {
             // ガード式中の call は被検査式と同様に親リング側へ係留する。
             if let Some((_, guard)) = &arm.guard {
                 self.spawn_glyphs(parent, collect_calls_in_expr(guard, self.uses));
+                self.resolve_uses(parent, &expr_use_candidates(guard));
             }
             let label = Some(arm.pat.to_token_stream().to_string());
             let role = aux_role(AuxRingKind::MatchArm, anchor, ordinal, label);
+            // アームパターンの束縛 (`Some(x) =>` の x) はアーム本体のスコープで生まれる。
+            let seeds = pattern_idents(&arm.pat);
             match arm.body.as_ref() {
-                Expr::Block(block) => self.spawn_block_child(parent, role, &block.block),
-                expr => self.spawn_expr_child(parent, role, expr),
+                Expr::Block(block) => self.spawn_block_child(parent, role, &block.block, &seeds),
+                expr => self.spawn_expr_child_with_seeds(parent, role, expr, &seeds),
             }
         }
     }
 
-    fn spawn_block_child(&mut self, parent: SigilId, role: AuxRingRole, block: &Block) {
-        self.spawn_child(parent, role, &block.stmts, block.span());
+    fn spawn_block_child(
+        &mut self,
+        parent: SigilId,
+        role: AuxRingRole,
+        block: &Block,
+        seeds: &[String],
+    ) {
+        self.spawn_child(parent, role, &block.stmts, block.span(), seeds);
     }
 
     /// 非ブロックのアーム体 (`1 => a`) も statement 化して再帰経路を一本化する。
     /// `_ => match ...` のような入れ子の制御構造もこの経路で AuxRing 展開される。
     fn spawn_expr_child(&mut self, parent: SigilId, role: AuxRingRole, expr: &Expr) {
+        self.spawn_expr_child_with_seeds(parent, role, expr, &[]);
+    }
+
+    fn spawn_expr_child_with_seeds(
+        &mut self,
+        parent: SigilId,
+        role: AuxRingRole,
+        expr: &Expr,
+        seeds: &[String],
+    ) {
         let span = expr.span();
         let stmts = vec![Stmt::Expr(expr.clone(), None)];
-        self.spawn_child(parent, role, &stmts, span);
+        self.spawn_child(parent, role, &stmts, span, seeds);
     }
 
     /// AuxRing を構築し、親リングとの ControlFlow Edge を張る。
@@ -280,8 +401,9 @@ impl RingBuilder<'_> {
         role: AuxRingRole,
         stmts: &[Stmt],
         span: proc_macro2::Span,
+        seeds: &[String],
     ) {
-        let child = self.build_ring(SigilKind::AuxRing, stmts, Some(role), span);
+        let child = self.build_ring(SigilKind::AuxRing, stmts, Some(role), span, seeds);
         // 不変条件: build_ring は自身の Sigil を最後に push するため、末尾が必ず子リング。
         debug_assert_eq!(self.sigils.last().map(|sigil| sigil.id), Some(child));
         let weight = self
@@ -322,6 +444,7 @@ impl RingBuilder<'_> {
                         source_excerpt: Some(call.excerpt),
                         call_target: Some(call.target),
                         early_return: false,
+                        ..OperationPayload::default()
                     },
                 }],
                 layers: LayerData::default(),
@@ -366,8 +489,18 @@ impl RingBuilder<'_> {
                 source_excerpt: Some(head),
                 call_target: None,
                 early_return,
+                ..OperationPayload::default()
             },
         }
+    }
+}
+
+/// `if let PAT = expr` / `while let PAT = expr` の束縛変数 (本体スコープで生まれる)。
+/// let chains (`a && let Some(x) = b`) は Phase 3 では追わない (近似)。
+fn if_let_seeds(cond: &Expr) -> Vec<String> {
+    match cond {
+        Expr::Let(expr_let) => pattern_idents(&expr_let.pat),
+        _ => Vec::new(),
     }
 }
 

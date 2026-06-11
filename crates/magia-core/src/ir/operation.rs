@@ -31,12 +31,18 @@ pub enum OperationKind {
 /// - `source_excerpt`: 元ソースの抜粋 (デバッグ・ホバー用)
 /// - `call_target`: `OperationKind::Call` のときに呼び出し先のフルパス候補を保持
 /// - `early_return`: `?` 演算子のような早期リターンであるかを示すフラグ
+/// - `defs` / `uses`: この Operation が定義・使用する変数名 (Phase 3.4 のデータフロー
+///   近似)。どの構文から取ったかをデバッグ可能にする説明可能性のための保持で、
+///   集計値は `DataFlowInfo` 側にある。再代入 (`x = e`) も `defs` に含まれ、
+///   複合代入 (`x += e`) では同じ変数が `uses` にも同時に現れる
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OperationPayload {
     pub source_excerpt: Option<String>,
     pub call_target: Option<String>,
     pub early_return: bool,
+    pub defs: Vec<String>,
+    pub uses: Vec<String>,
 }
 
 /// 副作用カテゴリ (spec §4.2)。

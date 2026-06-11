@@ -23,6 +23,7 @@
 - Phase 3.2 のコントリビューション検出より: `structural-diff-pattern.md` の overlay 節（強調チャネル独立性・Option 引数1つで既存出力不変・ID を外部契約に出さない情報隠蔽）は「ID 不安定な IR の差分を SVG overlay で重ねる」Rust ツール全般に通用する。既存の昇格候補4件に5件目として追加し、Phase 3 完了の節目で一括判断
 - Phase 3.3 のコントリビューション検出より: `git-ci-integration-pattern.md`（git サブプロセス隔離・入口正規化・最小主義 fail・薄い YAML + ローカル再現スクリプト・sticky comment・init_git_fixture）も汎用。昇格候補の**6件目**として Phase 3 完了の節目の一括 PR に含める
 - Phase 3.3 で先送りした項目: spec §9.1「メトリクス変化のテーブル併記」は PR コメント内のテキスト行で代替中。Markdown テーブル化は運用フィードバック (Phase 3 振り返り) で判断
+- Phase 3.4 のコントリビューション検出より: `syn-visitor-patterns.md` の「近似データフロー解析」節と `rust-ir-skeleton-pattern.md` の「Edge 種別追加時の kind フィルタ」節は、両ファイルが既に昇格候補に含まれるため**同一 PR にセクションごと同梱**。`addf-knowhow.exp.md` の「1知見セットの複数ファイル分配」も addf-knowhow.md 追記候補の3例目として同梱
 - Phase 1.3 の `AuxRingRole.anchor_operation` は親 content から導出可能な情報の直接保持。content の並び替えが起きる変更では同期が必要。Phase 1.5/1.8 では問題にならなかったが、content を並び替える変更を入れるときは再確認
 - ~~spec 宿題 4 件 (Phase 1.1 補完型 / Phase 1.3 補完型・アームガード / LoopBody serde 不統一 / EdgeLayerData 非対称)~~ → **Phase 2.0 の spec-v0.2.md で解消** (§4.2 追補・§4.4 JSON 規約・§4.3 Phase 3 方針)
 

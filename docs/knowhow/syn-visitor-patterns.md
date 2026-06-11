@@ -1,7 +1,7 @@
 # syn::Visit で AST から情報を集めるパターン
 
 > Phase 1.2 (syn → IR) で確立、Phase 1.3 (AuxRing 再帰展開)・
-> Phase 1.4 (call site 抽出と効果判定) で拡張。
+> Phase 1.4 (call site 抽出と効果判定)・Phase 3.4 (近似データフロー解析) で拡張。
 
 ## 基本形: 単一関心の Visitor を関数スコープに閉じ込める
 
@@ -179,8 +179,30 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
 - `quote = "1"`: `ToTokens::to_token_stream().to_string()` でシグネチャを文字列化 (`syn::Signature` には `to_string()` が無い)
 - `thiserror = "2"`: 現行 stable に追従。`#[from]` / `#[error(..)]` の挙動は v1 と互換
 
+## 近似データフロー解析 (Phase 3.4)
+
+意味解決なしの syn ベース def/use 抽出の定型 (`crates/magia-rust/src/dataflow.rs`):
+
+- **候補抽出 (純粋構文) とスコープ解決 (状態機械) を分離する**: 識別子の出現は
+  単一セグメント・型引数なしのパスを全部候補として集め、let / 引数 / パターン束縛で
+  積んだスコープ (`Vec<BTreeMap>` フレームの push/pop) で解決できたものだけ採用する。
+  関数名・unit variant・定数はスコープに無いため**自然に落ち**、大文字小文字
+  ヒューリスティクスを最小化できる (パターン側の unit variant 曖昧性のみ
+  先頭大文字で除外)
+- **スコープ追跡は既存の再帰構築 (RingBuilder) と並走させる**: 別パスで AST を
+  二重走査すると Operation 添字との対応付けが分岐しやすい。フレーム push は
+  build_ring 冒頭、pop は seal (Sigil push) 直後。リング本体に Operation を持たない
+  束縛 (引数・for パターン・match アーム・if let) は `seeds` 引数で冒頭にまとめて def
+- **解決順序が要**: `let x = x + 1` は uses 解決 → reassign/define の順に処理しないと
+  シャドーイングが壊れる
+- **再代入 = 再定義の実装**: 変数が見えるフレームの位置はそのまま、レコードだけ
+  新リング由来に差し替える。これで「ループ内で変換された値が親へ還流する」上り方向の
+  フローが自然に出る (ベルカ式の「変換 → 消費」の根拠)。syn 2 では複合代入は
+  `ExprBinary` + `*Assign` 系 `BinOp` (ExprAssignOp は無い)
+- クロージャは `visit_expr_closure` を空実装にして再帰を止める (追わない宣言)
+
 ## 関連文書
 
 - `docs/plans/phase1.2-syn-to-ir.md`
 - `docs/knowhow/rust-ir-skeleton-pattern.md`
-- `project-docs/magia/spec-v0.1.md` §10.3
+- `project-docs/magia/spec-v0.1.md` §10.3 / `spec-v0.3.md` §5.1 追補

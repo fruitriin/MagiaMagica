@@ -80,6 +80,8 @@ fn build_operation(
             source_excerpt: Some(excerpt),
             call_target: None,
             early_return,
+            // defs/uses はスコープを知る ring 側 (dataflow) が後から充填する。
+            ..OperationPayload::default()
         },
     }
 }

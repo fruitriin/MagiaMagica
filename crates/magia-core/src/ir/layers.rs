@@ -87,12 +87,21 @@ pub enum LoopKind {
     Loop,
 }
 
-/// データフロー情報 (Phase 3 以降で値を埋める)。
+/// データフロー情報 (Phase 3.4 で値を埋める)。
+///
+/// 集計単位: このリングで def された変数のみ (use が子リングで起きても def 側に計上 —
+/// ControlFlowInfo と同じ「二重計上を防ぐ規約」)。再代入 (`x = e` / `x += e`) は
+/// 「再代入が起きたリングでの新 def」として扱うため、同名変数が別リングで再代入されると
+/// チェーンはそのリング側に帰属する (元リングとは別チェーン、二重計上はない)。
+/// syn ベースの近似であり、マクロ内・クロージャ内の def/use は追わない。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DataFlowInfo {
-    /// Use-Def chain の長さ等の指標 (Phase 3+ で具体化)。
+    /// Use-Def chain の数 = このリングで def され、1回以上 use された変数の数。
     pub use_def_chains: u32,
+    /// 最長チェーン長 = チェーンを構成する変数に触れた Operation 数
+    /// (def 1 + use 回数) の最大値。チェーンが1本もなければ 0。
+    pub longest_chain: u32,
 }
 
 /// 型情報 (Phase 1 では関数シグネチャ程度を埋める)。
