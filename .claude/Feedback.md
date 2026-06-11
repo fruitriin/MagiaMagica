@@ -22,7 +22,7 @@
 
 ## 問題の記録
 
-- **knowhow 一括昇格を実施 (2026-06-11、オーナー指示)**: 蓄積していた昇格候補を ADDF 本体へ PR 化済み — **PR #13** (Rust 系 7本: cargo-bootstrap / syn-visitor / svg-deterministic / clap-cli / structural-diff / git-ci / minimal-dev-server SSE 訂正版 + addf-knowhow.md 記録判断パターン5例)、**PR #14** (Web 系 3本: viteplus-bun / milestone-gated-ui-plan / deprecated-module-maintenance-policy 新規)。マージは #13 → #14 の順を推奨 (TODO.addf.md の軽微コンフリクト)。残る候補: `.claude/launch.json` の scaffold テンプレート化 (launch.json.example、Phase 2.1 起源)、`rust-ir-skeleton-pattern.md` (Rust IR 設計 — 汎用性がやや低くプロジェクト寄りのため今回見送り)、addf-gui-test.md の .gitignore テンプレート (Phase 1.0 起源)
+- **knowhow のアップストリーム昇格は中止 (オーナー判定 2026-06-11)**: 一括昇格 PR (#13 Rust 系7本 / #14 Web 系3本) を作成したが、**「このノウハウは MagiaMagica 固有文脈なので ADDF アップストリームに入れない」**との判断で両 PR とも close (オーナー操作)。knowhow は固有文脈 (魔法陣の語彙・spec 参照・実コード断片) とセットで価値があり、汎用化すると薄まる。**今後の方針**: docs/knowhow/ はプロジェクト内に蓄積し続け、昇格はしない。コントリビューション検出 (addf-contribution-agent) は「knowhow の昇格候補」ではなく **ADDF の仕組みそのもの (スキル・テンプレート・lint・scaffold) への改善提案**に絞る。仕組み系の残候補は維持: addf-gui-test.md の .gitignore テンプレート (Phase 1.0)、launch.json.example の scaffold 化 (Phase 2.1)
 
 - Phase 4.0.5 M2 で発覚: Phase 2.1 の SSE は統合テストが「HTML に EventSource の文字列が含まれる」という静的チェックだけだったため、**配信自体が壊れていることを2フェーズ以上見逃した**。ストリーミング系の機能は「実際にストリームを読むテスト」を受け入れ基準に含めること (回帰テスト `sse_events_stream_immediately` が定型、knowhow 訂正済み)。また「ブラウザで見た目が動く」確認は live-reload の動作確認の代わりにならない (初回ロードだけで画面は出る)
 - Phase 1.0 で `.claude/skills/addf-gui-test.md` が `.gitignore` に手書きで追加されていた。これは ADDF 側で初期化時に挿入されるテンプレートに含めるべきもの。ADDF 本体への PR 候補
