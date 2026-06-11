@@ -127,7 +127,7 @@ test("操作ドットのホバー/選択がリアクティブに反映される 
 
 test("凡例: 開閉式で色と記号の意味が参照できる (Phase 4.0.6)", async ({ page }) => {
   await page.goto("/?fn=greet");
-  const legend = page.locator("aside details", { hasText: "凡例" });
+  const legend = page.locator("details", { hasText: "凡例" }); // 魔法陣ペイン下 (4.0.6 判定)
   // 既定は閉 — 開くと効果カテゴリと図形の説明が見える。
   await expect(legend.getByText("純粋")).toBeHidden();
   await legend.locator("summary").click();

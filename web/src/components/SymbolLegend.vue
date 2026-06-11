@@ -66,108 +66,115 @@ const sampleSymbol = (kind: ControlSymbol["kind"]): ControlSymbol => ({
   <details px-3 py-2 text-sm>
     <summary cursor-pointer select-none text-xs font-bold text-gray-600>📖 凡例</summary>
 
-    <strong mt-2 block text-xs text-gray-500>効果カテゴリ (操作・召喚印の色)</strong>
-    <div v-for="e in EFFECTS" :key="e.effect" mt-1 flex items-center gap-2>
-      <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
-        <OperationDot :op="sampleOp(e.color)" />
-      </svg>
-      <span text-xs>{{ e.label }}</span>
-    </div>
+    <!-- 魔法陣ペインの下 (横長) に置くため、節を横に流して高さを抑える -->
+    <div mt-1 flex flex-wrap items-start gap-x-10 gap-y-2>
+      <section>
+        <strong mt-2 block text-xs text-gray-500>効果カテゴリ (操作・召喚印の色)</strong>
+        <div v-for="e in EFFECTS" :key="e.effect" mt-1 flex items-center gap-2>
+          <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
+            <OperationDot :op="sampleOp(e.color)" />
+          </svg>
+          <span text-xs>{{ e.label }}</span>
+        </div>
+      </section>
+      <section>
+        <strong mt-2 block text-xs text-gray-500>図形</strong>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-14 -14 28 28" w-5 h-5 shrink-0>
+            <RingCircle :circle="sampleRing('main')" />
+          </svg>
+          <span text-xs>メインリング = 関数本体 (操作は3時起点・反時計回り)</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-14 -14 28 28" w-5 h-5 shrink-0>
+            <RingCircle :circle="sampleRing('aux')" />
+          </svg>
+          <span text-xs>補助リング = 分岐・ループの本体</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-7 -7 14 14" w-5 h-5 shrink-0>
+            <GlyphDot
+              :glyph="{
+                id: 'legend-glyph',
+                z: 0,
+                x: 0,
+                y: 0,
+                radius: 5,
+                color: '#1f4dff',
+                effect: 'io',
+                selectable: false,
+                layer: null,
+              }"
+            />
+          </svg>
+          <span text-xs>召喚印 = 外部呼び出し (色 = 効果カテゴリ)</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-10 -10 20 20" w-5 h-5 shrink-0>
+            <SymbolMark :symbol="sampleSymbol('branch')" />
+          </svg>
+          <span text-xs>Y 字 = 分岐 (if / match)</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-10 -18 20 24" w-5 h-5 shrink-0>
+            <SymbolMark :symbol="sampleSymbol('loop')" />
+          </svg>
+          <span text-xs>左向き三角 = ループ (反時計回りに周回)</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-8 -8 28 16" w-5 h-5 shrink-0>
+            <SymbolMark :symbol="sampleSymbol('early_return')" />
+          </svg>
+          <span text-xs>外向き矢印 = 早期リターン</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-30 -16 34 32" w-5 h-5 shrink-0>
+            <SymbolMark :symbol="sampleSymbol('return_branch')" />
+          </svg>
+          <span text-xs>9時の実線/破線 = Result・Option の正常/異常経路</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="0 -6 24 12" w-5 h-5 shrink-0>
+            <EdgeLine
+              :edge="{
+                id: 'legend-edge',
+                z: 0,
+                x1: 0,
+                y1: 0,
+                x2: 24,
+                y2: 0,
+                layer: null,
+                from: null,
+                to: null,
+              }"
+            />
+          </svg>
+          <span text-xs>線 = 制御フローの接続</span>
+        </div>
+      </section>
+      <section>
+        <strong mt-2 block text-xs text-gray-500>操作の強調</strong>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
+            <circle cx="0" cy="0" r="3.5" fill="#000000" stroke="#00a0c0" stroke-width="2" />
+          </svg>
+          <span text-xs>シアン輪郭 = ホバー中</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
+            <circle cx="0" cy="0" r="3.5" fill="#000000" stroke="#d4a017" stroke-width="2.5" />
+          </svg>
+          <span text-xs>金輪郭 = 選択中 (クリックで切替)</span>
+        </div>
 
-    <strong mt-3 block text-xs text-gray-500>図形</strong>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-14 -14 28 28" w-5 h-5 shrink-0>
-        <RingCircle :circle="sampleRing('main')" />
-      </svg>
-      <span text-xs>メインリング = 関数本体 (操作は3時起点・反時計回り)</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-14 -14 28 28" w-5 h-5 shrink-0>
-        <RingCircle :circle="sampleRing('aux')" />
-      </svg>
-      <span text-xs>補助リング = 分岐・ループの本体</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-7 -7 14 14" w-5 h-5 shrink-0>
-        <GlyphDot
-          :glyph="{
-            id: 'legend-glyph',
-            z: 0,
-            x: 0,
-            y: 0,
-            radius: 5,
-            color: '#1f4dff',
-            effect: 'io',
-            selectable: false,
-            layer: null,
-          }"
-        />
-      </svg>
-      <span text-xs>召喚印 = 外部呼び出し (色 = 効果カテゴリ)</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-10 -10 20 20" w-5 h-5 shrink-0>
-        <SymbolMark :symbol="sampleSymbol('branch')" />
-      </svg>
-      <span text-xs>Y 字 = 分岐 (if / match)</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-10 -18 20 24" w-5 h-5 shrink-0>
-        <SymbolMark :symbol="sampleSymbol('loop')" />
-      </svg>
-      <span text-xs>左向き三角 = ループ (反時計回りに周回)</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-8 -8 28 16" w-5 h-5 shrink-0>
-        <SymbolMark :symbol="sampleSymbol('early_return')" />
-      </svg>
-      <span text-xs>外向き矢印 = 早期リターン</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-30 -16 34 32" w-5 h-5 shrink-0>
-        <SymbolMark :symbol="sampleSymbol('return_branch')" />
-      </svg>
-      <span text-xs>9時の実線/破線 = Result・Option の正常/異常経路</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="0 -6 24 12" w-5 h-5 shrink-0>
-        <EdgeLine
-          :edge="{
-            id: 'legend-edge',
-            z: 0,
-            x1: 0,
-            y1: 0,
-            x2: 24,
-            y2: 0,
-            layer: null,
-            from: null,
-            to: null,
-          }"
-        />
-      </svg>
-      <span text-xs>線 = 制御フローの接続</span>
-    </div>
-
-    <strong mt-3 block text-xs text-gray-500>操作の強調</strong>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
-        <circle cx="0" cy="0" r="3.5" fill="#000000" stroke="#00a0c0" stroke-width="2" />
-      </svg>
-      <span text-xs>シアン輪郭 = ホバー中</span>
-    </div>
-    <div mt-1 flex items-center gap-2>
-      <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
-        <circle cx="0" cy="0" r="3.5" fill="#000000" stroke="#d4a017" stroke-width="2.5" />
-      </svg>
-      <span text-xs>金輪郭 = 選択中 (クリックで切替)</span>
-    </div>
-
-    <strong mt-3 block text-xs text-gray-500>ベルカ式の三極</strong>
-    <div v-for="b in BELKA" :key="b.color" mt-1 flex items-center gap-2>
-      <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
-        <circle cx="0" cy="0" r="5" fill="none" :stroke="b.color" stroke-width="1.5" />
-      </svg>
-      <span text-xs>{{ b.label }}</span>
+        <strong mt-3 block text-xs text-gray-500>ベルカ式の三極</strong>
+        <div v-for="b in BELKA" :key="b.color" mt-1 flex items-center gap-2>
+          <svg viewBox="-6 -6 12 12" w-4 h-4 shrink-0>
+            <circle cx="0" cy="0" r="5" fill="none" :stroke="b.color" stroke-width="1.5" />
+          </svg>
+          <span text-xs>{{ b.label }}</span>
+        </div>
+      </section>
     </div>
   </details>
 </template>

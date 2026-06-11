@@ -47,12 +47,15 @@ useMagiaSync();
     <TranscriptRegion />
 
     <main flex min-h-0 flex-1>
-      <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く -->
-      <MagicCircleView min-w-0 class="flex-[1.6]" overflow-auto />
+      <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く。
+           凡例は魔法陣ペインの下 (オーナー判定 4.0.6) — 図と見比べながら読める位置。 -->
+      <div min-w-0 class="flex-[1.6]" flex flex-col>
+        <MagicCircleView min-h-0 flex-1 overflow-auto />
+        <SymbolLegend shrink-0 border-t border-gray-200 />
+      </div>
       <SourcePane min-w-0 class="flex-[1]" border-l border-gray-200 />
       <aside flex w-56 shrink-0 flex-col border-l border-gray-200>
         <LayerPalette shrink-0 border-b border-gray-200 />
-        <SymbolLegend shrink-0 border-b border-gray-200 />
         <FunctionToc min-h-0 flex-1 />
       </aside>
     </main>
