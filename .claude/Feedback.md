@@ -8,6 +8,7 @@
 
 ## オーナーフィードバック
 
+- **判定依頼 (Phase 4.0.5 M1, 2026-06-11)**: Vue 3 + Vite+ + UnoCSS + Bun 基盤の起動スクショを送付済み。判定ポイント: ①スタイル基盤 (UnoCSS theme が palette.rs と同語彙 — スウォッチ3系統で目視可)、②proxy 経路 (`vp dev` → magia serve 4747、/state 200 確認済み)、③構成 (web/src/ = main.ts / App.vue / views / router、依存は全て実値ピン、vp check + build 通過)。**判定が来たら M2 (Pinia stores + MagicCircleView + `MagicCircleSchema` 型先置き) に進みます**
 - **報告 (Phase 3 完了, 2026-06-11)**: Phase 3 (3.0〜3.5) が全完了しました — Spell Diff (構造差分 + 視覚強調)、CI 統合 (PR 自動コメント + unsafe チェック)、データフロー IR、ベルカ式 (三角力場)。リリース (バージョン採番・チェンジログ) を行う場合は `/addf-release` を実行してください。次サイクルからはオーナー要望の Phase 4.0 (ソース連動ビュー) に着手します
 - **意匠判定依頼 (Phase 3.5, 2026-06-11)**: ベルカ式の素材3点を送付済み — ①loop_accumulate ②自己ホスティング measure ③Reducer 形。色 (空色/琥珀/臙脂)・三角の歪み・力場の濃淡・「Reducer 形で生成極が空円」の見せ方が判定ポイント。調整は `render/belka.rs` 冒頭の定数群と `palette.rs` の `BELKA_*` で対応
 - **意匠判定依頼 (Phase 3.2, 2026-06-11)**: 視覚的 Spell Diff の素材2点を送付済み — ①合成 fixture (process_order)、②自己ホスティング実例 (Phase 3.1 の metrics_sentence リファクタ実 diff)。意匠規約: 金ハロー=追加 / シアンハロー=変更 / 灰破線ゴースト=削除。色・線幅・破線パターンの調整指示があれば `render/palette.rs` の `DIFF_*` と `layout/constants.rs` の `DIFF_HALO_*` で対応

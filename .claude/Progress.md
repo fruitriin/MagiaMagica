@@ -55,4 +55,26 @@
 
 ## タスク
 
-（現在タスクなし）
+### Phase 4.0.5 — フロントエンド実行基盤 (docs/plans/phase4.0.5-frontend-foundation.md)
+
+**▶ 再開 (2026-06-11)**: 計画書の訂正を読み直し済み — ①**Bun 正式採用** (ランタイム・PM とも。Node.js/pnpm 不採用)、②**M2 で `MagicCircleSchema` 型定義を先置き** (4.0.7/4.0.9 への布石)、③CI は Bun セットアップ。前回までの進捗: ツールチェーン実値確認済み (bun 1.3.9 / vite-plus 0.1.24)、M0 の API golden 2点を web/golden/phase2x/ に保存済み (未コミット)。M1 scaffold は未着手。
+
+**複数サイクル前提**: M1〜M5 の各マイルストーン完了時に目視素材を送付し、**オーナー判定を待ってから次へ進む** (計画指定)。1サイクル = 判定待ちゲートまで。
+
+**今サイクル (M0 + M1)**
+- [x] M0-1. Phase 4.0 完了確認（cargo build/test 全通過、/state /spell 200、?fn=write_document 表示確認）
+- [x] M0-2. Phase 2.x 機能の golden 取得（preview で目視確認: 既定表示 / レイヤー toggle / ベルカ切替 / DSL UI 全て動作。ファイル golden は決定論的テキストで web/golden/phase2x/ に保存: state.json / spell_render.json / spell_write_document.json (svg + svg_belka + source_html + transcript 含む) / index.html。Playwright golden は M6 で同シナリオを自動化）
+- [x] M1-1. Vite+ scaffold（`web/`。vp create は vanilla-ts 生成のため Vite+ 統合を保って手で Vue 化。確認日 2026-06-11 を計画書に記録）
+- [x] M1-2. 依存: vue / vue-router / pinia / unocss (+preset-uno, preset-attributify) / @vitejs/plugin-vue / vue-tsc。全て実値ピン
+- [x] M1-3. 設定: vite.config.ts（UnoCSS + proxy /state /spell /events → 4747 + PORT 差し替え）、tsconfig strict、Oxlint consistent-type-definitions: type
+- [x] M1-4. uno.config.ts の theme に palette.rs と同語彙の色名（effect 6色 / diff 3色 / belka 3色）
+- [x] M1-5. 動作確認: vp dev 起動（autoPort で 52669）+ proxy 経由 /state 200 + コンソール無エラー + vp check / bun run build 通過
+- [x] M1-6. 素材送付（スクショ + 構成サマリ）→ **M1 判定待ちでサイクル終了**（Stage 1 ゲート全通過: clippy / fmt / cargo test 16 スイート / ADDF テスト — web 追加分の cargo 影響なし）
+
+**次サイクル以降（判定が来てから）**
+- [ ] M2: Pinia stores スケルトン + api composable + MagicCircleView + ?fn= → 素材送付・判定待ち
+- [ ] M3: ペアビュー UI（SourcePane / FunctionToc / SSE / エラー表示 / URL 同期）→ 判定待ち
+- [ ] M4: Phase 2.x 機能の Vue 移植（LayerPalette / DslEditor / TranscriptRegion）→ 判定待ち
+- [ ] M5: rust-embed 統合 + 旧 inline HTML 削除 + build.rs + CI + バイナリサイズ → 判定待ち
+- [ ] M6: Vitest + Playwright + Stage 1 ゲート + 知見記録
+- [ ] Stage 2 レビュー + 完了処理（4.1 以降の計画書へ Vue 前提を追補）

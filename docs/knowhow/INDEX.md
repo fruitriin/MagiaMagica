@@ -9,6 +9,12 @@
 | [ADDF/claude-md-at-mention.md](ADDF/claude-md-at-mention.md) | CLAUDE.md の @FileName メンション展開の仕組みと使い分け | @展開, メンション, クオート, ネスト展開, CLAUDE.md, インライン展開, ファイル参照, ブートシーケンス |
 | [ADDF/ignore-file-strategy.md](ADDF/ignore-file-strategy.md) | .gitignore / .claudeignore / .git/info/exclude の役割分けと運用戦略 | .gitignore, .claudeignore, .git/info/exclude, respectGitignore, settings.json, settings.local.json, Glob, Grep, ファイル除外 |
 
+## フロントエンド (Web)
+
+| ファイル | 要約 | キーワード |
+|---|---|---|
+| [viteplus-bun-frontend-bootstrap.md](viteplus-bun-frontend-bootstrap.md) | Vite+ (vp) + Bun でのフロントエンド基盤立ち上げ (bunx の bin 解決の罠, vp create は vanilla-ts 生成 + PATH に vp 必須, 同一採番ピン, ::1 listen, PORT 差し替え, vanilla→Vue 化最小セット, vp check 一括窓口) | Vite+, vite-plus, vp, vp create, vp check, bunx, Bun, oxfmt, oxlint, Vue 3, vue-tsc, @vitejs/plugin-vue, UnoCSS, preset-attributify, Pinia, vue-router, consistent-type-definitions, erasableSyntaxOnly, strict, env.d.ts, *.vue shim, IPv6, localhost, autoPort, PORT, proxy, overrides, vite-plus-core |
+
 ## Rust 実装
 
 | ファイル | 要約 | キーワード |
