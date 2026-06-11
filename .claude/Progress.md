@@ -90,7 +90,9 @@
 - [x] M3-4. focus store の照合を qualified に修正 (impl メソッド `Caster::cast` が name 照合で fallback に落ちるバグ)、初回ロードを SSE 接続直後イベントに一本化 (M2 の二重フェッチ解消)
 - [x] M3-5. @unocss/reset 追加 (preset-uno は preflight を含まない)
 - [x] M3-6. ゲート: vp check + bun run build 通過 (Rust 側は今回無変更 — M2 で全通過済み)。E2E: TOC 切替 / URL 同期 / 戻る進む / SSE 新関数反映 / エラーバナー全て確認、クリーンロードでコンソールエラーなし (HMR 編集中限定の警告は knowhow に記録)
-- [x] M3-7. 素材送付 (4 fixture のペアビュー 2x2) → **M3 判定待ち**
+- [x] M3-7. 素材送付 (4 fixture のペアビュー 2x2) → M3 判定受領
+- [x] M3-8. **判定対応**: ペイン並び替え (魔法陣を左端 + flex 1.6 で最大幅、コード中央、関数一覧右端)。別スコープ要望4点は計画化 — ①②③ (凡例 / 入口・回転サイン / 補助陣関数名) → phase4.0.6-circle-affordances.md 新規、④ (TOC ピンフィルタ / ツリー表示) → phase4.1 に追補。TODO 登録済み
+- [ ] M3-9. 並び替え後の確認 → **M3 修正版の確認待ち** (「関数リストいい感じ」は受領済み)
 - [ ] M4: Phase 2.x 機能の Vue 移植（LayerPalette / DslEditor / TranscriptRegion）→ 判定待ち
 - [ ] M5: rust-embed 統合 + 旧 inline HTML 削除 + build.rs + CI + バイナリサイズ → 判定待ち
 - [ ] M6: Vitest + Playwright + Stage 1 ゲート + 知見記録

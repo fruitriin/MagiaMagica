@@ -72,9 +72,10 @@ watch(
     </div>
 
     <main flex min-h-0 flex-1>
-      <FunctionToc w-48 shrink-0 border-r border-gray-200 />
-      <SourcePane min-w-0 flex-1 border-r border-gray-200 />
-      <MagicCircleView min-w-0 flex-1 overflow-auto />
+      <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く -->
+      <MagicCircleView min-w-0 class="flex-[1.6]" overflow-auto />
+      <SourcePane min-w-0 class="flex-[1]" border-l border-gray-200 />
+      <FunctionToc w-48 shrink-0 border-l border-gray-200 />
     </main>
   </div>
 </template>
