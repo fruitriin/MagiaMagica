@@ -13,5 +13,6 @@ pub mod filter;
 pub mod ir;
 pub mod layout;
 pub mod metrics;
+pub mod proximity;
 pub mod render;
 pub mod transcript;

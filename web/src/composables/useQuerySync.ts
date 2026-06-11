@@ -1,5 +1,5 @@
 // URL クエリ ↔ store 群の双方向同期。クエリ形式は Phase 2.x inline 版と完全互換:
-//   ?fn=<qualified> ?style=belka ?layers=a,b (全表示時は省略) ?op=layer:0.5,... (1.0 は省略)
+//   ?pin=<qualified> ?style=belka ?layers=a,b (全表示時は省略) ?op=layer:0.5,... (1.0 は省略)
 // URL を唯一の状態源とする一方向ループ: UI は store を変え、store → URL (replace)、
 // URL → store (watch)。関数切替 (?fn=) だけは FunctionToc が push して履歴に積む。
 
@@ -44,10 +44,10 @@ export function useQuerySync() {
       }
     }
 
-    // fn は currentFn と異なるときだけロードする。初期化パス (下の setInitialFn 直後)
+    // pin は currentFn と異なるときだけロードする。初期化パス (下の setInitialFn 直後)
     // ではこのガードにより selectFunction が走らず、初回ロードは SSE 接続直後
     // イベントの refresh に一本化される — このガードはその前提を担う (壊すと二重フェッチ)。
-    const fn = asString(query["fn"]);
+    const fn = asString(query["pin"]);
     if (fn !== null && fn !== focus.currentFn) {
       void focus.selectFunction(fn);
     }
@@ -55,7 +55,7 @@ export function useQuerySync() {
 
   function buildQuery(): Record<string, string> {
     const params: Record<string, string> = {};
-    if (focus.currentFn !== null) params["fn"] = focus.currentFn;
+    if (focus.currentFn !== null) params["pin"] = focus.currentFn;
     if (palette.style === "belka") params["style"] = "belka";
     const shown = LAYERS.filter((l) => palette.layers[l].visible);
     if (shown.length < LAYERS.length) params["layers"] = shown.join(",");
@@ -67,7 +67,7 @@ export function useQuerySync() {
   }
 
   // 初期 URL → store (?fn= は希望値として先置きし、実ロードは SSE 初回イベントに任せる)
-  focus.setInitialFn(asString(route.query["fn"]));
+  focus.setInitialFn(asString(route.query["pin"]));
   applyQueryToStores(route.query);
 
   // store → URL。状態微調整は履歴を汚さない (replace)。同値ならスキップしてループを断つ。

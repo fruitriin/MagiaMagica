@@ -16,7 +16,8 @@ export function fetchState(): Promise<StateResponse> {
 }
 
 export function fetchSpell(fn: string): Promise<SpellResponse> {
-  return fetchJson<SpellResponse>(`/spell/${encodeURIComponent(fn)}`);
+  // ピン中心ビュー (Phase 4.1) が標準表示のため、周辺配置を常に併載で取得する。
+  return fetchJson<SpellResponse>(`/spell/${encodeURIComponent(fn)}?with=neighbors`);
 }
 
 /**

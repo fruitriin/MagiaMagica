@@ -259,3 +259,117 @@ fn push_type_info(
         ir.return_branch = Some([nz(center.x - radius), nz(center.y)]);
     }
 }
+
+// ===== ピン中心ビューのレイアウト (Phase 4.1, spec v0.3 §16 追補) =====
+
+/// ピン中心ビューの全体配置。フォーカス魔法陣 (中央) の周囲に、近接度リングへ
+/// 周辺関数チップを等角度で置く。配置は全てここ (Rust) で確定し、Vue は
+/// `<g transform>` で描くだけ (POSD 分担 — spell_ir と同じ原則)。
+#[derive(Serialize)]
+pub struct FocusLayout {
+    /// 周辺リングまで含めた全体の viewBox。
+    pub view_box: [f64; 4],
+    pub neighbors: Vec<NeighborChip>,
+}
+
+/// 周辺関数のチップ (縮小盾)。スタブ段階は1種 (円 + 関数名) で、
+/// 距離は scale / opacity の差として現れる。3段階の縮小表現は Phase 4.2 の
+/// 本実装近接度と合わせて精緻化する。
+#[derive(Serialize)]
+pub struct NeighborChip {
+    pub qualified: String,
+    pub name: String,
+    pub signature: String,
+    /// リング距離 (proximity::Neighbor と同値)。
+    pub distance: u8,
+    pub x: f64,
+    pub y: f64,
+    pub scale: f64,
+    pub opacity: f64,
+    /// チップ円の半径 (スケール前)。
+    pub radius: f64,
+}
+
+/// チップ円の基準半径 (スケール前)。
+const CHIP_RADIUS: f64 = 44.0;
+/// 中央魔法陣の外接円からリングまでのマージン。
+const RING_1_MARGIN: f64 = 90.0;
+const RING_2_MARGIN: f64 = 190.0;
+
+/// フォーカスの viewBox と周辺リストから配置を計算する。
+///
+/// 角度は 12 時起点・時計回りの等角度割付。`neighbors` は呼び出し側で
+/// (距離, 名前) ソート済み (`proximity::classify_neighbors`) — 同一入力からは
+/// 常に同じ配置 (決定論)。
+#[must_use]
+pub fn focus_layout(
+    focus_view_box: [f64; 4],
+    neighbors: &[(crate::proximity::Neighbor, NeighborMeta)],
+) -> FocusLayout {
+    let [min_x, min_y, width, height] = focus_view_box;
+    let center_x = min_x + width / 2.0;
+    let center_y = min_y + height / 2.0;
+    let focus_radius = (width.max(height)) / 2.0;
+
+    let ring_radius = |distance: u8| -> f64 {
+        focus_radius
+            + match distance {
+                1 => RING_1_MARGIN,
+                _ => RING_2_MARGIN,
+            }
+    };
+    let ring_scale = |distance: u8| if distance == 1 { 0.55 } else { 0.35 };
+    let ring_opacity = |distance: u8| if distance == 1 { 0.85 } else { 0.6 };
+
+    // リングごとの member 数 (等角度割付の分母)。
+    let count_in_ring = |distance: u8| {
+        neighbors
+            .iter()
+            .filter(|(n, _)| n.distance == distance)
+            .count()
+    };
+
+    let mut chips = Vec::with_capacity(neighbors.len());
+    let mut index_in_ring = std::collections::BTreeMap::new();
+    for (neighbor, meta) in neighbors {
+        let total = count_in_ring(neighbor.distance).max(1);
+        let index = index_in_ring.entry(neighbor.distance).or_insert(0usize);
+        // 12時起点 (-90°)・時計回り。
+        let angle = -std::f64::consts::FRAC_PI_2 + TAU * usize_to_f64(*index) / usize_to_f64(total);
+        *index += 1;
+        let radius = ring_radius(neighbor.distance);
+        chips.push(NeighborChip {
+            qualified: neighbor.qualified.clone(),
+            name: meta.name.clone(),
+            signature: meta.signature.clone(),
+            distance: neighbor.distance,
+            x: nz(center_x + radius * angle.cos()),
+            y: nz(center_y + radius * angle.sin()),
+            scale: ring_scale(neighbor.distance),
+            opacity: ring_opacity(neighbor.distance),
+            radius: CHIP_RADIUS,
+        });
+    }
+
+    // 全体 viewBox: 最遠リング + スケール後チップ + ラベル余白まで広げる。
+    let max_extent = if chips.is_empty() {
+        focus_radius
+    } else {
+        focus_radius + RING_2_MARGIN + CHIP_RADIUS * 0.55 + 24.0
+    };
+    FocusLayout {
+        view_box: [
+            nz(center_x - max_extent),
+            nz(center_y - max_extent),
+            nz(max_extent * 2.0),
+            nz(max_extent * 2.0),
+        ],
+        neighbors: chips,
+    }
+}
+
+/// チップに表示する関数メタ (FunctionEntry への依存を持ち込まない最小写像)。
+pub struct NeighborMeta {
+    pub name: String,
+    pub signature: String,
+}

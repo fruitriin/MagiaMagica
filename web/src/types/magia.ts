@@ -205,6 +205,26 @@ export type IrSpell = {
   return_branch: [number, number] | null;
 };
 
+/** ピン中心ビューの周辺チップ (Phase 4.1、配置は Rust 確定値)。 */
+export type NeighborChip = {
+  qualified: string;
+  name: string;
+  signature: string;
+  /** リング距離: 1 = 同 impl、2 = 同ファイル (スタブ近接度 — 4.2 で本実装)。 */
+  distance: number;
+  x: number;
+  y: number;
+  scale: number;
+  opacity: number;
+  radius: number;
+};
+
+/** ピン中心ビューの全体配置 (`?with=neighbors` で併載)。 */
+export type FocusLayout = {
+  view_box: [number, number, number, number];
+  neighbors: NeighborChip[];
+};
+
 /** `GET /spell/<fn>` のレスポンス。 */
 export type SpellResponse = {
   qualified: string;
@@ -218,4 +238,6 @@ export type SpellResponse = {
   svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */
   transcript: string;
+  /** ピン中心ビューの周辺配置 (`?with=neighbors` 時のみ)。 */
+  focus_layout?: FocusLayout;
 };

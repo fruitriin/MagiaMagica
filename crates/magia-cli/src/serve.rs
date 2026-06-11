@@ -25,7 +25,12 @@ use anyhow::{Context, Result};
 use notify::{RecursiveMode, Watcher};
 
 use magia_core::layout::layout;
-use magia_core::render::{RenderStyle, ir_export::spell_ir, render};
+use magia_core::proximity::{NeighborSeed, classify_neighbors};
+use magia_core::render::{
+    RenderStyle,
+    ir_export::{NeighborMeta, focus_layout, spell_ir},
+    render,
+};
 use magia_rust::{FunctionEntry, function_index, parse_function};
 
 use crate::srcview::highlight_rust;
@@ -128,19 +133,28 @@ impl Shared {
 
     /// `/spell/<fn>`: 関数単位のレンダリング (オンデマンド、サーバに選択状態を持たない)。
     /// 不明な関数は `None` (404 は呼び出し側の責務)。
-    fn spell_json(&self, qualified: &str) -> Option<Result<String, String>> {
+    fn spell_json(&self, qualified: &str, with_neighbors: bool) -> Option<Result<String, String>> {
         // レンダリング (parse + layout + render ×2 + syntect) は重いので、
         // ロックは複製を取るまでに留める — reload (保存) を /spell がブロックしない。
-        let (source, entry) = {
+        let (source, entry, all) = {
             let good = lock_or_recover(&self.good);
             let entry = good
                 .functions
                 .iter()
                 .find(|entry| entry.qualified == qualified)?
                 .clone();
-            (good.source.clone(), entry)
+            let all = if with_neighbors {
+                good.functions.clone()
+            } else {
+                Vec::new()
+            };
+            (good.source.clone(), entry, all)
         };
-        Some(render_spell(&source, &entry))
+        Some(render_spell(
+            &source,
+            &entry,
+            with_neighbors.then_some(all.as_slice()),
+        ))
     }
 }
 
@@ -169,15 +183,43 @@ fn syntax_error_line(error: &magia_rust::Error) -> Option<usize> {
 ///
 /// `source_html` は Phase 4.0.5 (Vue のソースペイン) が使う先行実装で、
 /// 現行 UI (薄い継ぎ目 JS) はまだ表示しない — API 契約として先に固定しておく。
-fn render_spell(source: &str, entry: &FunctionEntry) -> Result<String, String> {
+fn render_spell(
+    source: &str,
+    entry: &FunctionEntry,
+    neighbors_from: Option<&[FunctionEntry]>,
+) -> Result<String, String> {
     let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
     let snippet = source_lines(source, entry.start_line, entry.end_line);
     // Phase 4.0.9: ミッドチルダ式は配置済み IR (JSON) で返し、Vue が描画する。
     // SVG 文字列は出さない (v1.0 前は旧を消す)。ベルカ式の Vue 移植は Phase 4.3 で
     // 行うため、svg_belka のみ SVG 文字列を温存する。
-    let ir = serde_json::to_value(spell_ir(&graph, &placed)).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({
+    let spell = spell_ir(&graph, &placed);
+    // Phase 4.1: ピン中心ビューの周辺配置。近接度はスタブ (proximity.rs、4.2 で本実装)。
+    let focus_layout = neighbors_from.map(|all| {
+        let seed = |e: &FunctionEntry| NeighborSeed {
+            qualified: e.qualified.clone(),
+            impl_context: e.impl_context.clone(),
+        };
+        let classified =
+            classify_neighbors(&seed(entry), &all.iter().map(seed).collect::<Vec<_>>());
+        let with_meta: Vec<_> = classified
+            .into_iter()
+            .filter_map(|neighbor| {
+                let meta = all.iter().find(|e| e.qualified == neighbor.qualified)?;
+                Some((
+                    neighbor,
+                    NeighborMeta {
+                        name: meta.name.clone(),
+                        signature: meta.signature.clone(),
+                    },
+                ))
+            })
+            .collect();
+        focus_layout(spell.view_box, &with_meta)
+    });
+    let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
+    let mut response = serde_json::json!({
         "qualified": entry.qualified,
         "signature": entry.signature,
         "ir": ir,
@@ -185,8 +227,11 @@ fn render_spell(source: &str, entry: &FunctionEntry) -> Result<String, String> {
         "source_html": highlight_rust(&snippet),
         "transcript": magia_core::transcript::transcribe(&graph),
         "start_line": entry.start_line,
-    })
-    .to_string())
+    });
+    if let Some(layout) = focus_layout {
+        response["focus_layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
+    }
+    Ok(response.to_string())
 }
 
 /// 1始まり・両端含みの行範囲を切り出す (関数スニペット)。
@@ -306,7 +351,12 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
         ),
         (tiny_http::Method::Get, spell) if spell.starts_with("/spell/") => {
             let qualified = percent_decode(&spell["/spell/".len()..]);
-            request.respond(spell_response(shared, &qualified))
+            // ?with=neighbors でピン中心ビューの周辺配置 (focus_layout) を併載する
+            // (Phase 4.1)。なしは従来契約のまま (静的レンダ・テスト互換)。
+            let with_neighbors = url
+                .split_once('?')
+                .is_some_and(|(_, query)| query.split('&').any(|kv| kv == "with=neighbors"));
+            request.respond(spell_response(shared, &qualified, with_neighbors))
         }
         (tiny_http::Method::Get, "/events") => {
             let (tx, rx) = channel::<u64>();
@@ -394,9 +444,10 @@ fn stream_sse(mut writer: Box<dyn Write + Send>, rx: &Receiver<u64>) {
 fn spell_response(
     shared: &Shared,
     qualified: &str,
+    with_neighbors: bool,
 ) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
     let json_header = header("Content-Type", "application/json; charset=utf-8");
-    match shared.spell_json(qualified) {
+    match shared.spell_json(qualified, with_neighbors) {
         Some(Ok(json)) => tiny_http::Response::from_string(json).with_header(json_header),
         Some(Err(message)) => {
             tiny_http::Response::from_string(serde_json::json!({ "error": message }).to_string())

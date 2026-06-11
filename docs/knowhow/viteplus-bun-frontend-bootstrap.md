@@ -112,6 +112,16 @@
 - シェル経由の `pkill -f <パターン>` は **eval されたコマンドライン自身にマッチして自殺する**
   (zsh スナップショット経由の実行で顕在化)。プロセス停止は `pkill -x <プロセス名>` か kill PID で
 
+### SVG 要素のアニメーション (Phase 4.1)
+
+- **SVG の `transform` 属性は CSS transition の対象外** — `:transform="..."` (属性バインド) を
+  変えても補間されない。`style="transform: translate(...px) scale(...)"` (CSS transform) なら
+  SVG 要素でも transition が効く (単位 px = ユーザー座標)
+- 構造が変わる要素間の遷移 (フル表示 ⇄ 縮小チップ) は、**両状態を同一 key の `<g>` に
+  乗せて v-if で中身だけ切替える** — g の transform が補間され「移動 + ズーム」が出る。
+  Vue の `<TransitionGroup>` FLIP は SVG の座標変更を検知しないのでこの手が要る
+- `prefers-reduced-motion: reduce` は `@media` で transition: none に (アクセシビリティ)
+
 ## プロジェクトへの適用
 
 - `web/` が本パターンの実例 (Phase 4.0.5)。dev は `bun run --cwd web dev`、検証は `cd web && vp check && bun run build`

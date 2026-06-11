@@ -55,4 +55,27 @@
 
 ## タスク
 
-（現在タスクなし）
+### Phase 4.1 — ピン中心ビュー (docs/plans/phase4.1-pinned-focus-view.md)
+
+**設計確定 (着手時)**: 4.0.9 世界に揃える — Rust が focus_layout (周辺の x/y/scale/opacity) を計算して IR に載せ、Vue は `<g transform>` の CSS transition でピン遷移。スタブ近接度は trait でなく関数 (1実装の段階で trait は POSD 的に過剰 — 4.2 で中身を差し替え)。周辺の縮小3段階は スタブでは距離 1/2 のみのため「チップ (円 + 名前 + 操作概要)」1種 + scale/opacity 差で開始。
+
+**実装フェーズ (Rust)**
+- [x] 1. magia-core::proximity: スタブ分類 + ユニットテスト3本 (trait でなく関数 — 1実装の段階の抽象化は POSD 的に過剰、4.2 で中身差し替え)
+- [x] 2. ir_export::focus_layout: 中央 viewBox + リング配置 (12時起点・等角度・決定論)、view_box 拡張。チップ概要 (op_count) は見送り — 全関数パースのコストが要るため名前+シグネチャのみ (4.2 で再検討)
+- [x] 3. serve: /spell/<fn>?with=neighbors (なしは従来互換)
+- [x] 4. serve 統合テスト (focus_layout 構造 / 距離 / 既定互換)
+
+**実装フェーズ (Vue)**
+- [x] 5. ?fn → ?pin リネーム (フォールバックなし)
+- [x] 6. NeighborChip (円 + 名前 + signature ツールチップ、button 化) + MagicCircleView をピンビュー化 (単一リスト + 同一 key の g)
+- [x] 7. ピン遷移: style.transform の CSS transition 320ms (SVG の transform 属性は transition 不可 — knowhow 化) + reduced-motion で即時
+- [x] 8. FunctionToc: 表示中のみフィルタ (既定 ON、距離順シグネチャ) + ツリートグル骨格 (無効表示)
+- [x] 9. F キー (入力中ガード付き) + チップの Tab/Enter はブラウザ標準
+- [x] 10. エラー時は last-good 機構がそのまま機能 (focus_layout も last-good から配信)
+- [x] 11. Playwright 13本 (ピン遷移 + 履歴 / reduced-motion の transition 0s / TOC フィルタ切替 追加)、Vitest 30 通過
+- [x] 12. 素材 (write_document 28チップ / Wand::cast 距離1・2混在) 作成。**実機ではオーナーが既にチップクリックでピン遷移を試遊済み**
+- [x] 13. Stage 1 ゲート全通過 (cargo 17 / ADDF / vp check / vitest 30 / build / playwright 13)
+
+**品質検証 + 完了処理**
+- [ ] 14. Stage 2 レビュー + 指摘対応
+- [ ] 15. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット

@@ -87,8 +87,9 @@ function layerStyle(layer: SchemaLayer | null): Record<string, string> {
 </script>
 
 <template>
-  <!-- ルート svg にスタイルを足さない (4.0.5 の v-html 表示との画素等価が基準)。 -->
-  <svg xmlns="http://www.w3.org/2000/svg" :viewBox="schema.viewBox.join(' ')" w-full>
+  <!-- サイズ指定 (w-full や x/y/width/height) は利用側が fallthrough 属性で与える
+       (単独表示 = w-full、ピンビュー = ネスト svg の絶対配置。Phase 4.1)。 -->
+  <svg xmlns="http://www.w3.org/2000/svg" :viewBox="schema.viewBox.join(' ')">
     <template v-for="item in drawList" :key="itemId(item)">
       <RingCircle
         v-if="item.kind === 'circle'"

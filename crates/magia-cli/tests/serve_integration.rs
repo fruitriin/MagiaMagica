@@ -196,6 +196,36 @@ fn spell_endpoint_renders_function_on_demand() {
     assert!(missing.contains("索引にありません"));
 }
 
+/// Phase 4.1: `?with=neighbors` でピン中心ビューの周辺配置が併載される。
+/// 配置は決定論 (名前ソート → 等角度) で、focus 自身は周辺に含まれない。
+#[test]
+fn spell_with_neighbors_returns_focus_layout() {
+    let file = temp_fixture("neighbors.rs", INITIAL);
+    let server = spawn_server(&file);
+
+    // 既定 (with なし) は従来契約 — focus_layout を持たない。
+    let plain = body_json_at(server.port, "/spell/watched");
+    assert!(plain.get("focus_layout").is_none());
+
+    let spell = body_json_at(server.port, "/spell/watched?with=neighbors");
+    let layout = &spell["focus_layout"];
+    let neighbors = layout["neighbors"].as_array().unwrap();
+    // INITIAL は watched + Caster::cast の2関数 — 周辺は cast のみ (同ファイル = 距離2)。
+    assert_eq!(neighbors.len(), 1);
+    assert_eq!(neighbors[0]["qualified"], "Caster::cast");
+    assert_eq!(neighbors[0]["distance"], 2);
+    assert!(neighbors[0]["scale"].as_f64().unwrap() < 1.0);
+    assert!(neighbors[0]["opacity"].as_f64().unwrap() < 1.0);
+    assert!(neighbors[0]["x"].is_number() && neighbors[0]["y"].is_number());
+    // 全体 viewBox は focus 単体 (ir.view_box) より広い。
+    let focus_w = spell["ir"]["view_box"][2].as_f64().unwrap();
+    assert!(layout["view_box"][2].as_f64().unwrap() > focus_w);
+
+    // 同 impl は距離 1 になる (Caster::cast を focus にすると watched は 2 のまま)。
+    let cast = body_json_at(server.port, "/spell/Caster%3A%3Acast?with=neighbors");
+    assert_eq!(cast["focus_layout"]["neighbors"][0]["distance"], 2);
+}
+
 #[test]
 fn file_change_updates_function_index_and_spells() {
     let file = temp_fixture("change.rs", INITIAL);

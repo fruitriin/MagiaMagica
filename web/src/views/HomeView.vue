@@ -3,6 +3,8 @@
 // UI 操作 → store → URL (replace) → watch → store の一方向で流す (useQuerySync)。
 // 関数切替 (?fn=) だけは FunctionToc が push して履歴に積む。
 // 初回ロードは SSE 接続直後イベント (serve.rs 仕様) の refresh に一本化する。
+import { onMounted, onUnmounted } from "vue";
+
 import FunctionToc from "../components/FunctionToc.vue";
 import LayerPalette from "../components/LayerPalette.vue";
 import SymbolLegend from "../components/SymbolLegend.vue";
@@ -16,6 +18,17 @@ import { useFocusStore } from "../stores/focus.ts";
 const focus = useFocusStore();
 useQuerySync();
 useMagiaSync();
+
+// F = フォーカス中心へ視点を戻す (Phase 4.1 キーボードナビ。
+// Tab/Enter のチップ巡回はチップの button 化によりブラウザ標準動作)。
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== "f" && event.key !== "F") return;
+  const target = event.target as HTMLElement | null;
+  if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return; // 入力中は無視
+  document.querySelector("svg")?.scrollIntoView({ block: "center", inline: "center" });
+}
+onMounted(() => document.addEventListener("keydown", onKeydown));
+onUnmounted(() => document.removeEventListener("keydown", onKeydown));
 </script>
 
 <template>
