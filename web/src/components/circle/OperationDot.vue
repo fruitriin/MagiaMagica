@@ -13,6 +13,7 @@ const isHovered = computed(() => focus.hoveredOperationId === props.op.id);
 const isSelected = computed(() => focus.selectedOperationId === props.op.id);
 
 function onClick() {
+  if (!props.op.selectable) return;
   focus.selectOperation(isSelected.value ? null : props.op.id);
 }
 </script>
@@ -28,7 +29,7 @@ function onClick() {
     :style="op.selectable ? { cursor: 'pointer' } : {}"
     @mouseenter="focus.hoverOperation(op.id)"
     @mouseleave="focus.hoverOperation(null)"
-    @click="op.selectable && onClick()"
+    @click="onClick"
   />
 </template>
 

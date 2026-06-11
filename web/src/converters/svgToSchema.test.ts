@@ -38,7 +38,7 @@ describe("svgToSchema (ミッドチルダ式)", () => {
   it("接続線を座標つきで復元する (from/to は 4.0.9 まで未定)", () => {
     expect(schema.edges.length).toBeGreaterThan(0);
     const edge = schema.edges[0];
-    expect(edge?.from).toBeUndefined();
+    expect(edge?.from).toBeNull();
     expect(Number.isFinite(edge?.x1)).toBe(true);
   });
 
@@ -55,6 +55,7 @@ describe("svgToSchema (ミッドチルダ式)", () => {
 
   it("取り溢しゼロ: SVG の描画要素数とスキーマ要素数が一致する", () => {
     // <defs> と <g> は構造要素 (スキーマでは viewBox/layer に正規化) なので除外。
+    // `text` の後の [ >] により <textPath> にはマッチしない (text の子要素として数えない)。
     const drawable = (SVG.match(/<(circle|line|path|polygon|text)[ >]/g) ?? []).length;
     const sigArcInDefs = 1; // defs 内の sig-arc path は signature.arcPath に畳まれる
     const inSchema =

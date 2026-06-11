@@ -84,12 +84,12 @@ Schema に何を入れて何を入れないか:
 
 ## 受け入れ基準
 
-- [ ] `MagicCircleSchema` 型が定義され、Vue コンポーネント群がこれを受けて描画する
-- [ ] 既存 fixtures (medium_render_doc / write_document / dense_dispatch) で 4.0.5 の `v-html` 表示と画素単位等価 (オーナー判定)
-- [ ] 操作クリック・ホバーで Pinia store の状態が変わり、対応する `<Operation>` の見た目に反映される
-- [ ] SSE ファイル更新で SVG 文字列が新規届くと Schema 再構築 → リアクティブ再描画される
-- [ ] SVG パーサが `web/src/converters/svgToSchema.ts` 1ファイルに閉じている (4.0.9 移行時にここだけ削除すれば済む構造)
-- [ ] `cargo test --workspace` / `vite+ test` (Vitest) 通過
+- [x] `MagicCircleSchema` 型が定義され、Vue コンポーネント群がこれを受けて描画する
+- [x] 既存 fixtures (medium_render_doc / write_document / dense_dispatch) で 4.0.5 の `v-html` 表示と画素単位等価 (オーナー判定済み:「同じに見える」。実測: fuzz 5% で差 0.01% = AA ゆらぎのみ)
+- [x] 操作クリック・ホバーで Pinia store の状態が変わり、対応する `<Operation>` の見た目に反映される (オーナー判定済み:「ホバーも選択もできてる」)
+- [x] SSE ファイル更新で SVG 文字列が新規届くと Schema 再構築 → リアクティブ再描画される (Playwright の SSE テストで固定)
+- [x] SVG パーサが `web/src/converters/svgToSchema.ts` 1ファイルに閉じている (参照は MagicCircleView の computed 1箇所)
+- [x] `cargo test --workspace` / `vite+ test` (Vitest 28本) 通過 + Playwright 9本
 
 ## 後続候補
 
@@ -107,6 +107,14 @@ Schema に何を入れて何を入れないか:
 7. Stage 1 品質ゲート + コーディング知見記録 (SVG パース、境界スキーマ設計、Vue 描画分担)
 8. Stage 2 レビュー + 指摘対応
 9. 完了処理
+
+## 実装結果メモ (2026-06-11 完了)
+
+- **計画書の前提訂正**: 「Phase 1.6 で IR ノード id を data-* 属性で埋めた」は実装と不一致 (SVG に data-* は無い)。意味論は class のみ (main-ring / aux-ring / op-dot / summon-glyph / edge-control-flow / signature / layer-*)。Rust 無変更で **class + 出現順 id** 方式に変更 (パーサは捨てる前提なので Rust にパーサ専用属性を足さない。SigilId 非公開の Phase 3.2 方針と整合)
+- **スキーマの追加フィールド (計画外で必要になったもの)**: `z` (描画順 — 種類別に描くと重なりの z-order が変わり画素等価が崩れる)、`RawElement` (複合記号 sym-* とベルカ力場の素通し)、`Signature` の円弧/直線両対応 (ベルカは textPath でない)。`SchemaEdge.from/to` は `string | null` (4.0.9 で埋まる)
+- **等価検証の実測**: 同版2回撮りノイズ 0 を確認した上で、3 fixtures の版差 0.3〜0.4% → fuzz 5% で 0.01% (Vue 生成 DOM と innerHTML パースの AA 差)。方法論は milestone-gated-ui-plan.md に knowhow 化
+- ホバー = シアン / 選択 = 金の輪郭ハロー (Phase 3.2 の「記号色に触れない」原則)。SSE 更新時は選択をクリア (出現順 id の再採番でハローが別操作に移る誤挙動の防止)
+- レビュー対応: viewBox 不正時の warn、EFFECT_BY_COLOR の3箇所同期警告コメント、drawList の key を id に、ほか計10件
 
 ## 想定リスク
 

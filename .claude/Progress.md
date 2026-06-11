@@ -69,6 +69,8 @@
 - [x] 7. 等価検証 (3 fixtures): 同版2回撮り 0 差のベースライン確認 → 版差は write_document 5328 / medium 3672 / dense 5568 px (0.3〜0.4%)、**fuzz 5% で 110〜155 px (0.01%) = AA ゆらぎのみ**。シフトテスト・最大クラスタ拡大で位置ズレ/形状差なしを確認 → **視覚的等価**。素材作成済み → 判定待ち
 - [x] 8. Stage 1 ゲート全通過 (vp check / vitest 28 / build / playwright 9 / cargo 16 / ADDF — Rust 無変更) + 知見記録 (milestone-gated-ui-plan に画素等価検証の方法論、viteplus-bun にテスト環境の罠)
 
+**等価判定 (2026-06-11): 合格** — 「左右同じに見える」「ホバーも選択もできてる、いいね」
+
 **品質検証 + 完了処理**
-- [ ] 9. Stage 2 レビュー + コントリビューション検出 + 指摘対応
-- [ ] 10. 計画 memo、Feedback / TODO 更新、アーカイブ、コミット
+- [x] 9. Stage 2 レビュー (Critical 0 / Warning 5 / Suggestion 5 — 全件対応: 選択の SSE 時クリア、viewBox warn、key を id に、from/to null 明示、色同期警告ほか) + コントリビューション検出 (昇格候補 9・10 件目 + addf-knowhow 5例目を Feedback に登録) + ゲート再実行全通過
+- [x] 10. 計画 memo (前提訂正・スキーマ追加フィールド・等価実測値)、Feedback / TODO 更新、アーカイブ、コミット

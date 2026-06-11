@@ -14,6 +14,8 @@ import MagicCircle from "./circle/MagicCircle.vue";
 const focus = useFocusStore();
 const palette = usePaletteStore();
 
+// style 切替時は currentSvg (svg / svg_belka の選択) も必ず変わるため、
+// この computed の再評価トリガは実質 currentSvg 1本 (二重評価は起きない)。
 const schema = computed(() => {
   if (focus.currentSvg === null) return null;
   return svgToSchema(focus.currentSvg, palette.style);

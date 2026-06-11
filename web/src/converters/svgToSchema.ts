@@ -21,7 +21,9 @@ import type {
   Signature,
 } from "../types/magia.ts";
 
-/** palette.rs の色 → 効果カテゴリの逆引き (uno.config.ts theme と同値)。 */
+/** palette.rs の色 → 効果カテゴリの逆引き。
+ *  !!! palette.rs の定数・uno.config.ts の theme と3箇所の手動同期 — 色変更時は全て直す
+ *  (ずれると effect: null に黙って落ちる。4.0.9 の IR 直結で同期問題ごと消える)。 */
 const EFFECT_BY_COLOR: Record<string, EffectCategory> = {
   "#000000": "pure",
   "#1f4dff": "io",
@@ -71,8 +73,9 @@ export function svgToSchema(svg: string, style: RenderStyle): MagicCircleSchema 
       return;
     }
     if (tag === "g") {
-      // レイヤーグループは開いて子を個別に振り分ける (g 自体は持たない —
-      // レイヤー可視性は各要素の layer フィールドで宣言的に適用する)。
+      // g は**常に**開いて子を個別に振り分ける (レイヤーグループに限らない —
+      // g 自体は持たず、レイヤー可視性は各要素の layer フィールドで宣言的に適用する)。
+      // このため g が raw に落ちて子要素が二重描画されることはない。
       const childLayer = LAYER_BY_CLASS[cls] ?? layer;
       for (const child of element.children) visit(child, childLayer);
       return;
@@ -112,6 +115,8 @@ function parseViewBox(value: string | null): [number, number, number, number] {
   if (nums.length === 4 && nums.every((n) => Number.isFinite(n))) {
     return [nums[0] ?? 0, nums[1] ?? 0, nums[2] ?? 0, nums[3] ?? 0];
   }
+  // 0 サイズの viewBox は「何も映らない」— 黙って空白になるとデバッグ困難なので警告を残す。
+  console.warn(`svgToSchema: viewBox を解釈できません: ${String(value)}`);
   return [0, 0, 0, 0];
 }
 
@@ -161,6 +166,8 @@ function parseEdge(el: Element, layer: SchemaLayer | null, id: string, z: number
     x2: attr(el, "x2"),
     y2: attr(el, "y2"),
     layer,
+    from: null, // SVG からは復元できない — IR 直結 (4.0.9) で埋まる
+    to: null,
   };
 }
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 関数シグネチャ。ミッドチルダ式は円弧 textPath、ベルカ式は直線テキスト
 // (Rust レンダラの signature と画素等価)。
-// arc path の id はコンポーネントインスタンスごとに一意化する (同一ページに
-// 複数の魔法陣が載る Phase 4.1 のピン中心ビューで衝突しないように)。
+// arc path の id はコンポーネントインスタンスごとに一意化する: SVG の参照 id は
+// **DOM ドキュメント全体**でユニークである必要があり、同一ページに複数の魔法陣が
+// 載る Phase 4.1 のピン中心ビューで固定 id だと衝突する。
 import { useId } from "vue";
 
 import type { Signature } from "../../types/magia.ts";

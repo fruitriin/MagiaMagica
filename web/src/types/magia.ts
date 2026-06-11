@@ -69,8 +69,9 @@ export type SchemaEdge = {
   y2: number;
   layer: SchemaLayer | null;
   z: number;
-  from?: string;
-  to?: string;
+  /** 接続元/先の Operation id。SVG 由来 (4.0.7) では null、IR 由来 (4.0.9) で埋まる。 */
+  from: string | null;
+  to: string | null;
 };
 
 /** 関数のシグネチャ表示。ミッドチルダ式は外周の円弧 textPath、ベルカ式は直線配置。 */

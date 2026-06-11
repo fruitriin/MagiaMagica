@@ -37,6 +37,21 @@ const drawList = computed<DrawItem[]>(() =>
   ].sort((a, b) => a.z - b.z),
 );
 
+function itemId(item: DrawItem): string {
+  switch (item.kind) {
+    case "circle":
+      return item.circle.id;
+    case "op":
+      return item.op.id;
+    case "glyph":
+      return item.glyph.id;
+    case "edge":
+      return item.edge.id;
+    case "raw":
+      return item.raw.id;
+  }
+}
+
 function itemLayer(item: DrawItem): SchemaLayer | null {
   switch (item.kind) {
     case "circle":
@@ -67,7 +82,7 @@ function layerStyle(layer: SchemaLayer | null): Record<string, string> {
 <template>
   <!-- ルート svg にスタイルを足さない (4.0.5 の v-html 表示との画素等価が基準)。 -->
   <svg xmlns="http://www.w3.org/2000/svg" :viewBox="schema.viewBox.join(' ')" w-full>
-    <template v-for="item in drawList" :key="`${item.kind}-${item.z}`">
+    <template v-for="item in drawList" :key="itemId(item)">
       <RingCircle
         v-if="item.kind === 'circle'"
         :circle="item.circle"

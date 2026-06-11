@@ -88,6 +88,9 @@ export const useFocusStore = defineStore("focus", () => {
 
   /** SSE 更新時の再読込。一覧と現在の呪文を取り直す。 */
   async function refresh() {
+    // 出現順 id は再パースで再採番されるため、選択を持ち越すと別の操作に
+    // ハローが移る誤挙動になる — 更新前にクリアする (安定参照は 4.0.9 で検討)。
+    selectedOperationId.value = null;
     await loadState();
     await selectFunction(currentFn.value);
   }
