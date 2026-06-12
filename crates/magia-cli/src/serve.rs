@@ -285,8 +285,8 @@ fn render_spell(
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
     // ベルカ式も配置済み IR (Phase 4.3 M3 — Vue 移植)。svg_belka は等価判定が
     // 出るまでの比較用に温存し、M5 で削除する。
-    let belka =
-        serde_json::to_value(magia_core::render::belka::belka_ir(&graph)).map_err(|e| e.to_string())?;
+    let belka = serde_json::to_value(magia_core::render::belka::belka_ir(&graph))
+        .map_err(|e| e.to_string())?;
     let mut response = serde_json::json!({
         "qualified": entry.qualified,
         "signature": entry.signature,

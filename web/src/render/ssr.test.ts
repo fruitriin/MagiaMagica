@@ -11,7 +11,9 @@ describe("renderSpellSvg (SSR — 動的 UI と同じコンポーネントツリ
   it("スタンドアロン SVG (XML) として正しい属性で出力する", async () => {
     const svg = await renderSpellSvg({ ir: IR });
     expect(svg.startsWith("<svg ")).toBe(true);
-    expect(svg).toContain(`viewBox="${IR.view_box.join(" ")}"`);
+    // 数値は小数2桁へ丸めて出る (toStandaloneSvg の正規化 — num() と同精度)。
+    const round2 = (v: number) => Math.round(v * 100) / 100;
+    expect(svg).toContain(`viewBox="${IR.view_box.map(round2).join(" ")}"`);
     // XML invalid / SSR ノイズが残っていないこと (toStandaloneSvg の契約)。
     expect(svg).not.toContain("<!--");
     expect(svg).not.toMatch(/ data-v-/);

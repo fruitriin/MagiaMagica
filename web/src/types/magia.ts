@@ -234,6 +234,19 @@ export type IrSpell = {
   return_branch: [number, number] | null;
 };
 
+// ===== 差分強調の配置済み IR (Phase 4.3 M4、spec v0.3 §8) =====
+
+/** 差分強調マーク。配置 (中心・半径) は Rust 確定値 — removed は before 位置の
+ *  本体半径 (ゴースト)、added/changed は after 位置のハロー半径。
+ *  色・破線・線幅 (描き方) は MagicCircle の overlay 描画が持つ。
+ *  配列順 = 描画順 (removed → changed → added、注目度順)。 */
+export type DiffMark = {
+  status: "added" | "changed" | "removed";
+  x: number;
+  y: number;
+  radius: number;
+};
+
 // ===== ベルカ式の配置済み IR (Phase 4.3 M3、spec v0.3 §14) =====
 
 /** 三極の語彙。色・ラベル文言は Vue 側 (BelkaCircle) が持つ。 */

@@ -12,10 +12,12 @@ import { renderToString } from "vue/server-renderer";
 
 import MagicCircle from "../components/circle/MagicCircle.vue";
 import { irToSchema } from "../converters/irToSchema.ts";
-import type { IrSpell } from "../types/magia.ts";
+import type { DiffMark, IrSpell } from "../types/magia.ts";
 
 export type RenderRequest = {
   ir: IrSpell;
+  /** 差分強調 (magia diff --svg、Phase 4.3 M4)。 */
+  diff_overlay?: DiffMark[];
 };
 
 /** SSR 由来の camelCase 属性の小文字化を復元する (スタンドアロン SVG は XML —
@@ -27,7 +29,9 @@ const CAMEL_ATTRS = ["viewBox", "gradientUnits", "gradientTransform", "preserveA
 /** renderToString の出力をスタンドアロン SVG (XML) に整える。
  *  - fragment コメント (`<!--[-->` 等) は Vue の hydration マーカー — 静止画に不要
  *  - 値なしの `data-v-*` (scoped style の印) は **XML として無効** なので必ず落とす
- *  - 空の `style=""` は SSR だけが出すノイズ (クライアントは属性自体を出さない) */
+ *  - 空の `style=""` は SSR だけが出すノイズ (クライアントは属性自体を出さない)
+ *  - 数値は小数2桁へ丸める (Rust レンダラの num() と同精度) — Vue 側で計算する
+ *    エッジ端点・記号頂点の浮動小数ノイズ (59.99979…) がファイルに漏れない */
 export function toStandaloneSvg(html: string): string {
   let svg = html
     .replace(/<!--[^>]*-->/g, "")
@@ -36,13 +40,18 @@ export function toStandaloneSvg(html: string): string {
   for (const attr of CAMEL_ATTRS) {
     svg = svg.replaceAll(` ${attr.toLowerCase()}="`, ` ${attr}="`);
   }
+  svg = svg.replace(/-?\d+\.\d{3,}(?:e-?\d+)?/g, (token) => {
+    const value = Number(token);
+    return Number.isFinite(value) ? String(Math.round(value * 100) / 100) : token;
+  });
   return svg;
 }
 
 /** 配置済み IR をスタンドアロン SVG 文字列にレンダする (SSR の本体)。 */
 export async function renderSpellSvg(request: RenderRequest): Promise<string> {
   const schema = irToSchema(request.ir);
-  const app = createSSRApp({ render: () => h(MagicCircle, { schema }) });
+  const overlay = request.diff_overlay;
+  const app = createSSRApp({ render: () => h(MagicCircle, { schema, overlay }) });
   // MagicCircle ツリーは palette / focus store を参照する — SSR では
   // 既定状態 (全レイヤー表示・選択なし) の Pinia を与える。
   app.use(createPinia());

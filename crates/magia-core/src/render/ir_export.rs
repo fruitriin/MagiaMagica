@@ -314,6 +314,105 @@ fn push_type_info(
     }
 }
 
+// ===== 差分強調の配置済み IR (Phase 4.3 M4 — render_diff の IR 版) =====
+
+/// 差分強調マーク (overlay-diff チャネル、spec v0.3 §8)。
+/// 配置 (中心・半径) は Rust 確定値 — removed は **before レイアウトの位置**に
+/// 本体半径 (ゴースト = そこに在った輪郭そのもの)、added / changed は after の
+/// 位置にハロー半径 (本体 + オフセット)。色・破線・線幅 (描き方) は Vue が持つ。
+#[derive(Serialize)]
+pub struct DiffMarkIr {
+    pub status: DiffStatus,
+    pub x: f64,
+    pub y: f64,
+    pub radius: f64,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffStatus {
+    Added,
+    Changed,
+    Removed,
+}
+
+/// 差分強調つきの配置済み IR。after 基準の `SpellIr` (viewBox はゴースト分を
+/// 拡張済み) と強調マーク列 (描画順 = removed → changed → added、注目度順) を
+/// 返す。レイアウトは内部で両リビジョン分を計算する (`render_diff` と同じ
+/// 「複雑さを下に畳む」判断)。
+#[must_use]
+pub fn diff_spell_ir(
+    before: &MagiaGraph,
+    after: &MagiaGraph,
+    diff: &crate::diff::SpellDiff,
+) -> (SpellIr, Vec<DiffMarkIr>) {
+    use crate::layout::constants::DIFF_HALO_OFFSET;
+
+    let before_layout = crate::layout::layout(before);
+    let mut after_layout = crate::layout::layout(after);
+
+    let kind_of = |graph: &MagiaGraph, id| {
+        graph
+            .modules
+            .iter()
+            .flat_map(|m| &m.sigils)
+            .find(|s| s.id == id)
+            .map(|s| s.kind)
+    };
+    // 配置と kind の両方が引けたときだけマークを作る (片方欠けた壊れた入力で
+    // 原点に無言描画しない — render_diff の overlay_anchor と同じ規約)。
+    let anchor = |graph: &MagiaGraph, layout: &LayoutResult, id| -> Option<(f64, f64, f64)> {
+        let kind = kind_of(graph, id)?;
+        let position = layout.positions.get(&id)?;
+        Some((position.x, -position.y, sigil_radius(kind)))
+    };
+
+    // ゴーストは before の座標に描くため after のキャンバスからはみ出しうる —
+    // viewBox を必要分だけ広げる (render_diff と同じ計算)。
+    for node in &diff.removed {
+        let Some((x, y, radius)) = anchor(before, &before_layout, node.sigil) else {
+            continue;
+        };
+        let reach = radius + DIFF_HALO_OFFSET + crate::layout::constants::DIFF_HALO_STROKE;
+        let bounds = kurbo::Rect::new(x - reach, -(y + reach), x + reach, -(y - reach));
+        after_layout.canvas = after_layout.canvas.union(bounds);
+    }
+
+    let mut marks = Vec::new();
+    for node in &diff.removed {
+        if let Some((x, y, radius)) = anchor(before, &before_layout, node.sigil) {
+            marks.push(DiffMarkIr {
+                status: DiffStatus::Removed,
+                x: nz(x),
+                y: nz(y),
+                radius: nz(radius),
+            });
+        }
+    }
+    for change in &diff.changed {
+        if let Some((x, y, radius)) = anchor(after, &after_layout, change.after) {
+            marks.push(DiffMarkIr {
+                status: DiffStatus::Changed,
+                x: nz(x),
+                y: nz(y),
+                radius: nz(radius + DIFF_HALO_OFFSET),
+            });
+        }
+    }
+    for node in &diff.added {
+        if let Some((x, y, radius)) = anchor(after, &after_layout, node.sigil) {
+            marks.push(DiffMarkIr {
+                status: DiffStatus::Added,
+                x: nz(x),
+                y: nz(y),
+                radius: nz(radius + DIFF_HALO_OFFSET),
+            });
+        }
+    }
+
+    (spell_ir(after, &after_layout), marks)
+}
+
 // ===== ピン中心ビューのレイアウト (Phase 4.1, spec v0.3 §16 追補) =====
 
 /// ピン中心ビューの全体配置。フォーカス魔法陣 (中央) の周囲に、近接度リングへ

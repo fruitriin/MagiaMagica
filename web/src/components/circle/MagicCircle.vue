@@ -8,7 +8,7 @@
 import { computed } from "vue";
 
 import { usePaletteStore } from "../../stores/palette.ts";
-import type { MagicCircleSchema, SchemaLayer } from "../../types/magia.ts";
+import type { DiffMark, MagicCircleSchema, SchemaLayer } from "../../types/magia.ts";
 import EdgeLine from "./EdgeLine.vue";
 import GlyphDot from "./GlyphDot.vue";
 import OperationDot from "./OperationDot.vue";
@@ -17,9 +17,22 @@ import RingCircle from "./RingCircle.vue";
 import SignatureArc from "./SignatureArc.vue";
 import SymbolMark from "./SymbolMark.vue";
 
-const props = defineProps<{ schema: MagicCircleSchema }>();
+const props = defineProps<{
+  schema: MagicCircleSchema;
+  /** 差分強調 (overlay-diff、Phase 4.3 M4)。配列順に最上層へ描く。
+   *  強調チャネルはレイヤーの show/hide の影響を受けない (spec v0.3 §8)。 */
+  overlay?: DiffMark[];
+}>();
 
 const palette = usePaletteStore();
+
+/** 差分強調の意匠 (palette.rs の DIFF_* / layout constants と同値 —
+ *  ハロー = 実線、ゴースト (removed) = 破線・半透明)。 */
+const DIFF_STYLE: Record<DiffMark["status"], { color: string; dash?: string; opacity?: number }> = {
+  added: { color: "#d4a017" },
+  changed: { color: "#00a0c0" },
+  removed: { color: "#909090", dash: "5 4", opacity: 0.6 },
+};
 
 type DrawItem =
   | { kind: "circle"; z: number; circle: MagicCircleSchema["circles"][number] }
@@ -119,5 +132,22 @@ function layerStyle(layer: SchemaLayer | null): Record<string, string> {
       <RawFragment v-else :raw="item.raw" :style="layerStyle(itemLayer(item))" />
     </template>
     <SignatureArc v-if="schema.signature" :signature="schema.signature" />
+    <!-- overlay-diff (最上層): 金ハロー = 追加 / シアンハロー = 変更 /
+         灰破線ゴースト = 削除 (Phase 3.2 の意匠規約を Vue へ移植) -->
+    <g v-if="overlay" class="overlay-diff">
+      <circle
+        v-for="(mark, index) in overlay"
+        :key="index"
+        :class="`diff-${mark.status}`"
+        :cx="mark.x"
+        :cy="mark.y"
+        :r="mark.radius"
+        fill="none"
+        :stroke="DIFF_STYLE[mark.status].color"
+        stroke-width="2.5"
+        :stroke-dasharray="DIFF_STYLE[mark.status].dash"
+        :stroke-opacity="DIFF_STYLE[mark.status].opacity"
+      />
+    </g>
   </svg>
 </template>
