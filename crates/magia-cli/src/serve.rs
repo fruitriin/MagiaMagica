@@ -36,8 +36,12 @@ use crate::srcview::highlight_rust;
 const DEBOUNCE: Duration = Duration::from_millis(120);
 
 /// 直近の正常スナップショット。構文エラー中の配信はここから行う。
+/// `file` を含めて1ロックでスワップする — 切替 (Phase 4.4.5) 中に
+/// 「新しい一覧 + 旧ファイル名」のような不整合な応答を返さない。
 #[derive(Default)]
 struct GoodSnapshot {
+    /// このスナップショットの由来ファイル (表示名・diff の gitio 解決に使う)。
+    file: PathBuf,
     source: String,
     functions: Vec<FunctionEntry>,
     /// 関数間の呼び出しエッジ (近接度の入力)。reload 時に1回だけ構築する
@@ -54,10 +58,8 @@ struct ServeError {
 
 /// ブラウザに配る共有状態。
 struct Shared {
-    /// 監視対象の実パス (Phase 4.4.5 で切替可能に — 表示名もここから導出)。
-    file: Mutex<PathBuf>,
     /// watcher スレッドへの制御送信 (ファイル切替、Phase 4.4.5)。
-    /// 起動順の都合で遅延設定 (spawn_watcher が埋める)。
+    /// 起動順 (`run`: reload → spawn_watcher → HTTP bind) の都合で遅延設定。
     watch_tx: Mutex<Option<Sender<WatchMsg>>>,
     good: Mutex<GoodSnapshot>,
     error: Mutex<Option<ServeError>>,
@@ -77,9 +79,8 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Shared {
-    fn new(file: PathBuf) -> Self {
+    fn new() -> Self {
         Self {
-            file: Mutex::new(file),
             watch_tx: Mutex::new(None),
             good: Mutex::new(GoodSnapshot::default()),
             error: Mutex::new(None),
@@ -124,7 +125,7 @@ impl Shared {
         let error = lock_or_recover(&self.error);
         serde_json::json!({
             "version": self.version.load(Ordering::SeqCst),
-            "file": lock_or_recover(&self.file).display().to_string(),
+            "file": good.file.display().to_string(),
             "functions": functions,
             "error": error.as_ref().map(|e| serde_json::json!({
                 "message": e.message,
@@ -144,7 +145,7 @@ impl Shared {
     ) -> Option<Result<String, String>> {
         // レンダリング (parse + layout + render ×2 + syntect) は重いので、
         // ロックは複製を取るまでに留める — reload (保存) を /spell がブロックしない。
-        let (source, entry, all, call_edges) = {
+        let (source, entry, all, call_edges, file) = {
             let good = lock_or_recover(&self.good);
             let entry = good
                 .functions
@@ -156,9 +157,16 @@ impl Shared {
             } else {
                 (Vec::new(), Vec::new())
             };
-            (good.source.clone(), entry, all, call_edges)
+            // file はスナップショットと同一ロックで取る — diff の gitio 解決が
+            // 「good と別ファイル」を見る不整合を防ぐ (レビュー W-2)。
+            (
+                good.source.clone(),
+                entry,
+                all,
+                call_edges,
+                good.file.clone(),
+            )
         };
-        let file = lock_or_recover(&self.file).clone();
         Some(render_spell(
             &source,
             &entry,
@@ -264,6 +272,7 @@ fn load_snapshot(file: &Path) -> Result<GoodSnapshot, ServeError> {
         message: e.to_string(),
     })?;
     Ok(GoodSnapshot {
+        file: file.to_path_buf(),
         source,
         functions,
         call_edges,
@@ -527,7 +536,7 @@ fn source_lines(source: &str, start_line: usize, end_line: usize) -> String {
 /// dev-server を起動する。Ctrl-C で終了するまで戻らない。
 pub(crate) fn run(file: &Path, port: u16) -> Result<()> {
     let file = file.to_path_buf();
-    let shared = Arc::new(Shared::new(file.clone()));
+    let shared = Arc::new(Shared::new());
 
     // 初回読み込み (エラーでもサーバは起動し、画面にエラーを出す)。
     shared.reload(&file);
@@ -595,47 +604,81 @@ fn spawn_watcher(shared: Arc<Shared>, file: PathBuf) -> Result<()> {
 
     std::thread::spawn(move || {
         // watcher はこのスレッドが握り続ける (drop すると監視が止まる)。
-        let mut watcher = watcher;
-        let mut current = file;
-        let mut current_parent = parent;
-        let mut current_name = watched_name;
+        let mut state = WatcherState {
+            watcher,
+            current: file,
+            parent,
+            name: watched_name,
+        };
         while let Ok(message) = rx.recv() {
             match message {
                 WatchMsg::Fs(event) => {
-                    if !event_touches(&event, &current_name) {
+                    if !event_touches(&event, &state.name) {
                         continue;
                     }
-                    // デバウンス: 静まるまで追加イベントを飲み込む (切替は飲まない)。
-                    while let Ok(WatchMsg::Fs(_)) = rx.recv_timeout(DEBOUNCE) {}
-                    shared.reload(&current);
-                }
-                WatchMsg::Switch(next) => {
-                    let Some(name) = next.file_name() else {
-                        continue; // 検証済みパスのみ届く想定 (防御)
-                    };
-                    let next_parent = parent_dir(&next);
-                    if next_parent != current_parent {
-                        // 旧監視の解除失敗は致命でない (新監視が機能すればよい)。
-                        let _ = watcher.unwatch(&current_parent);
-                        if watcher
-                            .watch(&next_parent, RecursiveMode::NonRecursive)
-                            .is_err()
-                        {
-                            // 新監視に失敗: 旧監視へ戻して切替を中止する (壊れた状態にしない)。
-                            let _ = watcher.watch(&current_parent, RecursiveMode::NonRecursive);
-                            continue;
+                    // デバウンス: 静まるまで追加 FS イベントを飲み込む。
+                    // Switch を飲んだら退避して reload 後に処理する
+                    // (黙って捨てると「切替したのに旧ファイル監視のまま」— レビュー W-1)。
+                    let mut pending_switch = None;
+                    loop {
+                        match rx.recv_timeout(DEBOUNCE) {
+                            Ok(WatchMsg::Fs(_)) => {}
+                            Ok(WatchMsg::Switch(next)) => {
+                                pending_switch = Some(next);
+                                break;
+                            }
+                            Err(_) => break,
                         }
-                        current_parent = next_parent;
                     }
-                    current_name = name.to_os_string();
-                    lock_or_recover(&shared.file).clone_from(&next);
-                    current = next;
-                    shared.reload(&current);
+                    shared.reload(&state.current);
+                    if let Some(next) = pending_switch {
+                        state.switch(&shared, next);
+                    }
                 }
+                WatchMsg::Switch(next) => state.switch(&shared, next),
             }
         }
     });
     Ok(())
+}
+
+/// watcher スレッドの状態 (監視対象と notify ハンドル)。
+struct WatcherState {
+    watcher: notify::RecommendedWatcher,
+    current: PathBuf,
+    parent: PathBuf,
+    name: std::ffi::OsString,
+}
+
+impl WatcherState {
+    /// 監視対象を切り替える。親ディレクトリが変わるときは watch を張り替え、
+    /// 失敗したら旧監視へ戻して中止する (壊れた状態にしない)。
+    /// `Shared` 側のファイル名公開は reload (スナップショットの一括スワップ) に
+    /// 一本化する — 一覧とファイル名が別ロックでずれない (レビュー W-2)。
+    fn switch(&mut self, shared: &Shared, next: PathBuf) {
+        let Some(name) = next.file_name() else {
+            return; // 検証済みパスのみ届く想定 (防御)
+        };
+        let next_parent = parent_dir(&next);
+        if next_parent != self.parent {
+            // 旧監視の解除失敗は致命でない (新監視が機能すればよい)。
+            let _ = self.watcher.unwatch(&self.parent);
+            if self
+                .watcher
+                .watch(&next_parent, RecursiveMode::NonRecursive)
+                .is_err()
+            {
+                let _ = self
+                    .watcher
+                    .watch(&self.parent, RecursiveMode::NonRecursive);
+                return;
+            }
+            self.parent = next_parent;
+        }
+        self.name = name.to_os_string();
+        self.current = next;
+        shared.reload(&self.current);
+    }
 }
 
 fn event_touches(event: &notify::Result<notify::Event>, watched_name: &std::ffi::OsStr) -> bool {
