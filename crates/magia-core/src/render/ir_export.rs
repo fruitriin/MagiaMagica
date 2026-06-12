@@ -360,6 +360,9 @@ pub fn focus_layout(
     neighbors: &[(crate::proximity::Neighbor, NeighborMeta)],
 ) -> FocusLayout {
     let [min_x, min_y, width, height] = focus_view_box;
+    // viewBox の幾何学的中心 = 魔法陣の視覚的中心 (0,0) という前提
+    // (layout::canvas は対称に取られる)。4.2 で非対称レイアウトが入るなら
+    // 視覚的中心を別途受け取る形に変えること (レビュー I1 の記録)。
     let center_x = min_x + width / 2.0;
     let center_y = min_y + height / 2.0;
     let focus_radius = (width.max(height)) / 2.0;

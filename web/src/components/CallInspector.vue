@@ -6,7 +6,7 @@
 // 同ファイルの関数に解決できれば定義コード断片 (syntect HTML) も出し、
 // クリックでピン遷移 — 外周にピン用シンボルを別建てせず、図の中の「呼び出し」
 // からそのまま潜れる (オーナー要望 2026-06-11。厳密な呼び出し解決は Phase 4.4)。
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { fetchSpell } from "../composables/api.ts";
@@ -28,7 +28,20 @@ const excerptHtml = computed(() => {
   return focus.spell?.call_excerpts[String(call.glyphIrId)] ?? null;
 });
 
-/** 解決先のコード断片 (syntect HTML)。インスペクタを開くたびに取得する。 */
+/** 開いたら閉じるボタンへフォーカスを移す (ダイアログの認知 + キーボード到達)。 */
+const closeButton = ref<HTMLButtonElement | null>(null);
+watch(
+  () => focus.inspectedCall,
+  async (call) => {
+    if (call === null) return;
+    await nextTick();
+    closeButton.value?.focus();
+  },
+);
+
+/** 解決先のコード断片 (syntect HTML)。インスペクタを開くたびに取得する。
+ *  resolved は callTarget → qualified の写像 — glyphIrId が再採番されても
+ *  呼び出し先の定義は変わらないため、watch の比較は callTarget ベースでよい。 */
 const sourceHtml = ref<string | null>(null);
 watch(
   () => [focus.inspectedCall, resolved.value] as const,
@@ -103,12 +116,20 @@ onUnmounted(() => {
         text-sm
         :style="popoverStyle"
         role="dialog"
+        aria-modal="true"
         aria-label="呼び出し先"
         @click.stop
       >
         <div flex items-baseline justify-between gap-3>
           <code text-xs font-bold>{{ focus.inspectedCall.callTarget }}</code>
-          <button text-xs text-gray-400 hover:text-gray-700 @click="focus.closeInspector()">
+          <button
+            ref="closeButton"
+            text-xs
+            text-gray-400
+            hover:text-gray-700
+            aria-label="閉じる"
+            @click="focus.closeInspector()"
+          >
             ✕
           </button>
         </div>

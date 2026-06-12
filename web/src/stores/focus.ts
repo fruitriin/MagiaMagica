@@ -96,8 +96,9 @@ export const useFocusStore = defineStore("focus", () => {
     serverError.value = state.error;
   }
 
-  /** 選択リクエストの世代。後発の選択があったら先発の応答を捨てる (競合防止)。 */
-  let selectSeq = 0;
+  /** 選択リクエストの世代。後発の選択があったら先発の応答を捨てる (競合防止)。
+   *  ref にしてストアの再生成 (テストの setActivePinia 等) とライフサイクルを揃える。 */
+  const selectSeq = ref(0);
 
   /**
    * 関数を選択して呪文を取得する。`fn` が一覧にない場合や未指定の場合は先頭の関数。
@@ -109,18 +110,18 @@ export const useFocusStore = defineStore("focus", () => {
     const target = fn !== null && functions.value.some((f) => f.qualified === fn) ? fn : fallback;
     if (target === null) return;
     currentFn.value = target;
-    selectSeq += 1;
-    const seq = selectSeq;
+    selectSeq.value += 1;
+    const seq = selectSeq.value;
     try {
       const next = await fetchSpell(target);
-      if (seq !== selectSeq) return; // 古い応答 — 後発の選択が優先
+      if (seq !== selectSeq.value) return; // 古い応答 — 後発の選択が優先
       spell.value = next;
       loadError.value = null;
       // 図が差し替わるとホバー元のドットが消えて mouseleave が来ないことがある
       hoverExcerpt.value = null;
       useSourceStore().setSource(next.source_html, next.start_line);
     } catch (e) {
-      if (seq !== selectSeq) return;
+      if (seq !== selectSeq.value) return;
       loadError.value = e instanceof Error ? e.message : String(e);
     }
   }

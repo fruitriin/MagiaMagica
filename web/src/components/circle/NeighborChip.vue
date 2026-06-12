@@ -22,6 +22,7 @@ const displayName = () => {
     cursor-pointer
     @click="emit('pin', chip.qualified)"
     @keydown.enter="emit('pin', chip.qualified)"
+    @keydown.space.prevent="emit('pin', chip.qualified)"
   >
     <title>{{ chip.signature }}</title>
     <circle
