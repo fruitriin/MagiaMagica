@@ -27,7 +27,7 @@ use notify::{RecursiveMode, Watcher};
 use magia_core::layout::layout;
 use magia_core::proximity::{NeighborSeed, classify_neighbors};
 use magia_core::render::ir_export::{NeighborMeta, SpanIr, SpellIr, focus_layout, spell_ir};
-use magia_rust::{FunctionEntry, function_index_with_calls, parse_function};
+use magia_rust::{FunctionEntry, function_index_with_calls, parse_function, workspace_index};
 
 use crate::srcview::highlight_rust;
 
@@ -212,39 +212,58 @@ fn list_rs_files() -> Vec<String> {
     files
 }
 
-/// ワークスペース俯瞰 (Phase 4.5 M1): 全 .rs の関数一覧。
-/// パース失敗 (構文エラー・マクロ限界) は俯瞰を壊さず error フラグでスキップする。
+/// ワークスペース俯瞰 (Phase 4.5 M1): 全 .rs の関数一覧 + ファイル横断の呼び出し
+/// エッジ (M2 前段)。パース失敗 (構文エラー・マクロ限界) は俯瞰を壊さず error
+/// フラグでスキップする。読めないファイル (権限・削除レース) も同じ error 扱い。
 /// オンデマンド構築 (キャッシュなし — ローカル dev の俯瞰を開く頻度では十分)。
 fn workspace_json() -> String {
-    let files: Vec<serde_json::Value> = list_rs_files()
+    let sources: Vec<(String, String)> = list_rs_files()
         .into_iter()
         .map(|path| {
-            let dir = Path::new(&path)
+            // 読めない場合は空ソース (パース成功・関数0) でなく構文エラーに倒して
+            // error フラグを立てる ("(" は対応括弧がなく syn::File として必ず不正)。
+            let source = std::fs::read_to_string(&path).unwrap_or_else(|_| "(".to_string());
+            (path, source)
+        })
+        .collect();
+    // local_edges (FileIndex に含まれる同ファイル内エッジ) は M2 本実装
+    // (ミニ魔法陣タイル等) まで JSON に載せない — 俯瞰のペイロードを薄く保つ。
+    let (files, cross_edges) = workspace_index(&sources);
+    let files: Vec<serde_json::Value> = files
+        .iter()
+        .map(|file| {
+            let dir = Path::new(&file.path)
                 .parent()
                 .map_or_else(String::new, |p| p.display().to_string());
-            match std::fs::read_to_string(&path)
-                .ok()
-                .and_then(|source| function_index_with_calls(&source).ok())
-            {
-                Some((functions, _)) => {
-                    let functions: Vec<_> = functions
-                        .iter()
-                        .map(|f| {
-                            serde_json::json!({
-                                "qualified": f.qualified,
-                                "signature": f.signature,
-                            })
-                        })
-                        .collect();
-                    serde_json::json!({ "path": path, "dir": dir, "functions": functions })
-                }
-                None => {
-                    serde_json::json!({ "path": path, "dir": dir, "functions": [], "error": true })
-                }
+            let functions: Vec<_> = file
+                .entries
+                .iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "qualified": f.qualified,
+                        "signature": f.signature,
+                    })
+                })
+                .collect();
+            if file.error {
+                serde_json::json!({ "path": file.path, "dir": dir, "functions": [], "error": true })
+            } else {
+                serde_json::json!({ "path": file.path, "dir": dir, "functions": functions })
             }
         })
         .collect();
-    serde_json::json!({ "files": files }).to_string()
+    let cross_edges: Vec<serde_json::Value> = cross_edges
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "from_file": e.from_file,
+                "from": e.from,
+                "to_file": e.to_file,
+                "to": e.to,
+            })
+        })
+        .collect();
+    serde_json::json!({ "files": files, "cross_edges": cross_edges }).to_string()
 }
 
 /// 監視ファイルの切替 (Phase 4.4.5)。検証して watcher スレッドへ送る。

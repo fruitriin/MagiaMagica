@@ -41,17 +41,24 @@ export const useFocusStore = defineStore("focus", () => {
       }[]
     | null
   >(null);
+  /** ファイル横断の呼び出しエッジ (俯瞰と同時に取得 — Phase 4.5 M2 前段)。 */
+  const workspaceEdges = ref<{ from_file: string; from: string; to_file: string; to: string }[]>(
+    [],
+  );
 
   /** 視野を切り替える。俯瞰に入るとき内容を取得する (毎回 — ファイルは動くため)。 */
   async function setScope(next: "focus" | "workspace") {
     scope.value = next;
     if (next === "workspace") {
       try {
-        workspace.value = (await fetchWorkspace()).files;
+        const response = await fetchWorkspace();
+        workspace.value = response.files;
+        workspaceEdges.value = response.cross_edges;
         loadError.value = null;
       } catch (e) {
         // 黙落ちさせない — 空の俯瞰とサーバ障害をバナーで区別できるようにする
         workspace.value = [];
+        workspaceEdges.value = []; // 前回の俯瞰のエッジを残さない (表示との不整合防止)
         loadError.value = e instanceof Error ? e.message : String(e);
       }
     }
@@ -251,6 +258,7 @@ export const useFocusStore = defineStore("focus", () => {
     diffRev,
     scope,
     workspace,
+    workspaceEdges,
     setScope,
     spell,
     loadError,

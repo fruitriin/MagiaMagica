@@ -577,7 +577,8 @@ fn workspace_endpoint_lists_functions_per_file() {
     let file = temp_fixture("overview.rs", INITIAL);
     let dir = file.parent().unwrap().to_path_buf();
     std::fs::create_dir_all(dir.join("sub")).unwrap();
-    std::fs::write(dir.join("sub/extra.rs"), "fn deep() {}\n").unwrap();
+    // deep → watched はファイル横断呼び出し (cross_edges の素材)。
+    std::fs::write(dir.join("sub/extra.rs"), "fn deep() { watched(1); }\n").unwrap();
     std::fs::write(dir.join("broken.rs"), "fn broken( {\n").unwrap();
     let server = spawn_server_in(&dir, &file);
 
@@ -609,4 +610,17 @@ fn workspace_endpoint_lists_functions_per_file() {
     let broken = by_path("broken.rs");
     assert_eq!(broken["error"], true);
     assert_eq!(broken["functions"].as_array().unwrap().len(), 0);
+
+    // ファイル横断の呼び出しエッジ (Phase 4.5 M2 前段): deep → watched が
+    // ワークスペース内で一意に解決される。
+    let cross = workspace["cross_edges"].as_array().unwrap();
+    assert_eq!(
+        cross,
+        &[serde_json::json!({
+            "from_file": "sub/extra.rs",
+            "from": "deep",
+            "to_file": "overview.rs",
+            "to": "watched",
+        })]
+    );
 }

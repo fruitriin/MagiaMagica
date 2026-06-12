@@ -7,7 +7,7 @@
 //! 名前は impl 文脈つきの **qualified 形式** (`Foo::bar`、トップレベルは `bar`) を
 //! 正とする (同名メソッドが impl 違いで複数あるケースの一意キー、計画の設計判断)。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use quote::ToTokens;
 use syn::spanned::Spanned;
@@ -62,45 +62,73 @@ pub fn function_index(source: &str) -> Result<Vec<FunctionEntry>, crate::Error> 
 pub fn function_index_with_calls(
     source: &str,
 ) -> Result<(Vec<FunctionEntry>, Vec<CallEdge>), crate::Error> {
+    let scan = scan_file(source)?;
+    Ok((scan.entries, scan.local_edges))
+}
+
+/// 走査1回分の素材。`function_index_with_calls` と `workspace_index` が共有する
+/// (同じソースを2回パースする公開 API を増やさない — Phase 4.2 レビューの規約)。
+struct FileScan {
+    entries: Vec<FunctionEntry>,
+    /// 同ファイル内で解決できた呼び出し (caller → callee、重複なし)。
+    local_edges: Vec<CallEdge>,
+    /// 同ファイルで解決できなかった呼び出し先 (caller qualified, 正規化済み target)。
+    /// メソッド呼び出しは先頭 `.` を保持する (横断解決の除外判定に使う)。
+    unresolved: Vec<(String, String)>,
+}
+
+fn scan_file(source: &str) -> Result<FileScan, crate::Error> {
     let file: File = syn::parse_str(source)?;
     let uses = UseMap::from_file(&file);
     let mut walker = FunctionWalker::default();
     walker.visit_file(&file);
     let mut seen = BTreeSet::new();
-    let mut edges = Vec::new();
+    let mut local_edges = Vec::new();
+    let mut unresolved = Vec::new();
     for (entry, body) in walker.entries.iter().zip(&walker.bodies) {
         for stmt in &body.block.stmts {
             for call in collect_calls_in_stmt(stmt, &uses) {
-                let Some(callee) = resolve_local_target(&call.target, entry, &walker.entries)
-                else {
+                let Some(normalized) = normalize_target(&call.target, entry) else {
                     continue;
                 };
-                if callee == entry.qualified {
-                    continue;
-                }
-                if seen.insert((entry.qualified.clone(), callee.clone())) {
-                    edges.push((entry.qualified.clone(), callee));
+                match resolve_local_target(&normalized, entry, &walker.entries) {
+                    Some(callee) if callee == entry.qualified => {} // 自己再帰
+                    Some(callee) => {
+                        if seen.insert((entry.qualified.clone(), callee.clone())) {
+                            local_edges.push((entry.qualified.clone(), callee));
+                        }
+                    }
+                    None => unresolved.push((entry.qualified.clone(), normalized)),
                 }
             }
         }
     }
-    Ok((walker.entries, edges))
+    Ok(FileScan {
+        entries: walker.entries,
+        local_edges,
+        unresolved,
+    })
+}
+
+/// 照合用の形に正規化する: マクロと「impl 文脈なしの `Self::`」は解決不能として
+/// `None` (エッジ素材から除外)。`Self::x` は呼び出し元の impl 文脈で置換する。
+fn normalize_target(target: &str, caller: &FunctionEntry) -> Option<String> {
+    if target.ends_with('!') {
+        return None;
+    }
+    match target.strip_prefix("Self::") {
+        Some(rest) => Some(format!("{}::{rest}", caller.impl_context.as_ref()?)),
+        None => Some(target.to_string()),
+    }
 }
 
 /// 呼び出し先の名前を同ファイルの関数 (qualified) へ解決する。
 fn resolve_local_target(
-    target: &str,
+    normalized: &str,
     caller: &FunctionEntry,
     entries: &[FunctionEntry],
 ) -> Option<String> {
-    if target.ends_with('!') {
-        return None;
-    }
-    let plain = target.strip_prefix('.').unwrap_or(target);
-    let plain = match plain.strip_prefix("Self::") {
-        Some(rest) => format!("{}::{rest}", caller.impl_context.as_ref()?),
-        None => plain.to_string(),
-    };
+    let plain = normalized.strip_prefix('.').unwrap_or(normalized);
     // 同名メソッドが複数 impl にあるときは呼び出し元と同じ impl を優先する
     // (`self.method()` の最も確からしい解決)。qualified 完全一致 → 同 impl の
     // 名前一致 → 定義順先頭の名前一致、の3段フォールバック。
@@ -114,6 +142,150 @@ fn resolve_local_target(
         })
         .or_else(|| entries.iter().find(|e| e.name == plain))
         .map(|e| e.qualified.clone())
+}
+
+/// ワークスペース1ファイル分の索引結果 (Phase 4.5 M2 前段)。
+#[derive(Debug)]
+pub struct FileIndex {
+    /// 呼び出し側が渡したパス (そのまま返す — serve の cwd 相対パスが前提)。
+    pub path: String,
+    /// 関数索引 (パース失敗時は空)。
+    pub entries: Vec<FunctionEntry>,
+    /// 同ファイル内の呼び出しエッジ。
+    pub local_edges: Vec<CallEdge>,
+    /// パース失敗 (俯瞰を壊さずスキップしたフラグ)。
+    pub error: bool,
+}
+
+/// ファイル横断の呼び出しエッジ (from/to は qualified)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossFileEdge {
+    pub from_file: String,
+    pub from: String,
+    pub to_file: String,
+    pub to: String,
+}
+
+/// ワークスペース全体の関数索引 + ファイル横断の呼び出しグラフ (Phase 4.5 M2 前段)。
+///
+/// 各ファイルは1回だけパースし、同ファイル内で解決できなかった呼び出し先を
+/// ワークスペース全体へ3段照合する:
+/// 1. 正規化済み target と qualified の完全一致
+/// 2. target の末尾2セグメント (`mod::Type::method` → `Type::method`)
+/// 3. 末尾1セグメントとトップレベル関数名 (`mod::func` → `func`)
+///
+/// **各段でワークスペース内に一意に決まるときだけ**エッジにする (複数候補 = 曖昧
+/// として捨てる — 自動計算の偽陽性回避、4.2 の「マクロをエッジにしない」と同じ判断)。
+/// `.method` (レシーバ型不明) はファイル横断では解決しない。
+#[must_use]
+pub fn workspace_index(files: &[(String, String)]) -> (Vec<FileIndex>, Vec<CrossFileEdge>) {
+    let indexed: Vec<(FileIndex, Vec<(String, String)>)> = files
+        .iter()
+        .map(|(path, source)| match scan_file(source) {
+            Ok(scan) => (
+                FileIndex {
+                    path: path.clone(),
+                    entries: scan.entries,
+                    local_edges: scan.local_edges,
+                    error: false,
+                },
+                scan.unresolved,
+            ),
+            Err(_) => (
+                FileIndex {
+                    path: path.clone(),
+                    entries: Vec::new(),
+                    local_edges: Vec::new(),
+                    error: true,
+                },
+                Vec::new(),
+            ),
+        })
+        .collect();
+
+    // qualified → (ファイル番号, qualified)。同名の出現は全部持つ (一意性判定に使う)。
+    let mut by_qualified: HashMap<&str, Vec<(usize, &str)>> = HashMap::new();
+    for (idx, (file, _)) in indexed.iter().enumerate() {
+        for entry in &file.entries {
+            by_qualified
+                .entry(entry.qualified.as_str())
+                .or_default()
+                .push((idx, entry.qualified.as_str()));
+        }
+    }
+
+    let mut seen = BTreeSet::new();
+    let mut cross = Vec::new();
+    for (from_idx, (file, unresolved)) in indexed.iter().enumerate() {
+        for (from, target) in unresolved {
+            if target.starts_with('.') {
+                continue; // レシーバ型不明のメソッド呼び出しは横断解決しない
+            }
+            let Some(&(to_idx, to)) = unique_workspace_match(target, &by_qualified) else {
+                continue;
+            };
+            if to_idx == from_idx {
+                continue; // 同ファイルはローカル解決済みのはず (防御)
+            }
+            let edge = CrossFileEdge {
+                from_file: file.path.clone(),
+                from: from.clone(),
+                to_file: indexed[to_idx].0.path.clone(),
+                to: to.to_string(),
+            };
+            if seen.insert((
+                edge.from_file.clone(),
+                edge.from.clone(),
+                to_idx,
+                edge.to.clone(),
+            )) {
+                cross.push(edge);
+            }
+        }
+    }
+    (indexed.into_iter().map(|(file, _)| file).collect(), cross)
+}
+
+/// 3段照合の1ターゲット分。各段で候補が**ちょうど1つ**のときだけ採用する。
+fn unique_workspace_match<'a>(
+    target: &str,
+    by_qualified: &'a HashMap<&str, Vec<(usize, &'a str)>>,
+) -> Option<&'a (usize, &'a str)> {
+    // 段1: 完全一致 (`Type::method` / `func` がそのまま定義されている)
+    if let Some(found) = unique(by_qualified.get(target)) {
+        return Some(found);
+    }
+    let segments: Vec<&str> = target.split("::").collect();
+    // 段2: 末尾2セグメント (`crate::module::Type::method` → `Type::method`)
+    if segments.len() > 2 {
+        let tail2 = format!(
+            "{}::{}",
+            segments[segments.len() - 2],
+            segments[segments.len() - 1]
+        );
+        if let Some(found) = unique(by_qualified.get(tail2.as_str())) {
+            return Some(found);
+        }
+    }
+    // 段3: 末尾1セグメントとトップレベル関数名 (`module::func` → `func`)
+    if segments.len() > 1 {
+        let tail = segments[segments.len() - 1];
+        if let Some(found) = unique(
+            by_qualified
+                .get(tail)
+                .filter(|c| c.iter().all(|(_, q)| !q.contains("::"))),
+        ) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn unique<T>(candidates: Option<&Vec<T>>) -> Option<&T> {
+    match candidates?.as_slice() {
+        [only] => Some(only),
+        _ => None,
+    }
 }
 
 /// qualified 名 (`Foo::bar`) または素の名前 (`bar`) で関数本体を探す。
@@ -346,5 +518,105 @@ struct B;\nimpl B {\n    fn run(&self) { self.render(); }\n    fn render(&self) 
         let source = "fn a() { b(); b(); b(); }\nfn b() {}\n";
         let (_, edges) = function_index_with_calls(source).unwrap();
         assert_eq!(edges, [("a".to_string(), "b".to_string())]);
+    }
+
+    fn ws(files: &[(&str, &str)]) -> (Vec<FileIndex>, Vec<CrossFileEdge>) {
+        let owned: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, s)| ((*p).to_string(), (*s).to_string()))
+            .collect();
+        workspace_index(&owned)
+    }
+
+    fn edge(from_file: &str, from: &str, to_file: &str, to: &str) -> CrossFileEdge {
+        CrossFileEdge {
+            from_file: from_file.to_string(),
+            from: from.to_string(),
+            to_file: to_file.to_string(),
+            to: to.to_string(),
+        }
+    }
+
+    #[test]
+    fn workspace_resolves_cross_file_calls() {
+        let (files, cross) = ws(&[
+            // use 展開された `util::helper` (段3) と裸の一意名 `unique_fn` (段1)
+            (
+                "main.rs",
+                "use crate::util::helper;\nfn run() { helper(); unique_fn(); }\n",
+            ),
+            ("util.rs", "pub fn helper() {}\n"),
+            ("other.rs", "pub fn unique_fn() {}\n"),
+        ]);
+        assert!(files.iter().all(|f| !f.error));
+        assert_eq!(
+            cross,
+            [
+                edge("main.rs", "run", "util.rs", "helper"),
+                edge("main.rs", "run", "other.rs", "unique_fn"),
+            ]
+        );
+    }
+
+    #[test]
+    fn workspace_resolves_qualified_method_via_tail2() {
+        // `crate::caster::Caster::summon` → 末尾2セグメント `Caster::summon` (段2)
+        let (_, cross) = ws(&[
+            ("a.rs", "fn go() { crate::caster::Caster::summon(); }\n"),
+            (
+                "caster.rs",
+                "pub struct Caster;\nimpl Caster { pub fn summon() {} }\n",
+            ),
+        ]);
+        assert_eq!(cross, [edge("a.rs", "go", "caster.rs", "Caster::summon")]);
+    }
+
+    #[test]
+    fn workspace_skips_ambiguous_and_method_calls() {
+        let (_, cross) = ws(&[
+            // `.method()` はレシーバ不明 → 横断解決しない。
+            // `dup()` は2ファイルに定義 → 曖昧として捨てる。
+            ("a.rs", "fn go(x: T) { x.method(); dup(); }\n"),
+            ("b.rs", "pub fn dup() {}\npub fn method() {}\n"),
+            ("c.rs", "pub fn dup() {}\n"),
+        ]);
+        assert_eq!(cross, []);
+    }
+
+    #[test]
+    fn workspace_prefers_local_resolution() {
+        // 同名がローカルにあればローカル勝ち — 横断エッジは作らない。
+        let (files, cross) = ws(&[
+            ("a.rs", "fn go() { helper(); }\nfn helper() {}\n"),
+            ("b.rs", "pub fn helper() {}\n"),
+        ]);
+        assert_eq!(
+            files[0].local_edges,
+            [("go".to_string(), "helper".to_string())]
+        );
+        assert_eq!(cross, []);
+    }
+
+    #[test]
+    fn workspace_stage3_requires_top_level() {
+        // 段3 (末尾1セグメント) はトップレベル関数のみ — メソッドには倒さない
+        // (`module::render` が `Type::render` に化ける偽陽性の防止)。
+        let (_, cross) = ws(&[
+            ("a.rs", "fn go() { module::render(); }\n"),
+            ("b.rs", "pub struct W;\nimpl W { pub fn render() {} }\n"),
+        ]);
+        assert_eq!(cross, []);
+    }
+
+    #[test]
+    fn workspace_marks_broken_file_and_keeps_going() {
+        let (files, cross) = ws(&[
+            ("ok.rs", "fn fine() { other(); }\n"),
+            ("broken.rs", "fn broken( {\n"),
+            ("lib.rs", "pub fn other() {}\n"),
+        ]);
+        assert!(files[1].error);
+        assert!(files[1].entries.is_empty());
+        assert_eq!(cross, [edge("ok.rs", "fine", "lib.rs", "other")]);
     }
 }

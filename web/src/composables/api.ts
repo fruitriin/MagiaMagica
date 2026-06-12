@@ -15,7 +15,8 @@ export function fetchState(): Promise<StateResponse> {
   return fetchJson<StateResponse>("/state");
 }
 
-/** ワークスペース俯瞰 (Phase 4.5 M1): 全 .rs の関数一覧。 */
+/** ワークスペース俯瞰 (Phase 4.5 M1): 全 .rs の関数一覧 +
+ *  ファイル横断の呼び出しエッジ (M2 前段)。 */
 export function fetchWorkspace(): Promise<{
   files: {
     path: string;
@@ -23,6 +24,7 @@ export function fetchWorkspace(): Promise<{
     functions: { qualified: string; signature: string }[];
     error?: boolean;
   }[];
+  cross_edges: { from_file: string; from: string; to_file: string; to: string }[];
 }> {
   return fetchJson("/workspace");
 }

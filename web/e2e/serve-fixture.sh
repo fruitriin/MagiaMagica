@@ -26,8 +26,10 @@ fn helper(value: i32) -> i32 {
 EOF
 
 # 監視ファイル切替 (Phase 4.4.5) の e2e 用に2ファイル目を置く。
+# orbit → greet はファイル横断呼び出し (Phase 4.5 M2 前段の関係マーク e2e 用)。
 cat > "$E2E_DIR/orbit.rs" << 'ORBITEOF'
 fn orbit(radius: f64) -> f64 {
+    let _label = greet("orbit");
     radius * 2.0 * 3.14159
 }
 ORBITEOF

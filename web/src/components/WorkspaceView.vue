@@ -22,6 +22,35 @@ const groups = computed(() => {
   return [...byDir.entries()].sort(([a], [b]) => a.localeCompare(b));
 });
 
+/** 現在ファイルとの呼び出し関係 (M2 前段)。チップの向きマーク (Phase 4.4) と
+ *  同じ語彙: → = 現在ファイルが呼ぶ / ← = 現在ファイルを呼ぶ / ⇄ = 相互。 */
+const RELATION_MARK = {
+  calls: { mark: "→", note: "現在のファイルが呼ぶ" },
+  called_by: { mark: "←", note: "現在のファイルを呼ぶ" },
+  mutual: { mark: "⇄", note: "相互に呼び合う" },
+} as const;
+
+const relationByFile = computed(() => {
+  const out = new Map<string, keyof typeof RELATION_MARK>();
+  if (focus.file === null) return out;
+  const calls = new Set<string>();
+  const calledBy = new Set<string>();
+  for (const edge of focus.workspaceEdges) {
+    if (edge.from_file === focus.file) calls.add(edge.to_file);
+    if (edge.to_file === focus.file) calledBy.add(edge.from_file);
+  }
+  for (const path of calls) out.set(path, calledBy.has(path) ? "mutual" : "calls");
+  for (const path of calledBy) {
+    if (!calls.has(path)) out.set(path, "called_by");
+  }
+  return out;
+});
+
+function relationOf(path: string) {
+  const kind = relationByFile.value.get(path);
+  return kind === undefined ? null : RELATION_MARK[kind];
+}
+
 async function zoomInto(path: string) {
   // ズームイン: ファイルを切り替えてピン中心ビューへ。切替の追従は SSE。
   // switchFile はエラーを loadError に畳む設計 — 失敗時は俯瞰に留まり、
@@ -57,8 +86,21 @@ async function zoomInto(path: string) {
             :title="file.path"
             @click="zoomInto(file.path)"
           >
-            <div truncate text-xs font-bold font-mono>
-              {{ file.path.split("/").pop() }}
+            <div flex items-baseline gap-1>
+              <span truncate text-xs font-bold font-mono>
+                {{ file.path.split("/").pop() }}
+              </span>
+              <!-- 現在ファイルとの呼び出し関係 (M2 前段、4.4 のチップマークと同じ語彙) -->
+              <span
+                v-if="relationOf(file.path)"
+                class="file-relation"
+                shrink-0
+                text-xs
+                text-cyan-600
+                :title="relationOf(file.path)!.note"
+              >
+                {{ relationOf(file.path)!.mark }}
+              </span>
             </div>
             <div text-xs text-gray-400>
               {{ file.error ? "解析エラー" : `${file.functions.length} 関数` }}

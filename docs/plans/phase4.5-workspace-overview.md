@@ -98,3 +98,36 @@ dev-server に「ワークスペース俯瞰モード」を加える。
 - W-2: 統合テストの panic メッセージ向き修正
 - W-3: setScope の fetch 失敗を loadError に乗せる (黙落ち禁止)
 - S-2: ファイルカードに cursor-pointer
+
+## 実装結果メモ — M2 前段: ワークスペース呼び出しグラフ (2026-06-12)
+
+### 選定経緯 (自律ループ)
+
+Rust/土台系の未着手タスクが尽きたため、M2 候補 (ミニ魔法陣タイル / モジュール階層距離 /
+呼び出し矢印 / 距離フェード) の**どれを選んでも必要になる共通土台**だけを先行実装した
+(no-regret)。意匠判断は先取りせず、UI は判定合格済みの 4.4 語彙 (→/←/⇄) を
+俯瞰カードに薄く再利用するに留めた。
+
+### 実装内容
+
+- **`magia_rust::workspace_index(files) -> (Vec<FileIndex>, Vec<CrossFileEdge>)`**:
+  既存 `function_index_with_calls` の走査を `scan_file` (entries + local_edges +
+  unresolved) に共通化し (1パース共有)、未解決 call target をワークスペース全体へ
+  **3段照合**: ①正規化済み target と qualified の完全一致 ②末尾2セグメント
+  (`mod::Type::method` → `Type::method`) ③末尾1セグメント = **トップレベル関数のみ**
+  (`module::func` → `func`。メソッドに倒さない — `Type::render` への誤接続防止)
+- **各段で一意に決まるときだけエッジ採用** (複数候補 = 曖昧として捨てる)。
+  `.method` (レシーバ型不明) は横断解決しない。マクロ・文脈なし Self:: は素材から除外
+- serve `GET /workspace` に `cross_edges: [{from_file, from, to_file, to}]` を追加。
+  読めないファイルは "(" ソースで構文エラーに倒して error フラグ
+- 俯瞰カードに現在ファイルとの関係マーク (→ 呼ぶ / ← 呼ばれる / ⇄ 相互)
+- 実リポジトリの自己ホスティング検証: 全120エッジ、`workspace_json → workspace_index`
+  `render_spell → classify_neighbors` 等いずれも実態どおり
+
+### M2 本実装への引き継ぎ
+
+- `FileIndex.local_edges` は API にあるが JSON 未出力 (ペイロード薄く保つ —
+  ミニ魔法陣タイルで必要になったら載せる)
+- WorkspaceProximity (距離モデル) は視覚 (タイル配置 or 矢印) とセットで設計する —
+  cross_edges + dir 階層が入力としてそのまま使える
+- relationOf() の template 3回評価はカードのコンポーネント切り出し時に解消 (レビュー S-1)

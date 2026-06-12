@@ -360,6 +360,10 @@ test("俯瞰: トグルで全ファイルカードが並び、カードクリッ
   const sampleCard = page.locator("button.file-card", { hasText: "sample.rs" });
   await expect(sampleCard).toHaveClass(/border-cyan-600/);
   await expect(sampleCard).toContainText("greet");
+  // ファイル横断の呼び出し関係 (M2 前段): orbit.rs は現在ファイル (sample.rs の
+  // greet) を呼ぶ → 「←」マーク (4.4 のチップマークと同じ語彙)。
+  await expect(orbitCard.locator(".file-relation")).toHaveText("←");
+  await expect(sampleCard.locator(".file-relation")).toHaveCount(0);
   // カードクリック → ファイル切替 (4.4.5) + ピン中心ビューへズームイン。
   await orbitCard.click();
   await expect(page.locator("header span").first()).toHaveText("orbit", { timeout: 10_000 });

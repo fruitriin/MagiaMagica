@@ -254,3 +254,18 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
 - `docs/plans/phase1.2-syn-to-ir.md`
 - `docs/knowhow/rust-ir-skeleton-pattern.md`
 - `project-docs/magia/spec-v0.1.md` §10.3 / `spec-v0.3.md` §5.1 追補
+
+## ファイル横断の call 解決 (Phase 4.5 M2 前段)
+
+- **横断解決は「ローカルで解けなかった残り」にだけかける**: scan を共通化して
+  (entries + local_edges + unresolved) を1パースで取り、unresolved のみ
+  ワークスペース照合に回す。ローカル勝ちが自然に成立し、二重エッジも出ない
+- **段階照合 + 一意性ガード**: ①完全一致 ②末尾2セグメント (Type::method)
+  ③末尾1セグメント (トップレベル fn のみ)。**各段で候補がちょうど1つのときだけ**
+  採用し、複数候補は次の段に倒さず捨てる (自動計算の偽陽性回避 — 4.2 の
+  「マクロをエッジにしない」と同じ思想)。`.method` は横断では解決しない
+- **段3をトップレベル関数に限定する理由**: `module::render()` が無関係な
+  `Type::render` メソッドに化ける誤接続が高頻度で起きる (render/new/get 等の
+  汎用名)。トップレベル限定で精度が大きく上がる
+- 検証は**自己ホスティング**が早い: 実リポジトリの /workspace を叩いて
+  「自分が知っている呼び出し関係」と突き合わせる (serve.rs → proximity.rs 等)
