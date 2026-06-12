@@ -267,6 +267,9 @@ mod tests {
             content: vec![crate::ir::Operation::default(); 3],
             layers: LayerData {
                 type_info: Some(TypeInfo {
+                    fn_name: None,
+                    args: Vec::new(),
+                    ret: None,
                     signature: None,
                     returns_result: true,
                     returns_option: false,

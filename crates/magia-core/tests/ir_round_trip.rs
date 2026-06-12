@@ -84,6 +84,9 @@ fn sample_phase1_graph() -> MagiaGraph {
                 role: None,
             }),
             type_info: Some(TypeInfo {
+                fn_name: None,
+                args: Vec::new(),
+                ret: None,
                 signature: Some("fn hello()".to_string()),
                 returns_result: false,
                 returns_option: false,

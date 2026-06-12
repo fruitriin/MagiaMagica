@@ -94,6 +94,11 @@ export type Signature = {
   /** 直線配置の座標 (arcPath が null のとき使用)。 */
   x: number;
   y: number;
+  /** 組み立て表示用の部品 (細部修正 2026-06-12)。変数名/型名チェックボックスが
+   *  ON のとき text の代わりにクライアントが組み立てる。 */
+  name?: string;
+  args?: { name: string; ty: string }[];
+  ret?: string;
 };
 
 /** 制御記号 (Phase 4.0.9 で意味論化 — 頂点計算は SymbolMark コンポーネントが行う)。 */
@@ -232,7 +237,14 @@ export type IrSpell = {
   rings: IrRing[];
   glyphs: IrGlyph[];
   edges: IrEdge[];
-  signature: { text: string; arc_path: string } | null;
+  signature: {
+    text: string;
+    arc_path: string;
+    /** 組み立て表示用の部品 (細部修正 2026-06-12)。旧 IR では省略。 */
+    name?: string;
+    args?: { name: string; ty: string }[];
+    ret?: string;
+  } | null;
   return_branch: [number, number] | null;
 };
 

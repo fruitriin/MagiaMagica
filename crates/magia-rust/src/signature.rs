@@ -11,12 +11,46 @@ use syn::{ReturnType, Signature, Type};
 pub(crate) fn extract_type_info(sig: &Signature) -> TypeInfo {
     let signature = render_signature(sig);
     let (returns_result, returns_option) = classify_return_type(&sig.output);
+    let args = sig
+        .inputs
+        .iter()
+        .filter_map(|input| match input {
+            syn::FnArg::Receiver(_) => None,
+            syn::FnArg::Typed(typed) => Some((
+                compact_tokens(&typed.pat.to_token_stream().to_string()),
+                compact_tokens(&typed.ty.to_token_stream().to_string()),
+            )),
+        })
+        .collect();
+    let ret = match &sig.output {
+        ReturnType::Default => None,
+        ReturnType::Type(_, ty) => {
+            let text = compact_tokens(&ty.to_token_stream().to_string());
+            // 明示的な `-> ()` も省略表記なしと同じ扱い (表示で `-> ()` を出さない)。
+            (text != "()").then_some(text)
+        }
+    };
     TypeInfo {
         signature: Some(signature),
+        fn_name: Some(sig.ident.to_string()),
+        args,
+        ret,
         returns_result,
         returns_option,
         reducer_shape: is_reducer_shape(sig),
     }
+}
+
+/// トークン列文字列の表示用コンパクト化 (`Vec < Neighbor >` → `Vec<Neighbor>`)。
+/// 引数表示 (チップ・メイン円) と FunctionEntry.args が同じ整形を共有する。
+pub(crate) fn compact_tokens(tokens: &str) -> String {
+    tokens
+        .replace(" :: ", "::")
+        .replace(" < ", "<")
+        .replace(" >", ">")
+        .replace("& ", "&")
+        .replace(" ,", ",")
+        .replace("' ", "'")
 }
 
 /// Reducer 形 `(A, B, ...) -> A` の構文的判定 (Phase 3.5, spec §14.3)。
@@ -82,6 +116,28 @@ mod tests {
         let info = extract_type_info(&item.sig);
         assert!(!info.returns_result);
         assert!(info.returns_option);
+    }
+
+    #[test]
+    fn extracts_structured_parts_for_display_assembly() {
+        // 引数表示オプション (細部修正 2026-06-12) の部品: name / args / ret。
+        let item: syn::ItemFn =
+            parse_quote! { fn cast(power: u32, target: &Wand) -> Result<(), Error> { todo!() } };
+        let info = extract_type_info(&item.sig);
+        assert_eq!(info.fn_name.as_deref(), Some("cast"));
+        assert_eq!(
+            info.args,
+            [
+                ("power".to_string(), "u32".to_string()),
+                ("target".to_string(), "&Wand".to_string()),
+            ]
+        );
+        assert_eq!(info.ret.as_deref(), Some("Result<(), Error>"));
+        // unit 戻り値は None (表示で `-> ()` を出さない)。明示的 `-> ()` も同じ。
+        let unit: syn::ItemFn = parse_quote! { fn ping() {} };
+        assert_eq!(extract_type_info(&unit.sig).ret, None);
+        let explicit_unit: syn::ItemFn = parse_quote! { fn pong() -> () {} };
+        assert_eq!(extract_type_info(&explicit_unit.sig).ret, None);
     }
 
     #[test]

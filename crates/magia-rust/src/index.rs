@@ -14,6 +14,7 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{File, ItemFn};
 
+use crate::signature::compact_tokens;
 use crate::summon::{UseMap, collect_calls_in_stmt};
 
 /// 関数間の呼び出しエッジ (caller → callee、いずれも qualified)。
@@ -45,17 +46,6 @@ pub struct FunctionArg {
     pub name: String,
     /// 型 (`&str` / `Vec<Neighbor>` — トークン列の空白を詰めた表示用)。
     pub ty: String,
-}
-
-/// トークン列文字列の表示用コンパクト化 (`Vec < Neighbor >` → `Vec<Neighbor>`)。
-fn compact_tokens(tokens: &str) -> String {
-    tokens
-        .replace(" :: ", "::")
-        .replace(" < ", "<")
-        .replace(" >", ">")
-        .replace("& ", "&")
-        .replace(" ,", ",")
-        .replace("' ", "'")
 }
 
 /// ファイル全体を走査して関数索引を返す (ソース出現順)。

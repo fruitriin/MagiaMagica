@@ -136,6 +136,15 @@ pub struct SignatureIr {
     pub text: String,
     /// 円弧 textPath の path データ (9時 → 頂上 → 3時の上半円、衝突回避済み)。
     pub arc_path: String,
+    /// 組み立て表示用の構造化部品 (細部修正 2026-06-12)。チェックボックス
+    /// (変数名/型名) ON のときクライアントが text の代わりに組み立てる。
+    /// OFF のときは text をそのまま使う (SSR 静止画も既定は text)。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<ArgIr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ret: Option<String>,
 }
 
 /// 座標を小数2桁へ丸め、負のゼロを正の 0.0 に正規化する (IEEE 754:
@@ -307,6 +316,16 @@ fn push_type_info(
         ir.signature = Some(SignatureIr {
             text: text.clone(),
             arc_path: normalize_path_numbers(&arc.to_path(0.1).to_svg()),
+            name: type_info.fn_name.clone(),
+            args: type_info
+                .args
+                .iter()
+                .map(|(name, ty)| ArgIr {
+                    name: name.clone(),
+                    ty: ty.clone(),
+                })
+                .collect(),
+            ret: type_info.ret.clone(),
         });
     }
     if type_info.returns_result || type_info.returns_option {

@@ -152,6 +152,11 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
       x: 0,
       y: 0,
       fontSize: 11,
+      // 組み立て表示用の部品 (細部修正 2026-06-12)。SignatureArc が
+      // 変数名/型名チェックボックスに応じて text と組み立てを切り替える。
+      name: ir.signature.name,
+      args: ir.signature.args,
+      ret: ir.signature.ret,
     };
   }
 

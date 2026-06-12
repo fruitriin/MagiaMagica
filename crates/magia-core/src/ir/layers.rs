@@ -114,6 +114,15 @@ pub struct DataFlowInfo {
 pub struct TypeInfo {
     /// 関数シグネチャの文字列 (例: `fn foo(a: i32) -> Result<(), Error>`)。
     pub signature: Option<String>,
+    /// 関数名 (`foo`)。シグネチャ表示の組み立て用 (細部修正 2026-06-12)。
+    #[serde(default)]
+    pub fn_name: Option<String>,
+    /// 引数 (self を除く) の (パターン, 型) — 空白を詰めた表示用文字列。
+    #[serde(default)]
+    pub args: Vec<(String, String)>,
+    /// 戻り値型 (表示用、`-> ` なし)。unit (`()`) は None。
+    #[serde(default)]
+    pub ret: Option<String>,
     /// 戻り値が `Result` か。
     pub returns_result: bool,
     /// 戻り値が `Option` か。
