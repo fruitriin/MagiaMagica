@@ -87,11 +87,21 @@ export const useFocusStore = defineStore("focus", () => {
   }
 
   /** 呼び出し名を同ファイルの関数に解決する (`charge` → `Wand::charge` など)。
-   *  名前一致が複数あるときは先頭 (定義順) — 厳密な解決は Phase 4.4 で。 */
+   *  Rust 側 (resolve_local_target) と同じ3段照合: qualified 完全一致 →
+   *  フォーカスと同じ impl の名前一致 → 定義順先頭の名前一致。
+   *  同名メソッドが複数 impl にあるとき、サーバの call graph (= チップの
+   *  relation) と同じ解決先を選ぶ — リンク強調の食い違い防止 (Phase 4.4)。 */
   function resolveCall(callTarget: string): string | null {
     const plain = callTarget.replace(/^\./, "").replace(/!$/, "");
-    const hit = functions.value.find((f) => f.qualified === plain || f.name === plain);
-    return hit?.qualified ?? null;
+    const exact = functions.value.find((f) => f.qualified === plain);
+    if (exact !== undefined) return exact.qualified;
+    const context =
+      functions.value.find((f) => f.qualified === currentFn.value)?.impl_context ?? null;
+    const sameImpl = functions.value.find(
+      (f) => f.name === plain && context !== null && f.impl_context === context,
+    );
+    if (sameImpl !== undefined) return sameImpl.qualified;
+    return functions.value.find((f) => f.name === plain)?.qualified ?? null;
   }
 
   /**
@@ -161,6 +171,7 @@ export const useFocusStore = defineStore("focus", () => {
       loadError.value = null;
       // 図が差し替わるとホバー元のドットが消えて mouseleave が来ないことがある
       hoverExcerpt.value = null;
+      hoveredLink.value = null;
       useSourceStore().setSource(next.source_html, next.start_line);
     } catch (e) {
       if (seq !== selectSeq.value) return;
