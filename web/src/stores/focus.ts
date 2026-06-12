@@ -17,6 +17,8 @@ export const useFocusStore = defineStore("focus", () => {
 
   /** 現在の関数 (qualified 名 — impl メソッドは `Caster::cast` 形式)。 */
   const currentFn = ref<string | null>(null);
+  /** Spell Diff の比較基準 rev (`?diff=` と同期 — Phase 4.3.7)。null = diff なし。 */
+  const diffRev = ref<string | null>(null);
   const spell = ref<SpellResponse | null>(null);
   const loadError = ref<string | null>(null);
 
@@ -113,7 +115,7 @@ export const useFocusStore = defineStore("focus", () => {
     selectSeq.value += 1;
     const seq = selectSeq.value;
     try {
-      const next = await fetchSpell(target);
+      const next = await fetchSpell(target, diffRev.value);
       if (seq !== selectSeq.value) return; // 古い応答 — 後発の選択が優先
       spell.value = next;
       loadError.value = null;
@@ -124,6 +126,14 @@ export const useFocusStore = defineStore("focus", () => {
       if (seq !== selectSeq.value) return;
       loadError.value = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  /** diff 基準 rev を設定して現在の関数を取り直す (同値なら何もしない)。 */
+  async function setDiffRev(rev: string | null) {
+    const normalized = rev !== null && rev.trim() !== "" ? rev.trim() : null;
+    if (normalized === diffRev.value) return;
+    diffRev.value = normalized;
+    await selectFunction(currentFn.value);
   }
 
   /** SSE 更新時の再読込。一覧と現在の呪文を取り直す。 */
@@ -152,6 +162,7 @@ export const useFocusStore = defineStore("focus", () => {
     functions,
     serverError,
     currentFn,
+    diffRev,
     spell,
     loadError,
     hoveredOperationId,
@@ -165,6 +176,7 @@ export const useFocusStore = defineStore("focus", () => {
     showHoverExcerpt,
     hideHoverExcerpt,
     resolveCall,
+    setDiffRev,
     setInitialFn,
     loadState,
     selectFunction,

@@ -26,7 +26,7 @@ use notify::{RecursiveMode, Watcher};
 
 use magia_core::layout::layout;
 use magia_core::proximity::{NeighborSeed, classify_neighbors};
-use magia_core::render::ir_export::{NeighborMeta, SpanIr, focus_layout, spell_ir};
+use magia_core::render::ir_export::{NeighborMeta, SpanIr, SpellIr, focus_layout, spell_ir};
 use magia_rust::{FunctionEntry, function_index_with_calls, parse_function};
 
 use crate::srcview::highlight_rust;
@@ -56,6 +56,8 @@ struct ServeError {
 struct Shared {
     /// 表示用ファイル名。
     file_label: String,
+    /// 監視対象の実パス (diff の gitio 解決に使う — Phase 4.3.7)。
+    file: PathBuf,
     good: Mutex<GoodSnapshot>,
     error: Mutex<Option<ServeError>>,
     /// 更新世代。クライアントはこの値の変化で再取得する。
@@ -74,9 +76,10 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Shared {
-    fn new(file_label: String) -> Self {
+    fn new(file_label: String, file: PathBuf) -> Self {
         Self {
             file_label,
+            file,
             good: Mutex::new(GoodSnapshot::default()),
             error: Mutex::new(None),
             version: AtomicU64::new(0),
@@ -132,7 +135,12 @@ impl Shared {
 
     /// `/spell/<fn>`: 関数単位のレンダリング (オンデマンド、サーバに選択状態を持たない)。
     /// 不明な関数は `None` (404 は呼び出し側の責務)。
-    fn spell_json(&self, qualified: &str, with_neighbors: bool) -> Option<Result<String, String>> {
+    fn spell_json(
+        &self,
+        qualified: &str,
+        with_neighbors: bool,
+        diff_rev: Option<&str>,
+    ) -> Option<Result<String, String>> {
         // レンダリング (parse + layout + render ×2 + syntect) は重いので、
         // ロックは複製を取るまでに留める — reload (保存) を /spell がブロックしない。
         let (source, entry, all, call_edges) = {
@@ -156,8 +164,20 @@ impl Shared {
                 functions: &all,
                 call_edges: &call_edges,
             }),
+            diff_rev.map(|rev| DiffInput {
+                rev,
+                file: &self.file,
+            }),
         ))
     }
+}
+
+/// 差分強調の入力 (`?diff=<REV>` のときだけ渡る — Phase 4.3.7)。
+struct DiffInput<'a> {
+    /// 比較基準の git リビジョン (`HEAD~1` / `main` 等)。
+    rev: &'a str,
+    /// 監視対象ファイル (gitio がリポジトリ相対パスへ解決する)。
+    file: &'a Path,
 }
 
 /// ピン中心ビューの周辺計算入力 (`?with=neighbors` のときだけ渡る)。
@@ -200,13 +220,41 @@ fn render_spell(
     source: &str,
     entry: &FunctionEntry,
     neighbors_from: Option<NeighborsInput<'_>>,
+    diff_from: Option<DiffInput<'_>>,
 ) -> Result<String, String> {
     let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
     let snippet = source_lines(source, entry.start_line, entry.end_line);
     // Phase 4.0.9/4.3: 両式とも配置済み IR (JSON) で返し、Vue が描画する。
     // SVG 文字列は出さない (Rust SVG レンダラは Phase 4.3 M5 で削除済み)。
-    let spell = spell_ir(&graph, &placed);
+    //
+    // diff 文脈 (?diff=<REV>、Phase 4.3.7): before を git から引いて差分強調つき
+    // IR (viewBox ゴースト拡張込み) に差し替える。rev 不正・git 外・before に
+    // 関数が無い (新規関数) は応答を壊さず diff_note (案内文) に畳む —
+    // 「会話を切らない」原則。保存のたびに再計算されるため live diff になる。
+    let mut diff_overlay: Option<Vec<magia_core::render::ir_export::DiffMarkIr>> = None;
+    let mut diff_report: Option<String> = None;
+    let mut diff_note: Option<String> = None;
+    let spell = match diff_from {
+        Some(input) => match diff_before_graph(&input, &entry.qualified) {
+            Ok(before_graph) => {
+                let spell_diff = magia_core::diff::diff(&before_graph, &graph);
+                diff_report = Some(spell_diff.to_report(&entry.qualified));
+                let (ir, marks) = magia_core::render::ir_export::diff_spell_ir(
+                    &before_graph,
+                    &graph,
+                    &spell_diff,
+                );
+                diff_overlay = Some(marks);
+                ir
+            }
+            Err(note) => {
+                diff_note = Some(note);
+                spell_ir(&graph, &placed)
+            }
+        },
+        None => spell_ir(&graph, &placed),
+    };
     // Phase 4.1/4.2: ピン中心ビューの周辺配置。近接度は同impl/呼び出し関係/
     // 同ファイルの連続距離 (proximity.rs)、リング離散化は focus_layout 側。
     let focus_layout = neighbors_from.map(|input| {
@@ -235,48 +283,7 @@ fn render_spell(
             .collect();
         focus_layout(spell.view_box, &with_meta)
     });
-    // 壊れた span で空になった断片は載せない (クライアントは欠落として扱う)。
-    let excerpt_html = |span: &SpanIr| {
-        let excerpt = span_excerpt(source, span);
-        (!excerpt.trim().is_empty()).then(|| serde_json::Value::String(highlight_rust(&excerpt)))
-    };
-    // 召喚印インスペクタの呼び出し式 (glyph id → ハイライト済み HTML)。
-    // レシーバ・引数込みの式全体を原文 (改行・インデント込み) から切り出す
-    // (Phase 4.1 オーナー要望 — `sigil.map(|role| role.kind)` の形で見せる)。
-    let call_excerpts: serde_json::Map<String, serde_json::Value> = spell
-        .glyphs
-        .iter()
-        .filter_map(|glyph| {
-            let span = glyph.source_span.as_ref()?;
-            Some((glyph.id.to_string(), excerpt_html(span)?))
-        })
-        .collect();
-    // 操作ドットのホバープレビュー (`<ring_id>-<出現順>` → ハイライト済み HTML)。
-    // キーの形は Vue 側スキーマの Operation.irKey と同語彙 (Phase 4.1 追加要望3)。
-    let op_excerpts: serde_json::Map<String, serde_json::Value> = spell
-        .rings
-        .iter()
-        .flat_map(|ring| {
-            ring.operations
-                .iter()
-                .enumerate()
-                .map(move |(index, op)| (ring.id, index, op))
-        })
-        .filter_map(|(ring_id, index, op)| {
-            let span = op.source_span.as_ref()?;
-            Some((format!("{ring_id}-{index}"), excerpt_html(span)?))
-        })
-        .collect();
-    // 補助リング (分岐の腕・ループ本体) のガード・ヘッダ (ring id →
-    // ハイライト済み HTML)。リングのホバーで条件が見える (Phase 4.1 追加要望4)。
-    let ring_excerpts: serde_json::Map<String, serde_json::Value> = spell
-        .rings
-        .iter()
-        .filter_map(|ring| {
-            let span = ring.guard_span.as_ref()?;
-            Some((ring.id.to_string(), excerpt_html(span)?))
-        })
-        .collect();
+    let (call_excerpts, op_excerpts, ring_excerpts) = excerpt_maps(source, &spell);
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
     // ベルカ式も配置済み IR (Phase 4.3 — Vue の BelkaCircle が描く)。
     let belka = serde_json::to_value(magia_core::render::belka::belka_ir(&graph))
@@ -296,7 +303,80 @@ fn render_spell(
     if let Some(layout) = focus_layout {
         response["focus_layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
     }
+    if let Some(marks) = diff_overlay {
+        response["diff_overlay"] = serde_json::to_value(marks).map_err(|e| e.to_string())?;
+    }
+    if let Some(report) = diff_report {
+        response["diff_report"] = serde_json::Value::String(report);
+    }
+    if let Some(note) = diff_note {
+        response["diff_note"] = serde_json::Value::String(note);
+    }
     Ok(response.to_string())
+}
+
+type ExcerptMap = serde_json::Map<String, serde_json::Value>;
+
+/// 原文断片マップ群 (ホバープレビュー・インスペクタ用、Phase 4.1) を構築する。
+/// - call: 召喚印の呼び出し式 (glyph id)。レシーバ・引数込みの式全体
+/// - op: 操作ドットの文・ヘッダ (`<ring_id>-<出現順>` = Vue の Operation.irKey)
+/// - ring: 補助リングのガード・ヘッダ (ring id)
+fn excerpt_maps(source: &str, spell: &SpellIr) -> (ExcerptMap, ExcerptMap, ExcerptMap) {
+    // 壊れた span で空になった断片は載せない (クライアントは欠落として扱う)。
+    let excerpt_html = |span: &SpanIr| {
+        let excerpt = span_excerpt(source, span);
+        (!excerpt.trim().is_empty()).then(|| serde_json::Value::String(highlight_rust(&excerpt)))
+    };
+    let call = spell
+        .glyphs
+        .iter()
+        .filter_map(|glyph| {
+            let span = glyph.source_span.as_ref()?;
+            Some((glyph.id.to_string(), excerpt_html(span)?))
+        })
+        .collect();
+    let op = spell
+        .rings
+        .iter()
+        .flat_map(|ring| {
+            ring.operations
+                .iter()
+                .enumerate()
+                .map(move |(index, op)| (ring.id, index, op))
+        })
+        .filter_map(|(ring_id, index, op)| {
+            let span = op.source_span.as_ref()?;
+            Some((format!("{ring_id}-{index}"), excerpt_html(span)?))
+        })
+        .collect();
+    let ring = spell
+        .rings
+        .iter()
+        .filter_map(|ring| {
+            let span = ring.guard_span.as_ref()?;
+            Some((ring.id.to_string(), excerpt_html(span)?))
+        })
+        .collect();
+    (call, op, ring)
+}
+
+/// diff 基準 (`?diff=<REV>`) の関数グラフを git から引く。
+/// 失敗は案内文 (`diff_note`) として返す — UI を壊さない。
+fn diff_before_graph(
+    input: &DiffInput<'_>,
+    qualified: &str,
+) -> Result<magia_core::ir::MagiaGraph, String> {
+    let before_source = crate::gitio::show_file_at(input.rev, input.file)
+        .map_err(|e| format!("リビジョン {} を読めません: {e:#}", input.rev))?;
+    parse_function(&before_source, qualified).map_err(|e| match e {
+        magia_rust::Error::FunctionNotFound { .. } => format!(
+            "リビジョン {} にこの関数はありません (新規関数のため差分はありません)",
+            input.rev
+        ),
+        other @ magia_rust::Error::Syntax(_) => {
+            format!("リビジョン {} の解析に失敗: {other}", input.rev)
+        }
+    })
 }
 
 /// span の範囲の原文を切り出す (行・列とも 1-based・文字単位、
@@ -377,7 +457,7 @@ fn source_lines(source: &str, start_line: usize, end_line: usize) -> String {
 pub(crate) fn run(file: &Path, port: u16) -> Result<()> {
     let file = file.to_path_buf();
     let label = file.display().to_string();
-    let shared = Arc::new(Shared::new(label));
+    let shared = Arc::new(Shared::new(label, file.clone()));
 
     // 初回読み込み (エラーでもサーバは起動し、画面にエラーを出す)。
     shared.reload(&file);
@@ -481,7 +561,22 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
             let with_neighbors = url
                 .split_once('?')
                 .is_some_and(|(_, query)| query.split('&').any(|kv| kv == "with=neighbors"));
-            request.respond(spell_response(shared, &qualified, with_neighbors))
+            // ?diff=<REV> で差分強調 (Phase 4.3.7)。空値は指定なしと同じ。
+            let diff_rev = url
+                .split_once('?')
+                .and_then(|(_, query)| {
+                    query
+                        .split('&')
+                        .find_map(|kv| kv.strip_prefix("diff="))
+                        .map(percent_decode)
+                })
+                .filter(|rev| !rev.is_empty());
+            request.respond(spell_response(
+                shared,
+                &qualified,
+                with_neighbors,
+                diff_rev.as_deref(),
+            ))
         }
         (tiny_http::Method::Get, "/events") => {
             let (tx, rx) = channel::<u64>();
@@ -570,9 +665,10 @@ fn spell_response(
     shared: &Shared,
     qualified: &str,
     with_neighbors: bool,
+    diff_rev: Option<&str>,
 ) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
     let json_header = header("Content-Type", "application/json; charset=utf-8");
-    match shared.spell_json(qualified, with_neighbors) {
+    match shared.spell_json(qualified, with_neighbors, diff_rev) {
         Some(Ok(json)) => tiny_http::Response::from_string(json).with_header(json_header),
         Some(Err(message)) => {
             tiny_http::Response::from_string(serde_json::json!({ "error": message }).to_string())

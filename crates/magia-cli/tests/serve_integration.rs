@@ -376,3 +376,79 @@ fn syntax_error_keeps_last_good_snapshot() {
     let fresh = body_json_at(server.port, "/spell/watched");
     assert_ne!(fresh["ir"], good_ir);
 }
+
+/// Phase 4.3.7: `?diff=<REV>` で Spell Diff overlay が併載される (web 上の live diff)。
+#[test]
+fn spell_diff_query_returns_overlay_and_notes() {
+    // git リポジトリ化した fixture: 初期内容を commit してから変更を書く。
+    let file = temp_fixture("diffweb.rs", INITIAL);
+    let dir = file.parent().unwrap();
+    let git = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("git を起動できる")
+            .success();
+        assert!(ok, "git {args:?} が成功する");
+    };
+    git(&["init", "-q"]);
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(&file, CHANGED).unwrap();
+
+    let server = spawn_server(&file);
+    wait_for(server.port, |s| {
+        s["functions"]
+            .as_array()
+            .is_some_and(|fns| fns.iter().any(|f| f["qualified"] == "fresh_fn"))
+    });
+
+    // 正常系: HEAD (= INITIAL) との diff。watched は helper 呼び出しが増えた。
+    let spell = body_json_at(server.port, "/spell/watched?with=neighbors&diff=HEAD");
+    let marks = spell["diff_overlay"]
+        .as_array()
+        .expect("overlay が併載される");
+    assert!(!marks.is_empty());
+    assert!(
+        marks
+            .iter()
+            .all(|m| m["x"].is_number() && m["radius"].is_number())
+    );
+    assert!(
+        spell["diff_report"]
+            .as_str()
+            .expect("メトリクス要約が併載される")
+            .contains("watched")
+    );
+    assert!(spell.get("diff_note").is_none());
+    // focus_layout は diff 版 viewBox (ゴースト拡張込み) を入力にしている。
+    assert!(spell["focus_layout"]["view_box"].is_array());
+
+    // 新規関数 (HEAD に無い) は案内文 — UI を壊さない。
+    let fresh = body_json_at(server.port, "/spell/fresh_fn?diff=HEAD");
+    assert!(fresh.get("diff_overlay").is_none());
+    assert!(
+        fresh["diff_note"]
+            .as_str()
+            .expect("案内が出る")
+            .contains("新規関数")
+    );
+
+    // 不正な rev も案内文で受ける。
+    let bad = body_json_at(server.port, "/spell/watched?diff=no_such_rev");
+    assert!(bad.get("diff_overlay").is_none());
+    assert!(bad["diff_note"].as_str().unwrap().contains("no_such_rev"));
+
+    // ?diff なしは従来契約と完全互換 (diff 系フィールドが無い)。
+    let plain = body_json_at(server.port, "/spell/watched");
+    assert!(plain.get("diff_overlay").is_none());
+    assert!(plain.get("diff_report").is_none());
+    assert!(plain.get("diff_note").is_none());
+}

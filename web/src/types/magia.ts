@@ -327,4 +327,11 @@ export type SpellResponse = {
   transcript: string;
   /** ピン中心ビューの周辺配置 (`?with=neighbors` 時のみ)。 */
   focus_layout?: FocusLayout;
+  /** 差分強調マーク (`?diff=<rev>` 時のみ — Phase 4.3.7)。ir は viewBox を
+   *  ゴースト分拡張した diff 版になる。 */
+  diff_overlay?: DiffMark[];
+  /** メトリクス変化の要約テキスト (`?diff=` 正常時のみ)。 */
+  diff_report?: string;
+  /** diff が成立しない場合の案内文 (rev 不正 / git 外 / 新規関数)。 */
+  diff_note?: string;
 };

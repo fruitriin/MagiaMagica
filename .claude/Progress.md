@@ -55,4 +55,22 @@
 
 ## タスク
 
-（現在タスクなし）
+### Phase 4.3.7 — Spell Diff を Web に載せる (docs/plans/phase4.3.7-diff-on-web.md)
+
+**設計確定 (着手時)**: 状態は focus store の diffRev (URL ?diff= と同期、replace)。fetchSpell が `&diff=<rev>` を付け、serve が gitio で before を取得して diff_spell_ir — **diff 時は ir 自体が viewBox 拡張済みの diff 版になる** (focus_layout もそれを入力にするため整合)。エラー・新規関数は diff_note (案内文) で会話を切らない。e2e は fixture dir を git init して live diff を本物の git で検証。
+
+**実装フェーズ (Rust)**
+- [x] 1. Shared に file: PathBuf 保持 + `?diff=<rev>` パース (percent_decode)
+- [x] 2. render_spell の diff 文脈: gitio::show_file_at → parse → diff → diff_spell_ir。応答に diff_overlay / diff_report / diff_note (rev 不正・新規関数・git 外は note)
+- [x] 3. serve 統合テスト (git fixture、正常/新規関数/不正rev/互換 — 一発通過) (git fixture: 正常 diff / 不正 rev 案内 / 新規関数案内 / ?diff なし完全互換)
+
+**実装フェーズ (Vue)**
+- [x] 4. focus store: diffRev + fetchSpell 配線 + useQuerySync (?diff=)
+- [x] 5. MagicCircleView: overlay 配線
+- [x] 6. パレット: diff 入力 (テキスト + HEAD~1/main プリセット + クリア) + diff_report/diff_note 表示 (テキストボックス + HEAD~1/main プリセット + クリア) + diff_report / diff_note 表示
+- [x] 7. vitest 2本 (setDiffRev) + e2e 2本 (live diff: 保存→金ハロー出現を実 git で検証 / 不正 rev 案内)。serve-fixture.sh を git init 化 (git init fixture で live diff / 不正 rev 案内)
+
+**仕上げ**
+- [x] 8. Stage 1 全通過 (cargo 14 / clippy — render_spell 分割 excerpt_maps / vitest 41 / playwright 20)。素材 (serve.rs 自身の live diff) 送付 (自己ホスティング live diff) → 送付
+- [ ] 9. Stage 2 レビュー + 指摘対応
+- [ ] 10. 計画 memo、knowhow、Feedback / TODO 更新、アーカイブ、コミット

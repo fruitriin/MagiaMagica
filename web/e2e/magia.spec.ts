@@ -255,6 +255,38 @@ test("シグネチャ円弧はクリック判定を持たない (pointer-events:
   expect(pointerEvents).toBe("none");
 });
 
+test("Spell Diff on web: rev 指定で差分ハローが出て、保存で live に追従する (Phase 4.3.7)", async ({
+  page,
+}) => {
+  await page.goto("/?pin=compute");
+  // パレットから HEAD を基準に指定 (fixture は HEAD = 初期内容に固定)。
+  await page.getByText("⚙ パレット").click();
+  await page.getByLabel("diff 基準リビジョン").fill("HEAD");
+  await page.getByRole("button", { name: "比較" }).click();
+  await expect(page).toHaveURL(/diff=HEAD/);
+  // 初期内容と同一なのでハローなし + 要約に変化なしが出る。
+  await expect(page.locator(".overlay-diff circle")).toHaveCount(0);
+  // ファイルを変更すると SSE → 再計算で金ハロー (追加) が現れる — live diff。
+  writeFileSync(
+    FIXTURE,
+    INITIAL.replace("let sum = a + b;", "let sum = a + b;\n    let doubled = sum * 2;"),
+  );
+  await expect(page.locator(".overlay-diff circle.diff-changed").first()).toBeVisible();
+  await expect(page.locator("aside")).toContainText("操作数");
+  // クリアで従来表示へ。
+  await page.getByRole("button", { name: "クリア" }).click();
+  await expect(page).not.toHaveURL(/diff=/);
+  await expect(page.locator(".overlay-diff")).toHaveCount(0);
+});
+
+test("Spell Diff on web: 不正な rev は案内文で受ける (UI を壊さない)", async ({ page }) => {
+  await page.goto("/?pin=greet&diff=no_such_rev");
+  await page.getByText("⚙ パレット").click();
+  await expect(page.locator("aside")).toContainText("no_such_rev");
+  // 魔法陣自体は通常表示のまま。
+  await expect(page.locator(".pin-view circle.main-ring").first()).toBeVisible();
+});
+
 test("凡例: 開閉式で色と記号の意味が参照できる (Phase 4.0.6)", async ({ page }) => {
   await page.goto("/?pin=greet");
   const legend = page.locator("details", { hasText: "凡例" }); // 魔法陣ペイン下 (4.0.6 判定)

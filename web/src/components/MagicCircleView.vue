@@ -100,6 +100,7 @@ function pin(qualified: string) {
         <MagicCircle
           v-if="node.kind === 'focus'"
           :schema="schema"
+          :overlay="focus.spell?.diff_overlay"
           :x="focusPlacement?.x"
           :y="focusPlacement?.y"
           :width="focusPlacement?.width"

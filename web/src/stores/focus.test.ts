@@ -129,6 +129,31 @@ describe("useFocusStore", () => {
   });
 });
 
+describe("useFocusStore — Spell Diff (Phase 4.3.7)", () => {
+  it("setDiffRev は diff クエリ付きで取り直す (空・空白はクリア)", async () => {
+    const focus = useFocusStore();
+    await focus.loadState();
+    await focus.selectFunction("greet");
+    await focus.setDiffRev("HEAD~1");
+    const calls = vi.mocked(globalThis.fetch).mock.calls.map((c) => String(c[0]));
+    expect(calls.some((u) => u.includes("diff=HEAD~1"))).toBe(true);
+    expect(focus.diffRev).toBe("HEAD~1");
+    // 空白はクリア (null) に正規化。
+    await focus.setDiffRev("  ");
+    expect(focus.diffRev).toBeNull();
+  });
+
+  it("同値の setDiffRev は再取得しない", async () => {
+    const focus = useFocusStore();
+    await focus.loadState();
+    await focus.selectFunction("greet");
+    await focus.setDiffRev("main");
+    const before = vi.mocked(globalThis.fetch).mock.calls.length;
+    await focus.setDiffRev("main");
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(before);
+  });
+});
+
 describe("useFocusStore — インスペクタの refresh 追従 (glyph id は再採番される)", () => {
   const glyph = (id: number, callTarget: string) => ({
     id,

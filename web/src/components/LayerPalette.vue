@@ -2,14 +2,31 @@
 // レイヤーパレット (Phase 2.2〜2.3 の Vue 移植)。式切替・レイヤー可視性/透明度・
 // 全表示/全非表示・.magia DSL の往復。状態は palette store、URL 同期は
 // useQuerySync が担う (このコンポーネントは store を触るだけ)。
-import { ref } from "vue";
+import { ref, watch } from "vue";
 
 import { exportDsl, parseDsl } from "../lib/magiaDsl.ts";
+import { useFocusStore } from "../stores/focus.ts";
 import { LAYER_LABELS, LAYERS, usePaletteStore } from "../stores/palette.ts";
 
 const palette = usePaletteStore();
+const focus = useFocusStore();
 const dslText = ref("");
 const dslNote = ref("");
+
+// Spell Diff (Phase 4.3.7): 比較基準 rev の入力。store (URL 同期) が正で、
+// 入力欄はその編集ビュー — 戻る/進むで diffRev が変わったら追従する。
+const diffInput = ref(focus.diffRev ?? "");
+watch(
+  () => focus.diffRev,
+  (rev) => {
+    diffInput.value = rev ?? "";
+  },
+);
+
+function applyDiff(rev: string) {
+  diffInput.value = rev;
+  void focus.setDiffRev(rev === "" ? null : rev);
+}
 
 function onExport() {
   const visible = new Set(LAYERS.filter((l) => palette.layers[l].visible));
@@ -99,6 +116,57 @@ function onApply() {
       >
         全非表示
       </button>
+    </div>
+
+    <strong mt-3 block text-xs text-gray-500>Spell Diff (基準 rev)</strong>
+    <div mt-1 flex items-center gap-1>
+      <input
+        v-model="diffInput"
+        type="text"
+        placeholder="HEAD~1 / main ..."
+        aria-label="diff 基準リビジョン"
+        w-full
+        border
+        border-gray-300
+        rounded
+        px-1
+        py-0.5
+        font-mono
+        text-xs
+        @keydown.enter="applyDiff(diffInput)"
+      />
+      <button
+        border
+        border-gray-300
+        rounded
+        px-2
+        py-0.5
+        text-xs
+        hover:bg-gray-100
+        @click="applyDiff(diffInput)"
+      >
+        比較
+      </button>
+    </div>
+    <div mt-1 flex gap-2 text-xs>
+      <button text-blue-700 underline @click="applyDiff('HEAD~1')">HEAD~1</button>
+      <button text-blue-700 underline @click="applyDiff('main')">main</button>
+      <button v-if="focus.diffRev" text-gray-500 underline @click="applyDiff('')">クリア</button>
+    </div>
+    <!-- 差分の要約 (正常時) / 案内 (rev 不正・新規関数など)。live diff:
+         ファイル保存のたびに再計算され、書いている変更が金ハローで現れる -->
+    <pre
+      v-if="focus.diffRev && focus.spell?.diff_report"
+      mt-1
+      max-h-40
+      overflow-auto
+      whitespace-pre-wrap
+      text-xs
+      text-gray-600
+      >{{ focus.spell.diff_report }}</pre
+    >
+    <div v-if="focus.diffRev && focus.spell?.diff_note" mt-1 text-xs text-effect-filesystem>
+      {{ focus.spell.diff_note }}
     </div>
 
     <details mt-3>

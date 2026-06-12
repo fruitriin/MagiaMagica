@@ -51,11 +51,15 @@ export function useQuerySync() {
     if (fn !== null && fn !== focus.currentFn) {
       void focus.selectFunction(fn);
     }
+
+    // diff 基準 rev (Phase 4.3.7)。setDiffRev は同値なら何もしない。
+    void focus.setDiffRev(asString(query["diff"]));
   }
 
   function buildQuery(): Record<string, string> {
     const params: Record<string, string> = {};
     if (focus.currentFn !== null) params["pin"] = focus.currentFn;
+    if (focus.diffRev !== null) params["diff"] = focus.diffRev;
     if (palette.style === "belka") params["style"] = "belka";
     const shown = LAYERS.filter((l) => palette.layers[l].visible);
     if (shown.length < LAYERS.length) params["layers"] = shown.join(",");
@@ -75,7 +79,7 @@ export function useQuerySync() {
   const canonical = (params: Record<string, string>) =>
     JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)));
   watch(
-    [() => focus.currentFn, () => palette.style, () => palette.layers],
+    [() => focus.currentFn, () => focus.diffRev, () => palette.style, () => palette.layers],
     () => {
       const next = buildQuery();
       const current = Object.fromEntries(

@@ -15,9 +15,11 @@ export function fetchState(): Promise<StateResponse> {
   return fetchJson<StateResponse>("/state");
 }
 
-export function fetchSpell(fn: string): Promise<SpellResponse> {
+export function fetchSpell(fn: string, diffRev?: string | null): Promise<SpellResponse> {
   // ピン中心ビュー (Phase 4.1) が標準表示のため、周辺配置を常に併載で取得する。
-  return fetchJson<SpellResponse>(`/spell/${encodeURIComponent(fn)}?with=neighbors`);
+  // diffRev (Phase 4.3.7) があれば差分強調 (diff_overlay / diff_report) も併載される。
+  const diff = diffRev ? `&diff=${encodeURIComponent(diffRev)}` : "";
+  return fetchJson<SpellResponse>(`/spell/${encodeURIComponent(fn)}?with=neighbors${diff}`);
 }
 
 /**
