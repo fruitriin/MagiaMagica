@@ -269,3 +269,18 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
   汎用名)。トップレベル限定で精度が大きく上がる
 - 検証は**自己ホスティング**が早い: 実リポジトリの /workspace を叩いて
   「自分が知っている呼び出し関係」と突き合わせる (serve.rs → proximity.rs 等)
+
+## メソッドチェーンの抽出 (Phase 4.8)
+
+- **チェーンは最外殻の visit が1回で処理し、default 再帰しない**: visit_expr_method_call
+  の default 再帰はレシーバ内の ExprMethodCall を再訪して二重計上する。レシーバ入れ子は
+  手動 walk (chain_members) で集め、**引数と基底式だけ** syn::visit::visit_expr で
+  手動再帰する — closure 内・match ガード内のチェーンも引数経由で正しく拾える
+- **透過リスト**: Try (`?`) / Await / Paren / Reference はチェーンを切らない。
+  Cast (`as`) は切る (鎖が分かれるだけで二重計上にはならない — 防御の非対称を許す)
+- **実行順 (最奥→外) で CallSite 化**して「後続の参照先は登録済み」を生成側の規約に
+  すると、spawn 側は chain_tail (BTreeMap) の lookup だけで Chain edge を張れる
+- **新 EdgeKind 追加時の kind フィルタ全掃き** (rust-ir-skeleton の規約) の実例:
+  Adjacency (layout) / diff.rs Tree::build / ir_export / 不変条件テスト /
+  edge_kind_rank の5箇所。**diff の木は見落としやすい** (レビュー Critical で検出 —
+  係留 Edge を増やしたら diff の親子復元も必ず追従)

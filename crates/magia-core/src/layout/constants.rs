@@ -73,3 +73,7 @@ pub const DIFF_HALO_STROKE: f64 = 2.5;
 
 /// 削除ゴーストの線の不透明度 (「残滓」の見え方)。
 pub const DIFF_GHOST_OPACITY: f64 = 0.6;
+
+/// メソッドチェーンの glyph 間隔 (中心距離、Phase 4.8)。
+/// 直径 (28) + 鎖エッジが見える隙間。値は仮置き — オーナー目視判定で調整する。
+pub const CHAIN_STEP: f64 = SUMMON_GLYPH_RADIUS * 2.0 + 12.0;

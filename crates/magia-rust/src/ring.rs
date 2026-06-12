@@ -89,8 +89,9 @@ pub(crate) fn build_rings(
 fn edge_kind_rank(kind: EdgeKind) -> u8 {
     match kind {
         EdgeKind::ControlFlow => 0,
-        EdgeKind::DataFlow => 1,
-        EdgeKind::Dependency | EdgeKind::Inheritance | EdgeKind::Implementation => 2,
+        EdgeKind::Chain => 1, // 係留線の一種 (glyph の親) — DataFlow より構造に近い
+        EdgeKind::DataFlow => 2,
+        EdgeKind::Dependency | EdgeKind::Inheritance | EdgeKind::Implementation => 3,
     }
 }
 
@@ -478,6 +479,11 @@ impl RingBuilder<'_> {
     /// 効果カテゴリは Operation 側 (`call_target` / `EffectSet`) に載せ、Sigil の layers
     /// はリング専用の `control_flow` を持たない。
     fn spawn_glyphs(&mut self, parent: SigilId, calls: Vec<CallSite>) {
+        // チェーン番号 → そのチェーンで直近に生成した glyph (Phase 4.8)。
+        // collect が実行順 (index 昇順) で返す規約により、後続の参照先は必ず登録済み。
+        // BTreeMap はプロジェクト規約 (決定論)。ここは lookup のみだが揃えておく。
+        let mut chain_tail: std::collections::BTreeMap<u32, SigilId> =
+            std::collections::BTreeMap::new();
         for call in calls {
             let mut effects = call.effects;
             // unsafe fn のコンテキストは召喚記号にも伝播する (色相規約 spec §6.1.3 の赤)。
@@ -507,10 +513,23 @@ impl RingBuilder<'_> {
                     density: None,
                 },
             });
+            // 鎖の後続は先行 glyph から Chain edge、先頭・単独はリングから ControlFlow。
+            let (source, kind) = match call.chain {
+                Some((chain_id, index)) if index > 0 => (
+                    *chain_tail
+                        .get(&chain_id)
+                        .expect("チェーンは実行順で生成される (index>0 の前に先行が登録済み)"),
+                    EdgeKind::Chain,
+                ),
+                _ => (parent, EdgeKind::ControlFlow),
+            };
+            if let Some((chain_id, _)) = call.chain {
+                chain_tail.insert(chain_id, glyph);
+            }
             self.edges.push(Edge {
-                source: parent,
+                source,
                 target: glyph,
-                kind: EdgeKind::ControlFlow,
+                kind,
                 cardinality: 1.0,
                 layers: EdgeLayerData::default(),
             });

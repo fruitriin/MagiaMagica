@@ -83,6 +83,8 @@ export type SchemaEdge = {
   /** 接続元/先の Operation id。SVG 由来 (4.0.7) では null、IR 由来 (4.0.9) で埋まる。 */
   from: string | null;
   to: string | null;
+  /** メソッドチェーンの連結線 (Phase 4.8)。細線で描き分ける。 */
+  chain?: boolean;
 };
 
 /** 関数のシグネチャ表示。ミッドチルダ式は外周の円弧 textPath、ベルカ式は直線配置。 */
@@ -231,6 +233,8 @@ export type IrGlyph = {
 export type IrEdge = {
   from: number;
   to: number;
+  /** 線種 (Phase 4.8)。control_flow = リングの係留線 / chain = メソッドチェーンの連結。 */
+  kind: "control_flow" | "chain";
 };
 
 /** 配置済み IR (ミッドチルダ式)。レイアウトは Rust 確定済み、Vue は描画専任。 */

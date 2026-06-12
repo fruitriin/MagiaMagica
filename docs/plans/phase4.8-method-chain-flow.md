@@ -53,3 +53,27 @@
 - [ ] チェーン外の呼び出し (引数内の関数呼び出し等) は従来どおり独立
 - [ ] 既存テスト + チェーン抽出の単体テスト + 描画の e2e
 - [ ] オーナー目視判定
+
+## 実装結果メモ — M1 (2026-06-12)
+
+### 実装内容
+
+- **抽出**: chain_members がレシーバ入れ子を Try/Await/Paren/Reference 透過で辿り、
+  基底の ExprCall (`f(x).a()`) も鎖の先頭に含める。最外殻の visit が1回で処理し、
+  **実行順 (最奥→外)** で CallSite 化 (glyph 生成順が旧実装の syn 走査順から変更 [break])。
+  引数・基底式は手動再帰で独立 glyph のまま。`as` キャストは透過しない (M1 スコープ外)
+- **IR**: EdgeKind::Chain 新設。鎖後続は先行 glyph から Chain、先頭だけリングから
+  ControlFlow。不変条件は「glyph は係留 Edge (ControlFlow|Chain) 入次数ちょうど1」へ [break]
+- **layout**: place_chain_glyphs — 後続を先頭から外向き (係留リング中心→先頭) に
+  CHAIN_STEP=40 間隔の直線配置。**鎖どうし・他要素との衝突回避は M1 では未実施**
+  (直線をまず判定に出す)。循環ガードあり
+- **描画**: EdgeIr.kind (control_flow|chain)、EdgeLine が鎖を細線 0.6 で描き分け
+- **diff**: 鎖後続も diff の木に入る (レビュー Critical 1 — 係留 Edge の追従。回帰テスト済み)
+
+### 判定待ち / M2+ 候補
+
+- 鎖の間隔 (CHAIN_STEP=40)・細線 0.6 の意匠 → オーナー判定
+- 長い鎖の衝突回避 (他の fan glyph・チップとの重なり) — 判定を見てから
+- 鎖の途中折り返し (10+ 連鎖)、NodeKey への鎖内位置の安定キー (diff の同名メソッド対応)
+- `as` キャストの透過 (必要になったら Expr::Cast を chain_members に足す)
+- 4.7 (魔力回路) との合流: 点Pが鎖を伝う表現の土台はこれで完成

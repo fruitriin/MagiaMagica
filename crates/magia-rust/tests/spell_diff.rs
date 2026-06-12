@@ -230,3 +230,17 @@ fn ghost_extends_viewbox_only_when_needed() {
     assert!(cx - r >= x0 && cx + r <= x0 + w);
     assert!(cy - r >= y0 && cy + r <= y0 + h);
 }
+
+#[test]
+fn chain_followers_participate_in_diff() {
+    // Phase 4.8 レビュー Critical 1 の回帰: 鎖の後続 glyph (Chain edge の子) も
+    // diff の木に入り、伸びた鎖が追加として検出される。
+    let before = parse_function("fn f(v: V) { v.iter().count(); }", "f").unwrap();
+    let after = parse_function("fn f(v: V) { v.iter().filter(keep).count(); }", "f").unwrap();
+    let result = diff(&before, &after);
+    let added: Vec<&str> = result.added.iter().map(|n| n.path.as_str()).collect();
+    assert!(
+        added.iter().any(|p| p.contains(".filter")),
+        "鎖に挿入された .filter が追加検出される: {added:?}"
+    );
+}

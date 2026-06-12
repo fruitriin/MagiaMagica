@@ -102,6 +102,10 @@ pub(crate) struct CallSite {
     pub(crate) effects: EffectSet,
     /// 呼び出し位置。
     pub(crate) span: proc_macro2::Span,
+    /// メソッドチェーンの所属 (Phase 4.8)。`(チェーン番号, 実行順 index)` —
+    /// index 0 が最初に実行される呼び出し (レシーバ入れ子の最奥)。
+    /// 単独の呼び出し (チェーン長1) は None。
+    pub(crate) chain: Option<(u32, u32)>,
 }
 
 /// statement 全体から call site を収集する (非制御 statement 用)。
@@ -112,6 +116,7 @@ pub(crate) fn collect_calls_in_stmt(stmt: &Stmt, uses: &UseMap) -> Vec<CallSite>
     let mut visitor = CallVisitor {
         uses,
         calls: Vec::new(),
+        chain_seq: 0,
     };
     visitor.visit_stmt(stmt);
     visitor.calls
@@ -124,6 +129,7 @@ pub(crate) fn collect_calls_in_expr(expr: &Expr, uses: &UseMap) -> Vec<CallSite>
     let mut visitor = CallVisitor {
         uses,
         calls: Vec::new(),
+        chain_seq: 0,
     };
     visitor.visit_expr(expr);
     visitor.calls
@@ -139,6 +145,41 @@ pub(crate) fn collect_calls_in_expr(expr: &Expr, uses: &UseMap) -> Vec<CallSite>
 struct CallVisitor<'a> {
     uses: &'a UseMap,
     calls: Vec<CallSite>,
+    /// 次に割り振るチェーン番号 (visitor 1個 = 1収集単位の中で一意)。
+    chain_seq: u32,
+}
+
+/// チェーンの構成要素 (外側から順)。
+enum ChainMember<'a> {
+    Method(&'a syn::ExprMethodCall),
+    /// 最奥の基底が関数呼び出し (`f(x).a().b()` の `f(x)`) — 鎖の先頭に含める。
+    Call(&'a syn::ExprCall),
+}
+
+/// レシーバ入れ子を辿ってチェーンの構成要素 (外→奥) と残りの基底式を返す。
+/// `?` / `.await` / 括弧 / 参照はチェーンを切らずに透過する (Phase 4.8)。
+/// `as` キャスト (`(x as T).method()`) は透過しない — 鎖が切れて独立 glyph に
+/// なるだけで二重計上はしない (M1 スコープ外、必要なら Expr::Cast を足す)。
+fn chain_members(outermost: &syn::ExprMethodCall) -> (Vec<ChainMember<'_>>, Option<&Expr>) {
+    let mut members = vec![ChainMember::Method(outermost)];
+    let mut cursor: &Expr = &outermost.receiver;
+    loop {
+        match cursor {
+            Expr::MethodCall(m) => {
+                members.push(ChainMember::Method(m));
+                cursor = &m.receiver;
+            }
+            Expr::Try(t) => cursor = &t.expr,
+            Expr::Await(a) => cursor = &a.base,
+            Expr::Paren(p) => cursor = &p.expr,
+            Expr::Reference(r) => cursor = &r.expr,
+            Expr::Call(c) => {
+                members.push(ChainMember::Call(c));
+                return (members, None);
+            }
+            other => return (members, Some(other)),
+        }
+    }
 }
 
 impl<'ast> Visit<'ast> for CallVisitor<'_> {
@@ -154,20 +195,78 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
             excerpt: node.to_token_stream().to_string(),
             span: node.span(),
             target,
+            chain: None,
         });
         syn::visit::visit_expr_call(self, node);
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        // レシーバ型が分からないため解決不能 (Phase 1a)。`.method` 形式で保持し pure 扱い。
-        let target = format!(".{}", node.method);
-        self.calls.push(CallSite {
-            effects: effects_for_path(&target),
-            excerpt: node.to_token_stream().to_string(),
-            span: node.span(),
-            target,
-        });
-        syn::visit::visit_expr_method_call(self, node);
+        // メソッドチェーン (Phase 4.8): レシーバ入れ子を最外殻の visit が1回で
+        // まとめて処理し、**実行順 (最奥→外)** で CallSite 化する。内側の
+        // ExprMethodCall には default 再帰しない (二重計上の防止) — 引数と基底式
+        // だけ手動で再帰する。長さ1は従来どおり (チェーンにしない)。
+        let (members, base) = chain_members(node);
+        if members.len() < 2 {
+            // レシーバ型が分からないため解決不能 (Phase 1a)。`.method` 形式で保持し pure 扱い。
+            let target = format!(".{}", node.method);
+            self.calls.push(CallSite {
+                effects: effects_for_path(&target),
+                excerpt: node.to_token_stream().to_string(),
+                span: node.span(),
+                target,
+                chain: None,
+            });
+            syn::visit::visit_expr_method_call(self, node);
+            return;
+        }
+        let chain_id = self.chain_seq;
+        self.chain_seq += 1;
+        for (index, member) in members.iter().rev().enumerate() {
+            let index = u32::try_from(index).expect("チェーン長が u32 を超えることはない");
+            match member {
+                ChainMember::Method(m) => {
+                    let target = format!(".{}", m.method);
+                    self.calls.push(CallSite {
+                        effects: effects_for_path(&target),
+                        excerpt: m.to_token_stream().to_string(),
+                        span: m.span(),
+                        target,
+                        chain: Some((chain_id, index)),
+                    });
+                }
+                ChainMember::Call(c) => {
+                    let target = match c.func.as_ref() {
+                        Expr::Path(path) => self.uses.expand(&path_to_string(&path.path)),
+                        other => other.to_token_stream().to_string(),
+                    };
+                    self.calls.push(CallSite {
+                        effects: effects_for_path(&target),
+                        excerpt: c.to_token_stream().to_string(),
+                        span: c.span(),
+                        target,
+                        chain: Some((chain_id, index)),
+                    });
+                }
+            }
+        }
+        // 引数・基底式の中の呼び出しは独立 glyph として従来どおり収集する。
+        for member in &members {
+            match member {
+                ChainMember::Method(m) => {
+                    for arg in &m.args {
+                        syn::visit::visit_expr(self, arg);
+                    }
+                }
+                ChainMember::Call(c) => {
+                    for arg in &c.args {
+                        syn::visit::visit_expr(self, arg);
+                    }
+                }
+            }
+        }
+        if let Some(base) = base {
+            syn::visit::visit_expr(self, base);
+        }
     }
 
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
@@ -183,6 +282,7 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
             excerpt: node.to_token_stream().to_string(),
             span: node.span(),
             target: format!("{name}!"),
+            chain: None,
         });
         syn::visit::visit_macro(self, node);
     }

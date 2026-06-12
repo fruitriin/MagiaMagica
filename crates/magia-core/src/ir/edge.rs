@@ -22,6 +22,9 @@ pub struct Edge {
 pub enum EdgeKind {
     #[default]
     ControlFlow,
+    /// メソッドチェーンの連結 (Phase 4.8)。鎖の後続 SummonGlyph が先行 glyph から
+    /// 受ける唯一の入次エッジ (鎖の先頭だけが親リングから ControlFlow を受ける)。
+    Chain,
     DataFlow,
     Dependency,
     Inheritance,

@@ -149,35 +149,44 @@ mod tests {
             .collect()
     }
 
-    /// 受け入れ基準の不変条件: ControlFlow Edge 数 = AuxRing 数 + SummonGlyph 数、
-    /// SigilId は一意、各 AuxRing / SummonGlyph にちょうど1本の Edge が入る。
+    /// 受け入れ基準の不変条件 (Phase 4.8 で更新 [break]):
+    /// ControlFlow + Chain Edge 数 = AuxRing 数 + SummonGlyph 数、SigilId は一意、
+    /// 各 AuxRing / SummonGlyph にちょうど1本の係留 Edge (ControlFlow か Chain) が入る。
+    /// Chain (Phase 4.8) はメソッドチェーンの後続 glyph だけが受ける。
     fn assert_ring_invariants(module: &Module) {
         let aux = aux_rings(module);
         let glyphs = summon_glyphs(module);
+        let anchoring = |kind: EdgeKind| kind == EdgeKind::ControlFlow || kind == EdgeKind::Chain;
         assert_eq!(
-            module
-                .edges
-                .iter()
-                .filter(|e| e.kind == EdgeKind::ControlFlow)
-                .count(),
+            module.edges.iter().filter(|e| anchoring(e.kind)).count(),
             aux.len() + glyphs.len(),
-            "ControlFlow Edge 数 = AuxRing 数 + SummonGlyph 数"
+            "係留 Edge (ControlFlow + Chain) 数 = AuxRing 数 + SummonGlyph 数"
         );
         let mut ids: Vec<_> = module.sigils.iter().map(|s| s.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), module.sigils.len(), "SigilId は一意");
         for sigil in aux.iter().chain(&glyphs) {
-            // DataFlow Edge (Phase 3.4) は木構造と別系統なので ControlFlow だけ数える。
+            // DataFlow Edge (Phase 3.4) は木構造と別系統なので係留 Edge だけ数える。
             assert_eq!(
                 module
                     .edges
                     .iter()
-                    .filter(|e| e.kind == EdgeKind::ControlFlow && e.target == sigil.id)
+                    .filter(|e| anchoring(e.kind) && e.target == sigil.id)
                     .count(),
                 1,
-                "各 AuxRing / SummonGlyph は親と1本の ControlFlow Edge を持つ"
+                "各 AuxRing / SummonGlyph は親と1本の係留 Edge を持つ"
             );
+            // AuxRing が Chain を受けることはない (鎖は glyph 間のみ)。
+            if sigil.kind == SigilKind::AuxRing {
+                assert!(
+                    module
+                        .edges
+                        .iter()
+                        .all(|e| !(e.kind == EdgeKind::Chain && e.target == sigil.id)),
+                    "AuxRing は Chain Edge を受けない"
+                );
+            }
         }
     }
 
@@ -803,5 +812,80 @@ mod tests {
             serde_json::to_string(&graph).unwrap(),
             serde_json::to_string(&again).unwrap()
         );
+    }
+
+    #[test]
+    fn method_chain_links_glyphs_in_execution_order() {
+        // Phase 4.8: チェーンは実行順 (最奥→外) の glyph 列 + Chain edge の数珠つなぎ。
+        let src = "fn f(v: Vec<i32>) -> i32 { v.iter().skip(1).count() as i32 }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+        let glyphs = summon_glyphs(module);
+        let targets: Vec<&str> = glyphs
+            .iter()
+            .map(|g| g.content[0].payload.call_target.as_deref().unwrap())
+            .collect();
+        assert_eq!(targets, [".iter", ".skip", ".count"]);
+        // 先頭だけがリングから ControlFlow、後続は先行 glyph から Chain。
+        let chain_edges: Vec<(u32, u32)> = module
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Chain)
+            .map(|e| (e.source.0, e.target.0))
+            .collect();
+        assert_eq!(
+            chain_edges,
+            [
+                (glyphs[0].id.0, glyphs[1].id.0),
+                (glyphs[1].id.0, glyphs[2].id.0)
+            ]
+        );
+    }
+
+    #[test]
+    fn method_chain_passes_through_try_await_and_includes_call_base() {
+        // `?` / `.await` を透過し、基底の関数呼び出し (`fetch(url)`) も鎖の先頭になる。
+        let src =
+            "async fn f(url: &str) -> Result<u32, E> { Ok(fetch(url).send()?.json().await.len()) }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+        let glyphs = summon_glyphs(module);
+        let targets: Vec<&str> = glyphs
+            .iter()
+            .map(|g| g.content[0].payload.call_target.as_deref().unwrap())
+            .collect();
+        // Ok(..) は ExprCall — 鎖の外の独立 glyph。鎖は fetch → send → json → len。
+        assert!(targets.contains(&"Ok"));
+        let chain_count = module
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Chain)
+            .count();
+        assert_eq!(chain_count, 3, "fetch→send→json→len で Chain edge 3本");
+    }
+
+    #[test]
+    fn single_method_call_and_chain_args_stay_independent() {
+        // 長さ1はチェーンにしない。引数内の呼び出し (`g()`) も独立 glyph のまま。
+        let src = "fn f(x: T) { x.solo(); x.first(g()).second(); }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+        let chain_edges: Vec<(u32, u32)> = module
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Chain)
+            .map(|e| (e.source.0, e.target.0))
+            .collect();
+        assert_eq!(chain_edges.len(), 1, "first→second の1本だけが鎖");
+        let glyphs = summon_glyphs(module);
+        let targets: Vec<&str> = glyphs
+            .iter()
+            .map(|g| g.content[0].payload.call_target.as_deref().unwrap())
+            .collect();
+        assert!(targets.contains(&".solo"));
+        assert!(targets.contains(&"g"));
     }
 }

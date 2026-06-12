@@ -123,12 +123,22 @@ fn span_ir(loc: &crate::ir::SourceSpan) -> Option<SpanIr> {
     })
 }
 
-/// 制御フローの接続。端点 (リング表面) の計算は from/to の中心 + 半径から
+/// 接続線。端点 (リング表面) の計算は from/to の中心 + 半径から
 /// 自明に決まるため、描画側 (Vue) が行う。
 #[derive(Serialize)]
 pub struct EdgeIr {
     pub from: u32,
     pub to: u32,
+    /// 線種 (Phase 4.8 で chain 追加 — 描き分けは Vue)。
+    pub kind: EdgeKindIr,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKindIr {
+    ControlFlow,
+    /// メソッドチェーンの連結 (召喚陣 → 召喚陣、Phase 4.8)。
+    Chain,
 }
 
 #[derive(Serialize)]
@@ -177,12 +187,16 @@ pub fn spell_ir(graph: &MagiaGraph, layout: &LayoutResult) -> SpellIr {
 
     for module in &graph.modules {
         for edge in &module.edges {
-            if edge.kind != EdgeKind::ControlFlow {
-                continue;
-            }
+            let kind = match edge.kind {
+                EdgeKind::ControlFlow => EdgeKindIr::ControlFlow,
+                EdgeKind::Chain => EdgeKindIr::Chain,
+                // DataFlow 等は描画上の接続線ではない (spec §16)。
+                _ => continue,
+            };
             ir.edges.push(EdgeIr {
                 from: edge.source.0,
                 to: edge.target.0,
+                kind,
             });
         }
 

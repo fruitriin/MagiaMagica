@@ -123,7 +123,7 @@ describe("irToSchema (合成ケース)", () => {
       view_box: [0, 0, 10, 10],
       rings: [],
       glyphs: [],
-      edges: [{ from: 1, to: 2 }],
+      edges: [{ from: 1, to: 2, kind: "control_flow" as const }],
       signature: null,
       return_branch: null,
     };

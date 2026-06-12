@@ -64,6 +64,7 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
       layer: "control_flow",
       from: String(edge.from),
       to: String(edge.to),
+      chain: edge.kind === "chain",
     });
   }
 

@@ -131,6 +131,11 @@ fn layout_module(
             );
         }
     }
+    // メソッドチェーンの後続 glyph (Phase 4.8): 先頭 glyph (fan 配置済み) から
+    // 外向きに数珠つなぎで置く。Chain edge は Adjacency (ControlFlow のみ) に
+    // 含まれないため、ここで初めて配置される。
+    place_chain_glyphs(module, &placements, placed);
+
     // 不変条件が壊れた IR (MainRing 欠落・到達不能 Sigil) への防御:
     // 未配置の Sigil は原点に置き、結果が常に全 Sigil を覆う規約を守る。
     for sigil in &module.sigils {
@@ -138,6 +143,66 @@ fn layout_module(
             center: Point::ZERO,
             radius: sigil_radius(sigil.kind),
         });
+    }
+}
+
+/// メソッドチェーンの後続 glyph を先頭から外向き放射に数珠つなぎ配置する (Phase 4.8)。
+///
+/// 向きは「先頭を係留するリングの中心 → 先頭」の単位ベクトル (リングから離れる方向)。
+/// 鎖どうし・他要素との衝突回避は M1 では行わない (直線配置をまず目視判定に出す)。
+/// 先頭が未配置 (壊れた IR) の鎖はスキップし、原点フォールバック (呼び出し側) に任せる。
+fn place_chain_glyphs(
+    module: &Module,
+    placements: &BTreeMap<SigilId, RingPlacement>,
+    placed: &mut BTreeMap<SigilId, PlacedSigil>,
+) {
+    // 鎖の連結 (source → target)。BTreeMap で決定論的に辿る。
+    let mut next: BTreeMap<SigilId, SigilId> = BTreeMap::new();
+    let mut has_incoming: std::collections::BTreeSet<SigilId> = std::collections::BTreeSet::new();
+    for edge in &module.edges {
+        if edge.kind == EdgeKind::Chain {
+            next.insert(edge.source, edge.target);
+            has_incoming.insert(edge.target);
+        }
+    }
+    // 先頭 = Chain の出次があり入次がない glyph。
+    for head in next.keys().filter(|id| !has_incoming.contains(id)).copied() {
+        let Some(head_placed) = placed.get(&head).copied() else {
+            continue;
+        };
+        // 先頭を係留するリング (ControlFlow の source) の中心から外向きを決める。
+        let anchor_center = module
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::ControlFlow && e.target == head)
+            .and_then(|e| placements.get(&e.source))
+            .map_or(Point::ZERO, |ring| ring.center);
+        let dir = head_placed.center - anchor_center;
+        let dir = if dir.hypot() < 1e-9 {
+            Vec2::new(1.0, 0.0)
+        } else {
+            dir / dir.hypot()
+        };
+        let mut cursor = head;
+        let mut step = 1.0;
+        // 壊れた IR (鎖の循環) への防御: 全 Chain edge 数を超えたら打ち切る
+        // (正常な鎖は線形で、辿る回数は必ず edge 数以下)。
+        let mut remaining = next.len();
+        while let Some(&follower) = next.get(&cursor) {
+            if remaining == 0 {
+                break;
+            }
+            remaining -= 1;
+            placed.insert(
+                follower,
+                PlacedSigil {
+                    center: head_placed.center + dir * (constants::CHAIN_STEP * step),
+                    radius: SUMMON_GLYPH_RADIUS,
+                },
+            );
+            cursor = follower;
+            step += 1.0;
+        }
     }
 }
 

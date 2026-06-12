@@ -165,9 +165,10 @@ impl<'a> Tree<'a> {
         let sigils: BTreeMap<SigilId, &Sigil> = module.sigils.iter().map(|s| (s.id, s)).collect();
         let mut children_of: BTreeMap<SigilId, Vec<SigilId>> = BTreeMap::new();
         for edge in &module.edges {
-            // 木構造を成すのは ControlFlow Edge のみ。DataFlow Edge (Phase 3.4) は
-            // スコープを跨ぐ別系統の線で、親子関係には使わない。
-            if edge.kind != EdgeKind::ControlFlow {
+            // 木構造を成すのは係留 Edge (ControlFlow + Chain — Phase 4.8 で鎖後続の
+            // glyph は先行 glyph の子になる)。DataFlow Edge (Phase 3.4) はスコープを
+            // 跨ぐ別系統の線で、親子関係には使わない。
+            if edge.kind != EdgeKind::ControlFlow && edge.kind != EdgeKind::Chain {
                 continue;
             }
             children_of
