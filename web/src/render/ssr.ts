@@ -1,0 +1,73 @@
+// 静止画レンダのエントリ (Phase 4.3)。stdin で IR JSON を受け、Vue SSR で
+// 魔法陣を SVG 文字列にして stdout へ書く。動的 UI (serve) と同じ
+// コンポーネントツリー (MagicCircle) を使う — 意匠の定義は Vue 1箇所だけ。
+//
+// 入力: `{ "ir": IrSpell }` (spec v0.3 §16 の配置済み IR)
+// 出力: SVG 文字列 (stdout)。失敗時は stderr にエラー + 非0 exit。
+// ビルド: vite の SSR ビルド → `bun build --compile` で単一実行ファイル
+// (`magia-render`)。.vue を Bun が直接読めないため二段にする。
+import { createPinia } from "pinia";
+import { createSSRApp, h } from "vue";
+import { renderToString } from "vue/server-renderer";
+
+import MagicCircle from "../components/circle/MagicCircle.vue";
+import { irToSchema } from "../converters/irToSchema.ts";
+import type { IrSpell } from "../types/magia.ts";
+
+export type RenderRequest = {
+  ir: IrSpell;
+};
+
+/** SSR 由来の camelCase 属性の小文字化を復元する (スタンドアロン SVG は XML —
+ *  `viewbox` は無効)。テンプレート内の静的な camelCase (textPath / startOffset)
+ *  は SFC コンパイラが保持するが、動的バインド (`:viewBox`) は小文字化される。
+ *  新しい camelCase 属性を使うときはここに足す (XML validity テストが検出する)。 */
+const CAMEL_ATTRS = ["viewBox", "gradientUnits", "gradientTransform", "preserveAspectRatio"];
+
+/** renderToString の出力をスタンドアロン SVG (XML) に整える。
+ *  - fragment コメント (`<!--[-->` 等) は Vue の hydration マーカー — 静止画に不要
+ *  - 値なしの `data-v-*` (scoped style の印) は **XML として無効** なので必ず落とす
+ *  - 空の `style=""` は SSR だけが出すノイズ (クライアントは属性自体を出さない) */
+export function toStandaloneSvg(html: string): string {
+  let svg = html
+    .replace(/<!--[^>]*-->/g, "")
+    .replace(/ data-v-[0-9a-f]+(="")?/g, "")
+    .replace(/ style=""/g, "");
+  for (const attr of CAMEL_ATTRS) {
+    svg = svg.replaceAll(` ${attr.toLowerCase()}="`, ` ${attr}="`);
+  }
+  return svg;
+}
+
+/** 配置済み IR をスタンドアロン SVG 文字列にレンダする (SSR の本体)。 */
+export async function renderSpellSvg(request: RenderRequest): Promise<string> {
+  const schema = irToSchema(request.ir);
+  const app = createSSRApp({ render: () => h(MagicCircle, { schema }) });
+  // MagicCircle ツリーは palette / focus store を参照する — SSR では
+  // 既定状態 (全レイヤー表示・選択なし) の Pinia を与える。
+  app.use(createPinia());
+  return toStandaloneSvg(await renderToString(app));
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// CLI エントリ (bun 実行時のみ)。vitest からの import では走らない。
+if (import.meta.main) {
+  readStdin()
+    .then(async (input) => {
+      const svg = await renderSpellSvg(JSON.parse(input) as RenderRequest);
+      process.stdout.write(`${svg}\n`);
+    })
+    .catch((error: unknown) => {
+      console.error(
+        `magia-render: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+      );
+      process.exit(1);
+    });
+}

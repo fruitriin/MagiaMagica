@@ -138,11 +138,12 @@ pub struct SignatureIr {
     pub arc_path: String,
 }
 
-/// 負のゼロを正の 0.0 に正規化する (IEEE 754: -0.0 + 0.0 = 0.0)。
-/// `screen_position` の y 反転 (`-p.y`) が原点で -0.0 を生み、JSON に "-0.0" が
-/// 混入するのを防ぐ (SVG レンダラの `num()` と同じ正規化 — クロス検証テストで固定)。
+/// 座標を小数2桁へ丸め、負のゼロを正の 0.0 に正規化する (IEEE 754:
+/// -0.0 + 0.0 = 0.0)。SVG レンダラの `num()` (`{:.2}` 固定) と同じ精度 —
+/// `screen_position` の y 反転が生む -0.0 と、sin/cos の数値ノイズ
+/// (`7.3e-15` 等) が JSON や SSR 出力の SVG に漏れるのを防ぐ (Phase 4.3)。
 fn nz(value: f64) -> f64 {
-    value + 0.0
+    (value * 100.0).round() / 100.0 + 0.0
 }
 
 /// `MagiaGraph` + `LayoutResult` から配置済み IR を構築する。

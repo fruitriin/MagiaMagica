@@ -55,4 +55,36 @@
 
 ## タスク
 
-（現在タスクなし）
+### Phase 4.3 — 静止画レンダ Vue SSR + Bun 一本化 (docs/plans/phase4.3-composite-still-render.md)
+
+**設計確定 (着手時)**: 計画書どおり配布形態は案 A (`magia-render` 独立バイナリ、bun build --compile)。マイルストーン分割で進める — M1/M2 は機能 (Stage 1 ゲートのみ)、M3 (ベルカ Vue 移植) / M4 (Spell Diff Vue 移植) は意匠判定ゲート。Rust SVG レンダラ削除 [break] は M3/M4 の等価判定合格後 (M5/M6)。
+
+**M1 — SSR 基盤の技術検証 + 確立**
+- [x] 1. spike 成功: `vue/server-renderer` で `<MagicCircle>` が SVG 文字列になるか + `bun build --compile` が single-file executable を吐くか (想定リスクの本丸を先に踏む)
+- [x] 2. web/src/render/ssr.ts (renderSpellSvg + toStandaloneSvg 正規化 — viewbox 小文字化 / hydration コメント / 値なし data-v (XML 無効) / 空 style を除去) — stdin で IR JSON (`{ir, style, focus_layout?}`) → irToSchema → renderToString → stdout に SVG。エラーは stderr + 非0 exit
+- [x] 3. build:render スクリプト + build.rs 統合 (target/magia-render、59MB、ウォーム 30ms — 基準 200ms クリア。50MB 基準は 9MB 超過 → サイズ方針で許容) (ローカル darwin-arm64) + 起動時間計測 (目標 200ms 以下)
+- [x] 4. vitest 5本 (XML validity / 要素数一致 / 決定論 / 正規化単体)。完全 DOM 等価は M5 の golden 切替で確認: serve の動的 UI が描く SVG と SSR 出力の DOM 等価テスト (vitest)
+
+**M2 — Rust 統合 + magia render CLI (ミッドチルダ経路)**
+- [x] 5. ssr.rs: magia-render spawn (パス解決 4段: env → 同dir → 親dir → PATH)、stderr 伝達 (パス解決: MAGIA_RENDER_PATH → 同 dir → PATH)、stdin/stdout 配管、エラー伝達
+- [x] 6. magia render の基本経路 (midchilda + フィルタなし) を SSR に切替。62ms。IR の nz() を2桁丸めに拡張 (sin/cos の 1e-15 ノイズが SVG に漏れていた) (--style midchilda のみ。belka は M3 まで Rust 経路温存)
+- [x] 7. 統合テスト (XML 契約) + Stage 1 全通過 (cargo 17 / clippy / fmt / ADDF / vp check / vitest 38 / playwright 18)
+
+**M3 — ベルカ式 Vue 移植 (意匠判定ゲート)**
+- [ ] 8. ベルカ IR エクスポート (belka.rs の射影モデルを IR 化) + Vue コンポーネント (BelkaCircle ツリー)
+- [ ] 9. serve の svg_belka を Vue 描画に切替 + SSR 対応
+- [ ] 10. 等価素材 (新旧並置) → オーナー判定
+
+**M4 — Spell Diff Vue 移植 (意匠判定ゲート)**
+- [ ] 11. diff IR エクスポート (diff_status: added/removed/modified + ゴースト座標) + Vue overlay (金ハロー/シアン/灰破線)
+- [ ] 12. 等価素材 (合成 fixture + 自己ホスティング diff) → オーナー判定
+
+**M5 — 経路統一 + Rust SVG レンダラ削除 [break]**
+- [ ] 13. magia diff / magia ci を SSR 経路に書き換え、golden 更新
+- [ ] 14. midchilda.rs / belka.rs の SVG 出力関数を削除 (レイアウト計算・IR 加工は残す)。色定数の Rust 残置を grep 確認
+- [ ] 15. CI: setup-bun + bun build --compile + 統合テスト
+
+**M6 — ドキュメント + 完了処理**
+- [ ] 16. CLAUDE.repo.md (Bun 前提・magia-render 配布・ビルド手順) 更新
+- [ ] 17. Stage 1 全ゲート + Stage 2 レビュー + 指摘対応
+- [ ] 18. 計画 memo、knowhow、Feedback / TODO 更新、アーカイブ、コミット
