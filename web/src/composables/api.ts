@@ -15,6 +15,18 @@ export function fetchState(): Promise<StateResponse> {
   return fetchJson<StateResponse>("/state");
 }
 
+/** ワークスペース俯瞰 (Phase 4.5 M1): 全 .rs の関数一覧。 */
+export function fetchWorkspace(): Promise<{
+  files: {
+    path: string;
+    dir: string;
+    functions: { qualified: string; signature: string }[];
+    error?: boolean;
+  }[];
+}> {
+  return fetchJson("/workspace");
+}
+
 /** ワークスペース配下の .rs 一覧 (監視対象の切替候補、Phase 4.4.5)。 */
 export function fetchFiles(): Promise<{ files: string[] }> {
   return fetchJson<{ files: string[] }>("/files");

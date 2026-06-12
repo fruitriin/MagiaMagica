@@ -124,3 +124,20 @@
   不整合応答ウィンドウが生まれる — 由来ファイルをスナップショット自体に含める
 - パス境界は canonicalize → starts_with(root)。`-` 始まり同様、検証は
   受け口 (HTTP ハンドラ直後) で1回
+
+## ズーム軸 = 視野切替 (Phase 4.5 M1 追補)
+
+- **ズームアウトは「ピンの粒度変更」ではなく「視野の切替」として実装する**: 俯瞰
+  (`?scope=workspace`) は currentFn / file / pin の状態を一切壊さず、表示だけを
+  差し替える (`v-if` でペアビュー ⇆ WorkspaceView)。「ピンに戻る」が常に元の文脈に
+  戻れるのはこのため。scope を他の状態と直交させると URL 軸の合成
+  (`?pin=X&scope=workspace`) も自然に成立する
+- **俯瞰のデータはオンデマンド全パースで開始してよい**: `GET /workspace` は
+  キャッシュなしで全 .rs を function_index_with_calls にかける。実リポジトリ
+  69ファイルで体感即時。「重くなったら rayon の par_iter」を計画 memo に残す形が、
+  早すぎる最適化 (POSD) を避けつつ撤退線を引く定型
+- **ズームインの失敗時は遷移しない**: カードクリック → switchFile → scope=focus の
+  連鎖で、switchFile がエラーを store (loadError) に畳む設計なら、後続の scope 遷移は
+  loadError チェックでガードする。「クリックしたのに別ファイルのピンビューが出る」を
+  防ぐ (エラーを畳む関数の後続処理は、畳まれた結果を確認してから進む)
+

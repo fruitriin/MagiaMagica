@@ -58,6 +58,12 @@ export function useQuerySync() {
 
     // 監視ファイルの希望 (Phase 4.4.5)。切替の発火は下の watch (file 確定後)。
     focus.setRequestedFile(asString(query["file"]));
+
+    // 視野 (Phase 4.5)。workspace 以外の値は focus に倒す。
+    const scope = asString(query["scope"]) === "workspace" ? "workspace" : "focus";
+    if (scope !== focus.scope) {
+      void focus.setScope(scope);
+    }
   }
 
   function buildQuery(): Record<string, string> {
@@ -65,6 +71,7 @@ export function useQuerySync() {
     if (focus.currentFn !== null) params["pin"] = focus.currentFn;
     if (focus.requestedFile !== null) params["file"] = focus.requestedFile;
     if (focus.diffRev !== null) params["diff"] = focus.diffRev;
+    if (focus.scope === "workspace") params["scope"] = "workspace";
     if (palette.style === "belka") params["style"] = "belka";
     const shown = LAYERS.filter((l) => palette.layers[l].visible);
     if (shown.length < LAYERS.length) params["layers"] = shown.join(",");
@@ -97,6 +104,7 @@ export function useQuerySync() {
       () => focus.currentFn,
       () => focus.requestedFile,
       () => focus.diffRev,
+      () => focus.scope,
       () => palette.style,
       () => palette.layers,
     ],

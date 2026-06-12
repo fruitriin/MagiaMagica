@@ -5,7 +5,13 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 
-import { fetchFiles, fetchSpell, fetchState, postFile } from "../composables/api.ts";
+import {
+  fetchFiles,
+  fetchSpell,
+  fetchState,
+  fetchWorkspace,
+  postFile,
+} from "../composables/api.ts";
 import type { FunctionMeta, ServerError, SpellResponse } from "../types/magia.ts";
 import { useSourceStore } from "./source.ts";
 
@@ -23,6 +29,33 @@ export const useFocusStore = defineStore("focus", () => {
   const currentFn = ref<string | null>(null);
   /** Spell Diff の比較基準 rev (`?diff=` と同期 — Phase 4.3.7)。null = diff なし。 */
   const diffRev = ref<string | null>(null);
+  /** 視野 (`?scope=` と同期 — Phase 4.5)。focus = ピン中心 / workspace = 俯瞰。 */
+  const scope = ref<"focus" | "workspace">("focus");
+  /** 俯瞰の内容 (`?scope=workspace` で遅延取得)。 */
+  const workspace = ref<
+    | {
+        path: string;
+        dir: string;
+        functions: { qualified: string; signature: string }[];
+        error?: boolean;
+      }[]
+    | null
+  >(null);
+
+  /** 視野を切り替える。俯瞰に入るとき内容を取得する (毎回 — ファイルは動くため)。 */
+  async function setScope(next: "focus" | "workspace") {
+    scope.value = next;
+    if (next === "workspace") {
+      try {
+        workspace.value = (await fetchWorkspace()).files;
+        loadError.value = null;
+      } catch (e) {
+        // 黙落ちさせない — 空の俯瞰とサーバ障害をバナーで区別できるようにする
+        workspace.value = [];
+        loadError.value = e instanceof Error ? e.message : String(e);
+      }
+    }
+  }
   const spell = ref<SpellResponse | null>(null);
   const loadError = ref<string | null>(null);
 
@@ -216,6 +249,9 @@ export const useFocusStore = defineStore("focus", () => {
     serverError,
     currentFn,
     diffRev,
+    scope,
+    workspace,
+    setScope,
     spell,
     loadError,
     hoveredOperationId,

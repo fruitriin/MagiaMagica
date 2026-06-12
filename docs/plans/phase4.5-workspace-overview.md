@@ -60,3 +60,41 @@ dev-server に「ワークスペース俯瞰モード」を加える。
 5. テスト + Stage 1/2 + 完了処理
 
 (詳細は 4.1〜4.4 完了時に精緻化)
+
+## 実装結果メモ — M1 (2026-06-12)
+
+### M1 のスコープ (着手時の精緻化)
+
+「俯瞰 → ズームイン」の体験を一周させることに絞った:
+
+- **serve `GET /workspace`**: 全 .rs の関数一覧 (`{ files: [{ path, dir, functions: [{qualified, signature}], error? }] }`)。
+  list_rs_files (4.4.5) + function_index_with_calls (4.2) の合成。パース失敗は `error: true` で
+  スキップし俯瞰を壊さない。キャッシュなし — ローカル dev でオンデマンドに全パース
+  (実リポジトリ69ファイルで体感即時)
+- **Vue 俯瞰ビュー (`?scope=workspace`)**: ディレクトリごとのセクション + ファイルカードの
+  CSS グリッド。カード = ファイル名 + 関数数 + シグネチャ抜粋 (先頭3つ)。現在ファイルは
+  シアンハイライト。**カードのグリッドは CSS レイアウト** — 「配置は Rust」は魔法陣の幾何の
+  規約であり、カード一覧には適用しない (ミニ魔法陣タイルを置く M2+ で再考)
+- **ズームイン**: カードクリック → switchFile (4.4.5) + scope=focus。switchFile 失敗時は
+  俯瞰に留まる (loadError バナーで通知 — レビュー W-1)
+- ヘッダに俯瞰トグル。URL は `?scope=workspace` で復元 (workspace 以外の値は focus に倒す)
+
+### M2+ に残したもの
+
+- **ミニ魔法陣タイル**: カード内に縮小魔法陣 (シグネチャ盾) を描く。focus_layout の
+  ワークスペース版が必要
+- **WorkspaceProximity**: モジュール階層・ファイル間 call 関係を距離に反映した配置。
+  M1 はディレクトリグルーピング (辞書順) で最小達成
+- **ファイル間の呼び出し矢印** (4.4 から送られた --with-call-arrows 含む)
+- **ピンが立っているファイルの距離フェード** (遠景表現)
+- call_relation の前計算 (HashSet 化) はワークスペーススケールで検討 (4.4 レビュー Low)
+- /workspace の並列パース (rayon) — 重くなったら (レビュー S-1)。tiny_http は
+  リクエストごと1スレッドなので巨大ワークスペースでは SSE への影響も見る
+- 「まだ取得していない (null)」と「取得失敗 ([] + loadError)」の表示分岐 (レビュー I-2)
+
+### レビュー対応 (Stage 2)
+
+- W-1: zoomInto は loadError チェック後に scope=focus (失敗時に別ファイルのピンビューへ飛ばさない)
+- W-2: 統合テストの panic メッセージ向き修正
+- W-3: setScope の fetch 失敗を loadError に乗せる (黙落ち禁止)
+- S-2: ファイルカードに cursor-pointer

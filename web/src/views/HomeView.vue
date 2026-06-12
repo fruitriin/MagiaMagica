@@ -13,6 +13,7 @@ import SymbolLegend from "../components/SymbolLegend.vue";
 import MagicCircleView from "../components/MagicCircleView.vue";
 import SourcePane from "../components/SourcePane.vue";
 import TranscriptRegion from "../components/TranscriptRegion.vue";
+import WorkspaceView from "../components/WorkspaceView.vue";
 import { useMagiaSync } from "../composables/useMagiaSync.ts";
 import { useQuerySync } from "../composables/useQuerySync.ts";
 import { useFocusStore } from "../stores/focus.ts";
@@ -71,6 +72,25 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
       >
         <option v-for="f in fileOptions" :key="f" :value="f">{{ f }}</option>
       </select>
+      <!-- 俯瞰トグル (Phase 4.5): ピン中心 ⇆ ワークスペース全体のズーム切替 -->
+      <button
+        ml-auto
+        border
+        border-gray-300
+        rounded
+        px-2
+        py-0.5
+        text-xs
+        cursor-pointer
+        :class="
+          focus.scope === 'workspace'
+            ? 'bg-cyan-600 text-white border-cyan-600'
+            : 'bg-white text-gray-600 hover:border-gray-500'
+        "
+        @click="void focus.setScope(focus.scope === 'workspace' ? 'focus' : 'workspace')"
+      >
+        {{ focus.scope === "workspace" ? "ピンに戻る" : "俯瞰" }}
+      </button>
     </header>
 
     <div v-if="focus.serverError" border-b border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800>
@@ -95,7 +115,9 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
     <CallInspector />
     <HoverPreview />
 
-    <main flex min-h-0 flex-1>
+    <!-- 俯瞰 (Phase 4.5): scope=workspace のときはペアビューの代わりに全ファイルカード -->
+    <WorkspaceView v-if="focus.scope === 'workspace'" min-h-0 flex-1 />
+    <main v-else flex min-h-0 flex-1>
       <!-- 一番見せたいのは魔法陣 (オーナー判定 M3): 左端 + 最大幅でゆったり置く。
            凡例は魔法陣ペインの下 (オーナー判定 4.0.6) — 図と見比べながら読める位置。 -->
       <div min-w-0 class="flex-[1.6]" flex flex-col>

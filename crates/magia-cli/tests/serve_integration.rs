@@ -570,3 +570,43 @@ fn loner() {}\n";
     assert_eq!(relation_of(&helper, "entry"), "called_by");
     assert_eq!(relation_of(&helper, "back"), "mutual");
 }
+
+/// Phase 4.5 M1: `GET /workspace` — 全 .rs の関数一覧 (俯瞰の入力)。
+#[test]
+fn workspace_endpoint_lists_functions_per_file() {
+    let file = temp_fixture("overview.rs", INITIAL);
+    let dir = file.parent().unwrap().to_path_buf();
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    std::fs::write(dir.join("sub/extra.rs"), "fn deep() {}\n").unwrap();
+    std::fs::write(dir.join("broken.rs"), "fn broken( {\n").unwrap();
+    let server = spawn_server_in(&dir, &file);
+
+    let workspace = body_json_at(server.port, "/workspace");
+    let files = workspace["files"].as_array().unwrap();
+    let by_path = |p: &str| -> &serde_json::Value {
+        files
+            .iter()
+            .find(|f| f["path"] == p)
+            .unwrap_or_else(|| panic!("{p} が一覧にいない"))
+    };
+
+    // 正常ファイル: 関数一覧 (qualified + signature) が載る。
+    let overview = by_path("overview.rs");
+    let names: Vec<&str> = overview["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["qualified"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["watched", "Caster::cast"]);
+    assert!(overview.get("error").is_none());
+
+    // サブディレクトリは dir で区別できる。
+    assert_eq!(by_path("sub/extra.rs")["dir"], "sub");
+    assert_eq!(by_path("overview.rs")["dir"], "");
+
+    // 壊れたファイルは俯瞰を壊さず error フラグでスキップ。
+    let broken = by_path("broken.rs");
+    assert_eq!(broken["error"], true);
+    assert_eq!(broken["functions"].as_array().unwrap().len(), 0);
+}

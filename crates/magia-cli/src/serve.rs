@@ -212,6 +212,41 @@ fn list_rs_files() -> Vec<String> {
     files
 }
 
+/// ワークスペース俯瞰 (Phase 4.5 M1): 全 .rs の関数一覧。
+/// パース失敗 (構文エラー・マクロ限界) は俯瞰を壊さず error フラグでスキップする。
+/// オンデマンド構築 (キャッシュなし — ローカル dev の俯瞰を開く頻度では十分)。
+fn workspace_json() -> String {
+    let files: Vec<serde_json::Value> = list_rs_files()
+        .into_iter()
+        .map(|path| {
+            let dir = Path::new(&path)
+                .parent()
+                .map_or_else(String::new, |p| p.display().to_string());
+            match std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|source| function_index_with_calls(&source).ok())
+            {
+                Some((functions, _)) => {
+                    let functions: Vec<_> = functions
+                        .iter()
+                        .map(|f| {
+                            serde_json::json!({
+                                "qualified": f.qualified,
+                                "signature": f.signature,
+                            })
+                        })
+                        .collect();
+                    serde_json::json!({ "path": path, "dir": dir, "functions": functions })
+                }
+                None => {
+                    serde_json::json!({ "path": path, "dir": dir, "functions": [], "error": true })
+                }
+            }
+        })
+        .collect();
+    serde_json::json!({ "files": files }).to_string()
+}
+
 /// 監視ファイルの切替 (Phase 4.4.5)。検証して watcher スレッドへ送る。
 /// 成功時は採用した cwd 相対パス (クライアントが URL に載せる正規形) を返す。
 fn switch_file(shared: &Shared, requested: &str) -> Result<String, String> {
@@ -743,6 +778,11 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
                 diff_rev.as_deref(),
             ))
         }
+        // Phase 4.5 M1: ワークスペース俯瞰 (全ファイルの関数一覧)。
+        (tiny_http::Method::Get, "/workspace") => request.respond(
+            tiny_http::Response::from_string(workspace_json())
+                .with_header(header("Content-Type", "application/json; charset=utf-8")),
+        ),
         // Phase 4.4.5: 監視ファイルの一覧と切替。
         (tiny_http::Method::Get, "/files") => request.respond(
             tiny_http::Response::from_string(
