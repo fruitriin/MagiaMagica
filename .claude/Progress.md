@@ -73,11 +73,11 @@
 **M3 — ベルカ式 Vue 移植 (意匠判定ゲート)**
 - [x] 8. belka.rs に belka_ir() (射影 project / 配置 place_poles を再利用、SVG 文字列化なし) + BelkaIr 型 (pole 語彙 genesis/transmute/consume — 色・ラベルは Vue 側テーブル)。矢じりは tip 座標だけ IR に載せ羽の形は Vue 計算 (belka.rs の射影モデルを IR 化) + Vue コンポーネント (BelkaCircle ツリー)
 - [x] 9. serve に belka_ir 追加、MagicCircleView を BelkaCircle に切替 (svg_belka は比較用に温存 — M5 で削除)。SSR 対応は M5 の --style belka 移行で
-- [x] 10. 等価素材 (loop_accumulate 新旧) 送付済み — 判定待ち
+- [x] 10. 等価素材 (loop_accumulate 新旧) → **判定合格** (「ベルカ式ちゃんと動いてそう」2026-06-12)
 
 **M4 — Spell Diff Vue 移植 (意匠判定ゲート)**
 - [x] 11. ir_export::diff_spell_ir (after 基準 SpellIr + viewBox ゴースト拡張 + DiffMarkIr 列。配置・半径は Rust / 色・破線は Vue) + MagicCircle の overlay prop + ssr.ts の diff_overlay + magia diff --svg の基本経路を SSR 化 (フィルタ付きは M5 まで Rust 温存)。SSR 出力の数値2桁丸め (Vue 計算のエッジ端点ノイズ対応) を toStandaloneSvg に追加 (diff_status: added/removed/modified + ゴースト座標) + Vue overlay (金ハロー/シアン/灰破線)
-- [x] 12. 等価素材 (process_order 新旧並置 — viewBox 拡張まで一致) 送付済み — 判定待ち。既存 diff_svg_writes_overlay_channel が SSR 経路の契約テストとしてそのまま通過
+- [x] 12. 等価素材 (process_order 新旧並置 — viewBox 拡張まで一致) → **判定合格** (「いいねえ」2026-06-12)。既存 diff_svg_writes_overlay_channel が SSR 経路の契約テストとしてそのまま通過
 
 **M5 — 経路統一 + Rust SVG レンダラ削除 [break]**
 - [ ] 13. magia diff / magia ci を SSR 経路に書き換え、golden 更新
