@@ -234,6 +234,42 @@ export type IrSpell = {
   return_branch: [number, number] | null;
 };
 
+// ===== ベルカ式の配置済み IR (Phase 4.3 M3、spec v0.3 §14) =====
+
+/** 三極の語彙。色・ラベル文言は Vue 側 (BelkaCircle) が持つ。 */
+export type BelkaPoleKind = "genesis" | "transmute" | "consume";
+
+export type BelkaPoleIr = {
+  pole: BelkaPoleKind;
+  x: number;
+  y: number;
+  radius: number;
+  field_radius: number;
+  label_x: number;
+  label_y: number;
+  /** 操作ドット (phyllotaxis 配置済み)。 */
+  dots: { x: number; y: number; effect: EffectCategory }[];
+};
+
+export type BelkaFlowIr = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  width: number;
+  /** 矢じりの頂点 (極円の縁)。羽は tip → 線端の方向から計算する。 */
+  tip_x: number;
+  tip_y: number;
+};
+
+/** ベルカ式の配置済み IR (データフロー三角力場)。 */
+export type BelkaIr = {
+  view_box: [number, number, number, number];
+  poles: BelkaPoleIr[];
+  flows: BelkaFlowIr[];
+  signature: { text: string; x: number; y: number } | null;
+};
+
 /** ピン中心ビューの周辺チップ (Phase 4.1、配置は Rust 確定値)。 */
 export type NeighborChip = {
   qualified: string;
@@ -272,7 +308,9 @@ export type SpellResponse = {
   /** 補助リングのガード・ヘッダ断片 (ring id → syntect ハイライト済み HTML)。
    *  分岐の腕の条件・ループヘッダをリングホバーで見せる。 */
   ring_excerpts: Record<string, string>;
-  /** ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。 */
+  /** ベルカ式の配置済み IR (Phase 4.3 M3 — `<BelkaCircle>` が描く)。 */
+  belka_ir: BelkaIr;
+  /** 旧 Rust レンダラの SVG 文字列 (等価判定までの比較用 — M5 で削除)。 */
   svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */
   transcript: string;

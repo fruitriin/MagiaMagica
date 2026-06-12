@@ -56,6 +56,7 @@ function spellFor(qualified: string): SpellResponse {
       signature: { text: `fn ${qualified}`, arc_path: "M-100,0 A100,100 0 0 1 100,0" },
       return_branch: null,
     },
+    belka_ir: { view_box: [0, 0, 10, 10], poles: [], flows: [], signature: null },
     call_excerpts: {},
     op_excerpts: {},
     ring_excerpts: {},

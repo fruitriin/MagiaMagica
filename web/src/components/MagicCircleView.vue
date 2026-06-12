@@ -5,14 +5,15 @@
 // 「中心原点のコンテンツ + g の CSS transform」で描くだけ。ピン打ち直しでは
 // 同一 key (qualified) の <g> の transform が CSS transition で補間され、
 // 旧フォーカスが周辺へ縮みつつ移動・新フォーカスが中心へズームインする。
-// ベルカ式は Phase 4.3 の Vue SSR 移行まで SVG 文字列 (svg_belka) を素通し表示
-// (保守価値低め — 改善はリメイクに織り込む。オーナー判定 2026-06-11)。
+// ベルカ式は配置済み IR (belka_ir) を BelkaCircle が描く (Phase 4.3 M3 で
+// Vue 移植済み。旧 svg_belka は等価判定までの比較用 — M5 で削除)。
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { irToSchema } from "../converters/irToSchema.ts";
 import { useFocusStore } from "../stores/focus.ts";
 import { usePaletteStore } from "../stores/palette.ts";
+import BelkaCircle from "./circle/BelkaCircle.vue";
 import MagicCircle from "./circle/MagicCircle.vue";
 import NeighborChip from "./circle/NeighborChip.vue";
 
@@ -26,8 +27,8 @@ const schema = computed(() => {
   return irToSchema(focus.spell.ir);
 });
 
-const belkaSvg = computed(() =>
-  palette.style === "belka" ? (focus.spell?.svg_belka ?? null) : null,
+const belkaIr = computed(() =>
+  palette.style === "belka" ? (focus.spell?.belka_ir ?? null) : null,
 );
 
 const layout = computed(() => focus.spell?.focus_layout ?? null);
@@ -113,7 +114,7 @@ function pin(qualified: string) {
       </g>
     </svg>
   </div>
-  <div v-else-if="belkaSvg" w-full v-html="belkaSvg" />
+  <BelkaCircle v-else-if="belkaIr" :belka="belkaIr" w-full />
   <div v-else p-8 text-gray-400>魔法陣を読み込み中…</div>
 </template>
 

@@ -71,9 +71,9 @@
 - [x] 7. 統合テスト (XML 契約) + Stage 1 全通過 (cargo 17 / clippy / fmt / ADDF / vp check / vitest 38 / playwright 18)
 
 **M3 — ベルカ式 Vue 移植 (意匠判定ゲート)**
-- [ ] 8. ベルカ IR エクスポート (belka.rs の射影モデルを IR 化) + Vue コンポーネント (BelkaCircle ツリー)
-- [ ] 9. serve の svg_belka を Vue 描画に切替 + SSR 対応
-- [ ] 10. 等価素材 (新旧並置) → オーナー判定
+- [x] 8. belka.rs に belka_ir() (射影 project / 配置 place_poles を再利用、SVG 文字列化なし) + BelkaIr 型 (pole 語彙 genesis/transmute/consume — 色・ラベルは Vue 側テーブル)。矢じりは tip 座標だけ IR に載せ羽の形は Vue 計算 (belka.rs の射影モデルを IR 化) + Vue コンポーネント (BelkaCircle ツリー)
+- [x] 9. serve に belka_ir 追加、MagicCircleView を BelkaCircle に切替 (svg_belka は比較用に温存 — M5 で削除)。SSR 対応は M5 の --style belka 移行で
+- [x] 10. 等価素材 (loop_accumulate 新旧) 送付済み — 判定待ち
 
 **M4 — Spell Diff Vue 移植 (意匠判定ゲート)**
 - [ ] 11. diff IR エクスポート (diff_status: added/removed/modified + ゴースト座標) + Vue overlay (金ハロー/シアン/灰破線)

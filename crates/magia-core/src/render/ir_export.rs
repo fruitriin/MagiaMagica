@@ -142,7 +142,7 @@ pub struct SignatureIr {
 /// -0.0 + 0.0 = 0.0)。SVG レンダラの `num()` (`{:.2}` 固定) と同じ精度 —
 /// `screen_position` の y 反転が生む -0.0 と、sin/cos の数値ノイズ
 /// (`7.3e-15` 等) が JSON や SSR 出力の SVG に漏れるのを防ぐ (Phase 4.3)。
-fn nz(value: f64) -> f64 {
+pub(crate) fn nz(value: f64) -> f64 {
     (value * 100.0).round() / 100.0 + 0.0
 }
 

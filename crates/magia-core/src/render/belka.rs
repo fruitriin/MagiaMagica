@@ -62,6 +62,182 @@ pub(crate) fn render(graph: &MagiaGraph) -> String {
     out
 }
 
+// ===== 配置済み IR (Phase 4.3 M3 — Vue 移植の境界) =====
+//
+// 射影 (project / pole_of) と三角配置 (place_poles) は意味論 + レイアウトなので
+// 本モジュール削除 (M5) 後も残す。SVG 文字列化 (write_document 系) だけが削除対象。
+// 色・ラベル文言・矢じり形状は「描き方」— Vue 側 (BelkaCircle) が持つ。
+
+/// ベルカ式の配置済み IR。`pole` 語彙 (genesis/transmute/consume) を境界に、
+/// Vue が色・ラベル・グラデーションを引く (ミッドチルダ IR の effect 語彙と同型)。
+#[derive(serde::Serialize)]
+pub struct BelkaIr {
+    pub view_box: [f64; 4],
+    pub poles: Vec<BelkaPoleIr>,
+    pub flows: Vec<BelkaFlowIr>,
+    /// シグネチャ (上端の平書き — 円弧ラベルはミッドチルダ式の意匠)。
+    pub signature: Option<BelkaSignatureIr>,
+}
+
+#[derive(serde::Serialize)]
+pub struct BelkaPoleIr {
+    /// 極の語彙 (genesis / transmute / consume)。
+    pub pole: &'static str,
+    pub x: f64,
+    pub y: f64,
+    pub radius: f64,
+    pub field_radius: f64,
+    /// 極名ラベルの位置 (円の外側、ベースライン補正済み)。
+    pub label_x: f64,
+    pub label_y: f64,
+    /// 操作ドット (phyllotaxis 配置済み)。
+    pub dots: Vec<BelkaDotIr>,
+}
+
+#[derive(serde::Serialize)]
+pub struct BelkaDotIr {
+    pub x: f64,
+    pub y: f64,
+    pub effect: EffectCategory,
+}
+
+#[derive(serde::Serialize)]
+pub struct BelkaFlowIr {
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
+    pub width: f64,
+    /// 矢じりの頂点 (極円の縁)。羽の形は Vue が tip → 線端の方向から計算する。
+    pub tip_x: f64,
+    pub tip_y: f64,
+}
+
+#[derive(serde::Serialize)]
+pub struct BelkaSignatureIr {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Pole {
+    /// IR 境界の語彙 (Vue 側のテーブルキー)。
+    fn key(self) -> &'static str {
+        match self {
+            Pole::Genesis => "genesis",
+            Pole::Transmute => "transmute",
+            Pole::Consume => "consume",
+        }
+    }
+}
+
+/// 配置済みベルカ IR を構築する (`write_document` と同じ射影・配置計算)。
+#[must_use]
+pub fn belka_ir(graph: &MagiaGraph) -> BelkaIr {
+    use crate::render::ir_export::nz;
+    let Some(module) = graph.modules.first() else {
+        return BelkaIr {
+            view_box: [0.0, 0.0, 10.0, 10.0],
+            poles: Vec::new(),
+            flows: Vec::new(),
+            signature: None,
+        };
+    };
+    let model = project(module);
+    let placed = place_poles(&model);
+    let reach = placed
+        .iter()
+        .map(|p| p.center.to_vec2().hypot() + p.field_radius)
+        .fold(0.0_f64, f64::max)
+        + MARGIN;
+
+    let poles = placed
+        .iter()
+        .map(|p| {
+            let direction = p.center.to_vec2();
+            let label_direction = if direction.hypot() < 1e-6 {
+                kurbo::Vec2::new(0.0, -1.0)
+            } else {
+                direction / direction.hypot()
+            };
+            let label_at = p.center + label_direction * (p.radius + 14.0);
+            let dots = model.dots.get(&p.pole).map_or(&[][..], Vec::as_slice);
+            let count = dots.len();
+            let dots = dots
+                .iter()
+                .enumerate()
+                .map(|(index, category)| {
+                    let fraction = (usize_to_f64(index) + 0.5) / usize_to_f64(count.max(1));
+                    let r = (p.radius - DOT_RADIUS - 4.0).max(0.0) * fraction.sqrt();
+                    let theta = usize_to_f64(index) * GOLDEN_ANGLE;
+                    BelkaDotIr {
+                        x: nz(p.center.x + r * theta.cos()),
+                        y: nz(p.center.y + r * theta.sin()),
+                        effect: *category,
+                    }
+                })
+                .collect();
+            BelkaPoleIr {
+                pole: p.pole.key(),
+                x: nz(p.center.x),
+                y: nz(p.center.y),
+                radius: nz(p.radius),
+                field_radius: nz(p.field_radius),
+                label_x: nz(label_at.x),
+                label_y: nz(label_at.y + 4.0), // ベースライン補正 (write_pole と同値)
+                dots,
+            }
+        })
+        .collect();
+
+    let flows = model
+        .flows
+        .iter()
+        .filter(|((source, target), _)| source != target)
+        .filter_map(|(&(source, target), &count)| {
+            let from = placed.iter().find(|p| p.pole == source)?;
+            let to = placed.iter().find(|p| p.pole == target)?;
+            let delta = to.center - from.center;
+            let length = delta.hypot();
+            if length < 1e-6 {
+                return None;
+            }
+            let unit = delta / length;
+            let start = from.center + unit * from.radius;
+            let end = to.center - unit * (to.radius + 6.0);
+            let tip = to.center - unit * to.radius;
+            Some(BelkaFlowIr {
+                x1: nz(start.x),
+                y1: nz(start.y),
+                x2: nz(end.x),
+                y2: nz(end.y),
+                width: nz((f64::from(count) * FLOW_WIDTH_STEP + 1.0).min(FLOW_WIDTH_MAX)),
+                tip_x: nz(tip.x),
+                tip_y: nz(tip.y),
+            })
+        })
+        .collect();
+
+    let signature = module
+        .sigils
+        .iter()
+        .find(|s| s.kind == SigilKind::MainRing)
+        .and_then(|s| s.layers.type_info.as_ref())
+        .and_then(|t| t.signature.as_deref())
+        .map(|text| BelkaSignatureIr {
+            text: text.to_string(),
+            x: 0.0,
+            y: nz(-reach + 16.0),
+        });
+
+    BelkaIr {
+        view_box: [nz(-reach), nz(-reach), nz(reach * 2.0), nz(reach * 2.0)],
+        poles,
+        flows,
+        signature,
+    }
+}
+
 // ===== 極モデル (IR → 三極への射影) =====
 
 /// 三極 (spec §14.2)。`Ord` で BTreeMap キー化と決定論的列挙を担保する。
