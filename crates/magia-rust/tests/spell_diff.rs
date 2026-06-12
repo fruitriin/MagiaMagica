@@ -5,9 +5,8 @@
 //! 全て踏むよう設計している (fixture 側のコメント参照)。
 
 use magia_core::diff::{SpellDiff, diff};
-use magia_core::filter::FilterSpec;
 use magia_core::ir::MagiaGraph;
-use magia_core::render::{RenderStyle, render_diff};
+use magia_core::render::ir_export::diff_spell_ir;
 use magia_rust::parse_function;
 
 const BEFORE: &str = include_str!("../../../fixtures/diff/before.rs");
@@ -141,109 +140,93 @@ fn report_lists_only_changed_metrics() {
 
 // ===== Phase 3.2: overlay-diff チャネル =====
 
-fn fixture_diff_svg(filter: &FilterSpec) -> String {
+/// 差分強調つき IR (Phase 4.3 M5 — SVG 検証は Vue SSR 側 (vitest / cli 統合) が担い、
+/// ここでは配置済みマークの構造を見る)。
+fn fixture_diff_ir() -> (
+    magia_core::render::ir_export::SpellIr,
+    Vec<magia_core::render::ir_export::DiffMarkIr>,
+) {
     let before = graph_of(BEFORE);
     let after = graph_of(AFTER);
     let result = diff(&before, &after);
-    render_diff(
-        &before,
-        &after,
-        &result,
-        RenderStyle::MidchildaConcentric,
-        filter,
-    )
+    diff_spell_ir(&before, &after, &result)
 }
 
 #[test]
-fn overlay_draws_all_three_quadrants() {
-    let svg = fixture_diff_svg(&FilterSpec::default());
-    assert!(svg.contains(r#"<g class="overlay-diff">"#));
+fn diff_ir_marks_all_three_quadrants() {
+    let (_, marks) = fixture_diff_ir();
+    let json = serde_json::to_value(&marks).unwrap();
+    let count = |status: &str| {
+        json.as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["status"] == status)
+            .count()
+    };
     // fixture 設計: 追加3 (audit + else リング + log_small)、変更2 (main + if 分岐)、削除1 (notify)。
-    assert_eq!(svg.matches(r#"class="diff-added""#).count(), 3);
-    assert_eq!(svg.matches(r#"class="diff-changed""#).count(), 2);
-    assert_eq!(svg.matches(r#"class="diff-removed""#).count(), 1);
-    // ゴーストは破線 (本体と見間違えない)。
-    assert!(svg.contains("stroke-dasharray=\"5 4\""));
-}
-
-#[test]
-fn overlay_ignores_layer_gating() {
-    // spec v0.3 §8: 強調チャネルはレイヤーの show/hide の影響を受けない。
-    let filter = FilterSpec::parse("show: control_flow\nhighlight: changed\n").unwrap();
-    let svg = fixture_diff_svg(&filter);
-    assert!(!svg.contains("layer-effects"), "effects 層は隠れている");
+    assert_eq!(count("added"), 3);
+    assert_eq!(count("changed"), 2);
+    assert_eq!(count("removed"), 1);
+    // 描画順 = removed → changed → added (注目度順、配列順で固定)。
+    let statuses: Vec<&str> = json
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["status"].as_str().unwrap())
+        .collect();
     assert_eq!(
-        svg.matches(r#"class="diff-added""#).count(),
-        3,
-        "召喚記号 (effects 層由来) の強調も残る"
+        statuses,
+        ["removed", "changed", "changed", "added", "added", "added"]
     );
 }
 
 #[test]
-fn render_diff_is_deterministic() {
-    let first = fixture_diff_svg(&FilterSpec::default());
-    assert_eq!(fixture_diff_svg(&FilterSpec::default()), first);
+fn diff_ir_is_deterministic() {
+    let (ir_a, marks_a) = fixture_diff_ir();
+    let (ir_b, marks_b) = fixture_diff_ir();
+    assert_eq!(
+        serde_json::to_string(&ir_a).unwrap(),
+        serde_json::to_string(&ir_b).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_string(&marks_a).unwrap(),
+        serde_json::to_string(&marks_b).unwrap()
+    );
 }
 
 #[test]
-fn empty_diff_renders_empty_overlay() {
+fn empty_diff_yields_no_marks() {
     let graph = graph_of(BEFORE);
     let result = diff(&graph, &graph);
-    let svg = render_diff(
-        &graph,
-        &graph,
-        &result,
-        RenderStyle::MidchildaConcentric,
-        &FilterSpec::default(),
-    );
-    assert!(
-        svg.contains("overlay-diff"),
-        "チャネル自体は diff モードの印として出る"
-    );
-    assert!(!svg.contains("diff-added"));
-    assert!(!svg.contains("diff-removed"));
-    assert!(!svg.contains("diff-changed"));
+    let (_, marks) = diff_spell_ir(&graph, &graph, &result);
+    assert!(marks.is_empty());
 }
 
 #[test]
 fn ghost_extends_viewbox_only_when_needed() {
-    // 削除ゴーストの座標が after のキャンバスに収まるよう viewBox が拡張される。
-    // ゴースト円 (cx, cy, r) が viewBox の矩形内に完全に入ることを数値で検証する。
-    // 拡張側の reach (sigil_radius + DIFF_HALO_OFFSET + DIFF_HALO_STROKE) はゴーストの
-    // r = sigil_radius より広いため、この内包判定には線幅分の余白が織り込まれている。
-    let svg = fixture_diff_svg(&FilterSpec::default());
-    let view_box = svg
-        .split("viewBox=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
-        .expect("viewBox がある");
-    let numbers: Vec<f64> = view_box
-        .split(' ')
-        .map(|token| token.parse().expect("viewBox は数値4つ"))
+    // 削除ゴーストの座標 (before レイアウト由来) が viewBox の矩形内に完全に
+    // 収まるよう拡張される (はみ出すケースの取りこぼし防止)。
+    let (ir, marks) = fixture_diff_ir();
+    let json = serde_json::to_value(&ir).unwrap();
+    let vb: Vec<f64> = json["view_box"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
         .collect();
-    let (x0, y0, w, h) = (numbers[0], numbers[1], numbers[2], numbers[3]);
-    let ghost_line = svg
-        .lines()
-        .find(|line| line.contains("diff-removed"))
+    let (x0, y0, w, h) = (vb[0], vb[1], vb[2], vb[3]);
+    let marks_json = serde_json::to_value(&marks).unwrap();
+    let ghost = marks_json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["status"] == "removed")
         .expect("ゴーストが出ている");
-    let attr = |name: &str| -> f64 {
-        ghost_line
-            .split(&format!("{name}=\""))
-            .nth(1)
-            .and_then(|rest| rest.split('"').next())
-            .expect("属性がある")
-            .parse()
-            .expect("数値")
-    };
-    let (cx, cy, r) = (attr("cx"), attr("cy"), attr("r"));
+    let (cx, cy, r) = (
+        ghost["x"].as_f64().unwrap(),
+        ghost["y"].as_f64().unwrap(),
+        ghost["radius"].as_f64().unwrap(),
+    );
     assert!(cx - r >= x0 && cx + r <= x0 + w);
     assert!(cy - r >= y0 && cy + r <= y0 + h);
-}
-
-#[test]
-fn golden_diff_overlay() {
-    let svg = fixture_diff_svg(&FilterSpec::default());
-    insta::with_settings!({ snapshot_path => "fixtures/snapshots", prepend_module_to_snapshot => false }, {
-        insta::assert_snapshot!("diff_overlay_process_order", svg);
-    });
 }

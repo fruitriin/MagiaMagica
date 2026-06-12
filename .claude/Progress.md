@@ -80,11 +80,11 @@
 - [x] 12. 等価素材 (process_order 新旧並置 — viewBox 拡張まで一致) → **判定合格** (「いいねえ」2026-06-12)。既存 diff_svg_writes_overlay_channel が SSR 経路の契約テストとしてそのまま通過
 
 **M5 — 経路統一 + Rust SVG レンダラ削除 [break]**
-- [ ] 13. magia diff / magia ci を SSR 経路に書き換え、golden 更新
-- [ ] 14. midchilda.rs / belka.rs の SVG 出力関数を削除 (レイアウト計算・IR 加工は残す)。色定数の Rust 残置を grep 確認
-- [ ] 15. CI: setup-bun + bun build --compile + 統合テスト
+- [x] 13. 全経路 SSR 化: render (--layers/--filter/--style belka 含む) / diff --svg (highlight: changed 含む)。フィルタは適用結果 (show_layers + effects) に畳んで Vue へ — FilterSpec の解釈は Rust 側 (ssr::render_request)。CI (spell-diff.yml) は target/debug/magia 経由なので自動で SSR に乗る
+- [x] 14. [break] Rust SVG レンダラ削除: midchilda.rs は幾何ヘルパ (772→158行)、belka.rs は射影+配置+IR、mod.rs の render/render_with/render_diff 削除、palette.rs は category_of のみ (色 HEX は Vue が正)。render_golden/render_svg/ir_export_cross_check/render_self.rs と SVG snapshot 群を削除、spell_diff.rs と belka_golden.rs を IR ベースに書き換え。cli_integration のフィルタ検証を SSR 語彙 (要素単位) に更新 (レイアウト計算・IR 加工は残す)。色定数の Rust 残置を grep 確認
+- [x] 15. CI は対応済み確認 (ci.yml / spell-diff.yml に setup-bun、build.rs が magia-render を自動ビルド)
 
 **M6 — ドキュメント + 完了処理**
-- [ ] 16. CLAUDE.repo.md (Bun 前提・magia-render 配布・ビルド手順) 更新
+- [x] 16. CLAUDE.repo.md に magia-render 節 (意匠の正は Vue / パス解決4段 / cargo install 時は MAGIA_RENDER_PATH)
 - [ ] 17. Stage 1 全ゲート + Stage 2 レビュー + 指摘対応
 - [ ] 18. 計画 memo、knowhow、Feedback / TODO 更新、アーカイブ、コミット

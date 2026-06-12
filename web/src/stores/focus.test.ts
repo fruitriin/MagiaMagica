@@ -60,7 +60,6 @@ function spellFor(qualified: string): SpellResponse {
     call_excerpts: {},
     op_excerpts: {},
     ring_excerpts: {},
-    svg_belka: `<svg data-belka="${qualified}"></svg>`,
     transcript: `関数 ${qualified}`,
   };
 }
@@ -121,12 +120,12 @@ describe("useFocusStore", () => {
     expect(focus.loadError).not.toBeNull();
   });
 
-  it("spell は配置済み IR とベルカ SVG の両方を保持する (表示切替は MagicCircleView)", async () => {
+  it("spell は両式の配置済み IR を保持する (表示切替は MagicCircleView)", async () => {
     const focus = useFocusStore();
     await focus.loadState();
     await focus.selectFunction("greet");
     expect(focus.spell?.ir.rings[0]?.role).toBe("main");
-    expect(focus.spell?.svg_belka).toContain("data-belka");
+    expect(focus.spell?.belka_ir.poles).toEqual([]);
   });
 });
 

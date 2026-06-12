@@ -321,10 +321,8 @@ export type SpellResponse = {
   /** 補助リングのガード・ヘッダ断片 (ring id → syntect ハイライト済み HTML)。
    *  分岐の腕の条件・ループヘッダをリングホバーで見せる。 */
   ring_excerpts: Record<string, string>;
-  /** ベルカ式の配置済み IR (Phase 4.3 M3 — `<BelkaCircle>` が描く)。 */
+  /** ベルカ式の配置済み IR (Phase 4.3 — `<BelkaCircle>` が描く)。 */
   belka_ir: BelkaIr;
-  /** 旧 Rust レンダラの SVG 文字列 (等価判定までの比較用 — M5 で削除)。 */
-  svg_belka: string;
   /** スクリーンリーダー向けの呪文書き起こし (Phase 2.4)。 */
   transcript: string;
   /** ピン中心ビューの周辺配置 (`?with=neighbors` 時のみ)。 */

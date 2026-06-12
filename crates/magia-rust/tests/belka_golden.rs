@@ -1,62 +1,63 @@
-//! ベルカ式レンダラのゴールデンテスト (Phase 3.5 受け入れ基準, spec v0.3 §14)。
+//! ベルカ式の配置済み IR のテスト (Phase 3.5 起源、Phase 4.3 M5 で IR ベースへ移行)。
+//!
+//! SVG 文字列の検証は Vue SSR 側 (web の vitest / cli 統合テスト) が担う —
+//! ここでは射影 (三極分類) と三角配置の構造・決定論を見る (spec v0.3 §14)。
 
-use magia_core::layout::layout;
-use magia_core::render::{RenderStyle, render};
+use magia_core::render::belka::belka_ir;
 use magia_rust::parse_function;
 
 const LOOP_ACCUMULATE: &str = include_str!("../../../fixtures/loop_accumulate.rs");
 
-fn render_belka(source: &str, fn_name: &str) -> String {
+fn belka_json(source: &str, fn_name: &str) -> serde_json::Value {
     let graph = parse_function(source, fn_name).expect("fixture は必ずパースできる");
-    // ベルカ式は三角配置を内部で決めるため placed は使われない (API が共通なだけ)。
-    let placed = layout(&graph);
-    render(&graph, &placed, RenderStyle::Belka)
+    serde_json::to_value(belka_ir(&graph)).expect("BelkaIr は serialize できる")
 }
 
 #[test]
-fn belka_draws_three_poles_with_fields() {
-    let svg = render_belka(LOOP_ACCUMULATE, "loop_accumulate");
-    assert!(svg.starts_with("<svg "));
-    assert!(svg.trim_end().ends_with("</svg>"));
-    // 三極 (生成/変換/消費) と力場・フロー線の構成要素が揃う。
-    assert_eq!(svg.matches(r#"class="belka-pole""#).count(), 3);
-    assert_eq!(svg.matches("<radialGradient").count(), 3);
-    for label in ["生成", "変換", "消費"] {
-        assert!(svg.contains(label), "{label} のラベルが出る");
+fn belka_ir_has_three_poles_with_fields() {
+    let ir = belka_json(LOOP_ACCUMULATE, "loop_accumulate");
+    let poles = ir["poles"].as_array().unwrap();
+    assert_eq!(poles.len(), 3);
+    let kinds: Vec<&str> = poles.iter().map(|p| p["pole"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["genesis", "transmute", "consume"]);
+    for pole in poles {
+        // 力場は極円より外まで届く (フロー量に応じた濃淡の土台)。
+        assert!(pole["field_radius"].as_f64().unwrap() > pole["radius"].as_f64().unwrap());
+        // ラベルは円の外側 (中心から離れた位置)。
+        assert!(pole["label_x"].is_number() && pole["label_y"].is_number());
     }
-    assert!(svg.contains("belka-field"));
-    assert!(svg.contains("belka-flow"), "極間のフロー線が出る");
+    assert_eq!(ir["view_box"].as_array().unwrap().len(), 4);
+    assert!(
+        ir["signature"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("loop_accumulate")
+    );
 }
 
 #[test]
 fn belka_flow_follows_execution_order() {
     // loop_accumulate: items (生成) → ループで変換 → 末尾の total が消費へ。
     // 実行順走査により「変換 → 消費」の還流が出る (深さ優先だと取り逃がす形)。
-    let svg = render_belka(LOOP_ACCUMULATE, "loop_accumulate");
-    let flow_lines = svg
-        .lines()
-        .filter(|line| line.contains(r#"class="belka-flow""#))
-        .count();
+    let ir = belka_json(LOOP_ACCUMULATE, "loop_accumulate");
+    let flows = ir["flows"].as_array().unwrap();
     assert!(
-        flow_lines >= 2,
-        "生成→変換 と 変換→消費 の2本以上: {flow_lines}"
+        flows.len() >= 2,
+        "生成→変換 と 変換→消費 の2本以上: {}",
+        flows.len()
     );
-}
-
-#[test]
-fn belka_is_deterministic() {
-    let first = render_belka(LOOP_ACCUMULATE, "loop_accumulate");
-    for _ in 0..4 {
-        assert_eq!(render_belka(LOOP_ACCUMULATE, "loop_accumulate"), first);
+    for flow in flows {
+        assert!(flow["width"].as_f64().unwrap() >= 1.0);
+        assert!(flow["tip_x"].is_number() && flow["tip_y"].is_number());
     }
 }
 
 #[test]
-fn golden_belka_loop_accumulate() {
-    let svg = render_belka(LOOP_ACCUMULATE, "loop_accumulate");
-    insta::with_settings!({ snapshot_path => "fixtures/snapshots", prepend_module_to_snapshot => false }, {
-        insta::assert_snapshot!("belka_loop_accumulate", svg);
-    });
+fn belka_ir_is_deterministic() {
+    let first = belka_json(LOOP_ACCUMULATE, "loop_accumulate");
+    for _ in 0..4 {
+        assert_eq!(belka_json(LOOP_ACCUMULATE, "loop_accumulate"), first);
+    }
 }
 
 #[test]

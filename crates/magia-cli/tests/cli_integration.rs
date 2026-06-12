@@ -177,10 +177,14 @@ fn layers_option_filters_groups() {
         .output()
         .expect("CLI を起動できる");
     assert!(output.status.success());
+    // SSR (Phase 4.3 M5): レイヤーは g 単位でなく要素単位で落ちる。
     let svg = String::from_utf8_lossy(&output.stdout);
-    assert!(svg.contains(r#"<g class="layer-effects">"#));
-    assert!(!svg.contains(r#"<g class="layer-control-flow">"#));
-    assert!(!svg.contains(r#"<g class="layer-type-info">"#));
+    assert!(svg.contains("op-dot") || svg.contains("summon-glyph"));
+    assert!(!svg.contains("main-ring"), "control_flow 層は出ない");
+    assert!(
+        !svg.contains("textPath"),
+        "type_info 層 (シグネチャ) は出ない"
+    );
 }
 
 #[test]
@@ -211,10 +215,14 @@ fn filter_file_shows_only_selected_layer() {
         .output()
         .expect("CLI を起動できる");
     assert!(output.status.success());
+    // SSR (Phase 4.3 M5): レイヤーは g 単位でなく要素単位で落ちる。
     let svg = String::from_utf8_lossy(&output.stdout);
-    assert!(svg.contains(r#"<g class="layer-effects">"#));
-    assert!(!svg.contains(r#"<g class="layer-control-flow">"#));
-    assert!(!svg.contains(r#"<g class="layer-type-info">"#));
+    assert!(svg.contains("op-dot") || svg.contains("summon-glyph"));
+    assert!(!svg.contains("main-ring"), "control_flow 層は出ない");
+    assert!(
+        !svg.contains("textPath"),
+        "type_info 層 (シグネチャ) は出ない"
+    );
 }
 
 #[test]
@@ -234,11 +242,11 @@ fn filter_effect_categories_drop_other_symbols() {
     let svg = String::from_utf8_lossy(&output.stdout);
     assert!(svg.contains("#1fa341"), "db の緑が残る");
     // pure カテゴリの記号 (op-dot / summon-glyph) だけが消えることを確認する。
-    // control_flow 層の黒 (ループ矢印等) は対象外なので、effects 層の要素に絞って見る。
+    // SSR 出力は1行なので行単位でなく**要素タグ単位**で見る (Phase 4.3 M5)。
     assert!(
-        !svg.lines().any(
-            |line| (line.contains("op-dot") || line.contains("summon-glyph"))
-                && line.contains("#000000")
+        !svg.split('<').any(
+            |elem| (elem.contains("op-dot") || elem.contains("summon-glyph"))
+                && elem.contains("#000000")
         ),
         "effects 層に pure (黒) の記号が残っていない"
     );

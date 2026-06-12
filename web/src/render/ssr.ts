@@ -10,15 +10,52 @@ import { createPinia } from "pinia";
 import { createSSRApp, h } from "vue";
 import { renderToString } from "vue/server-renderer";
 
+import BelkaCircle from "../components/circle/BelkaCircle.vue";
 import MagicCircle from "../components/circle/MagicCircle.vue";
 import { irToSchema } from "../converters/irToSchema.ts";
-import type { DiffMark, IrSpell } from "../types/magia.ts";
+import type {
+  BelkaIr,
+  DiffMark,
+  EffectCategory,
+  IrSpell,
+  MagicCircleSchema,
+  SchemaLayer,
+} from "../types/magia.ts";
 
 export type RenderRequest = {
-  ir: IrSpell;
+  /** ミッドチルダ式の配置済み IR (`belka` と排他 — どちらか一方)。 */
+  ir?: IrSpell;
+  /** ベルカ式の配置済み IR (Phase 4.3 M5 — `magia render --style belka`)。 */
+  belka?: BelkaIr;
   /** 差分強調 (magia diff --svg、Phase 4.3 M4)。 */
   diff_overlay?: DiffMark[];
+  /** 表示するレイヤー (.magia の show/hide 適用結果)。省略 = 全レイヤー。
+   *  Rust レンダラの「<g> ごと出さない」と同じく要素自体を出力しない (M5)。 */
+  show_layers?: SchemaLayer[];
+  /** effects レイヤーのカテゴリ絞り込み (`effects[io, db]`)。省略 = 全カテゴリ。 */
+  effects?: EffectCategory[];
 };
+
+/** フィルタ (show_layers / effects) をスキーマへ適用する。
+ *  レイヤーに属さない要素 (layer: null) はレイヤーフィルタの対象外。
+ *  シグネチャと type_info レイヤーは一体 (Rust レンダラの write_defs と同じ括り)。 */
+function applyFilter(schema: MagicCircleSchema, request: RenderRequest): MagicCircleSchema {
+  const layers = request.show_layers;
+  const layerOk = (layer: SchemaLayer | null) =>
+    layer === null || layers === undefined || layers.includes(layer);
+  const effectOk = (effect: EffectCategory | null) =>
+    request.effects === undefined || (effect !== null && request.effects.includes(effect));
+  return {
+    ...schema,
+    circles: schema.circles.filter((c) => layerOk(c.layer)),
+    operations: schema.operations.filter((op) => layerOk(op.layer) && effectOk(op.effect)),
+    glyphs: schema.glyphs.filter((g) => layerOk(g.layer) && effectOk(g.effect)),
+    edges: schema.edges.filter((e) => layerOk(e.layer)),
+    symbols: schema.symbols.filter((s) => layerOk(s.layer)),
+    raws: schema.raws.filter((r) => layerOk(r.layer)),
+    signature: layers === undefined || layers.includes("type_info") ? schema.signature : null,
+  };
+}
 
 /** SSR 由来の camelCase 属性の小文字化を復元する (スタンドアロン SVG は XML —
  *  `viewbox` は無効)。テンプレート内の静的な camelCase (textPath / startOffset)
@@ -49,9 +86,18 @@ export function toStandaloneSvg(html: string): string {
 
 /** 配置済み IR をスタンドアロン SVG 文字列にレンダする (SSR の本体)。 */
 export async function renderSpellSvg(request: RenderRequest): Promise<string> {
-  const schema = irToSchema(request.ir);
-  const overlay = request.diff_overlay;
-  const app = createSSRApp({ render: () => h(MagicCircle, { schema, overlay }) });
+  const app = (() => {
+    if (request.belka !== undefined) {
+      const belka = request.belka;
+      return createSSRApp({ render: () => h(BelkaCircle, { belka }) });
+    }
+    if (request.ir === undefined) {
+      throw new Error("リクエストに ir / belka のどちらもありません");
+    }
+    const schema = applyFilter(irToSchema(request.ir), request);
+    const overlay = request.diff_overlay;
+    return createSSRApp({ render: () => h(MagicCircle, { schema, overlay }) });
+  })();
   // MagicCircle ツリーは palette / focus store を参照する — SSR では
   // 既定状態 (全レイヤー表示・選択なし) の Pinia を与える。
   app.use(createPinia());

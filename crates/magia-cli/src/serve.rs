@@ -26,11 +26,7 @@ use notify::{RecursiveMode, Watcher};
 
 use magia_core::layout::layout;
 use magia_core::proximity::{NeighborSeed, classify_neighbors};
-use magia_core::render::{
-    RenderStyle,
-    ir_export::{NeighborMeta, SpanIr, focus_layout, spell_ir},
-    render,
-};
+use magia_core::render::ir_export::{NeighborMeta, SpanIr, focus_layout, spell_ir};
 use magia_rust::{FunctionEntry, function_index_with_calls, parse_function};
 
 use crate::srcview::highlight_rust;
@@ -208,9 +204,8 @@ fn render_spell(
     let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
     let snippet = source_lines(source, entry.start_line, entry.end_line);
-    // Phase 4.0.9: ミッドチルダ式は配置済み IR (JSON) で返し、Vue が描画する。
-    // SVG 文字列は出さない (v1.0 前は旧を消す)。ベルカ式の Vue 移植は Phase 4.3 で
-    // 行うため、svg_belka のみ SVG 文字列を温存する。
+    // Phase 4.0.9/4.3: 両式とも配置済み IR (JSON) で返し、Vue が描画する。
+    // SVG 文字列は出さない (Rust SVG レンダラは Phase 4.3 M5 で削除済み)。
     let spell = spell_ir(&graph, &placed);
     // Phase 4.1/4.2: ピン中心ビューの周辺配置。近接度は同impl/呼び出し関係/
     // 同ファイルの連続距離 (proximity.rs)、リング離散化は focus_layout 側。
@@ -283,8 +278,7 @@ fn render_spell(
         })
         .collect();
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
-    // ベルカ式も配置済み IR (Phase 4.3 M3 — Vue 移植)。svg_belka は等価判定が
-    // 出るまでの比較用に温存し、M5 で削除する。
+    // ベルカ式も配置済み IR (Phase 4.3 — Vue の BelkaCircle が描く)。
     let belka = serde_json::to_value(magia_core::render::belka::belka_ir(&graph))
         .map_err(|e| e.to_string())?;
     let mut response = serde_json::json!({
@@ -295,7 +289,6 @@ fn render_spell(
         "call_excerpts": call_excerpts,
         "op_excerpts": op_excerpts,
         "ring_excerpts": ring_excerpts,
-        "svg_belka": render(&graph, &placed, RenderStyle::Belka),
         "source_html": highlight_rust(&snippet),
         "transcript": magia_core::transcript::transcribe(&graph),
         "start_line": entry.start_line,

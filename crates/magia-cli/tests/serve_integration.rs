@@ -175,8 +175,8 @@ fn spell_endpoint_renders_function_on_demand() {
             .starts_with('M')
     );
     assert_eq!(ir["view_box"].as_array().unwrap().len(), 4);
-    // ベルカ式は Phase 4.3 の Vue 移植まで SVG 文字列を温存。
-    assert!(spell["svg_belka"].as_str().unwrap().contains("belka-pole"));
+    // ベルカ式も配置済み IR (Phase 4.3 — Vue の BelkaCircle が描く)。
+    assert_eq!(spell["belka_ir"]["poles"].as_array().unwrap().len(), 3);
     assert!(spell["source_html"].as_str().unwrap().contains("<pre"));
     assert!(spell["source_html"].as_str().unwrap().contains("watched"));
     assert!(spell["transcript"].as_str().unwrap().contains("関数 "));

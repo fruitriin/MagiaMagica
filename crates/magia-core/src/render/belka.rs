@@ -1,9 +1,6 @@
-//! **deprecated (Phase 4.0.9)**: Phase 4.3 (Vue SSR 一本化) でリメイクし、本モジュールは削除する。
-//! serve の動的 UI でのベルカ表示も 4.3 で Vue コンポーネントへ移植する。
+//! Phase 4.3 M5: SVG 文字列の生成は Vue (`BelkaCircle`) へ移植済み — 本モジュールに
+//! 残るのは射影 (三極分類)・三角配置・配置済み IR (`belka_ir`) の構築。
 //!
-//! **保守方針 (オーナー判定 2026-06-11)**: リメイクが終わるまで本モジュールの保守価値は低め。
-//! バグ修正・意匠調整の要望が来ても、軽微なら 4.3 のリメイクに織り込む方を優先し、
-//! ここへの投資 (リファクタ・テスト追加・最適化) は避ける。
 //!
 //! ベルカ式レンダラ — データフロー三角力場 (Phase 3.5, spec v0.3 §14)。
 //!
@@ -21,14 +18,11 @@
 //! 適用しない — CLI 側が `--style belka` + フィルター併用を明示エラーにする。
 
 use std::collections::BTreeMap;
-use std::fmt::Write;
 
 use kurbo::Point;
 
 use crate::filter::EffectCategory;
 use crate::ir::{MagiaGraph, Module, Operation, OperationKind, SigilKind};
-use crate::render::midchilda::{escape_xml, num};
-use crate::render::palette;
 
 // 寸法は仮置き (Phase 1.5 と同じ「動かしてから目視で調整」方針)。
 /// 三角形の基準半径 (中心から頂点まで)。
@@ -43,8 +37,6 @@ const POLE_GROWTH: f64 = 7.0;
 const FIELD_REACH_PER_FLOW: f64 = 9.0;
 /// 力場の基礎の伸び。
 const FIELD_BASE_REACH: f64 = 24.0;
-/// 力場グラデーション中心の不透明度。
-const FIELD_OPACITY: f64 = 0.28;
 /// 操作ドット半径 (ミッドチルダ式と同じ見え方)。
 const DOT_RADIUS: f64 = 3.5;
 /// phyllotaxis (ひまわり配置) の黄金角 [rad]。無理数だが定数なので決定論的。
@@ -54,13 +46,6 @@ const FLOW_WIDTH_STEP: f64 = 0.9;
 const FLOW_WIDTH_MAX: f64 = 7.0;
 /// キャンバス余白。
 const MARGIN: f64 = 30.0;
-
-/// ベルカ式で描画する。モジュールが複数あっても最初の1つ (Phase 1〜3 は単一関数)。
-pub(crate) fn render(graph: &MagiaGraph) -> String {
-    let mut out = String::new();
-    write_document(&mut out, graph).expect("String への SVG 書き込みは失敗しない");
-    out
-}
 
 // ===== 配置済み IR (Phase 4.3 M3 — Vue 移植の境界) =====
 //
@@ -254,22 +239,6 @@ enum Pole {
 const POLES: [Pole; 3] = [Pole::Genesis, Pole::Transmute, Pole::Consume];
 
 impl Pole {
-    fn label(self) -> &'static str {
-        match self {
-            Pole::Genesis => "生成",
-            Pole::Transmute => "変換",
-            Pole::Consume => "消費",
-        }
-    }
-
-    fn color(self) -> &'static str {
-        match self {
-            Pole::Genesis => palette::BELKA_GENESIS,
-            Pole::Transmute => palette::BELKA_TRANSMUTE,
-            Pole::Consume => palette::BELKA_CONSUME,
-        }
-    }
-
     /// 頂点の方位 [rad]、画面座標系 (y 下向き)。生成 = 真上、
     /// 変換 = 左下、消費 = 右下 (生成 → 変換 → 消費 が時計回りに流れる)。
     fn angle(self) -> f64 {
@@ -277,14 +246,6 @@ impl Pole {
             Pole::Genesis => -std::f64::consts::FRAC_PI_2,
             Pole::Transmute => std::f64::consts::PI * (5.0 / 6.0),
             Pole::Consume => std::f64::consts::PI / 6.0,
-        }
-    }
-
-    fn gradient_id(self) -> &'static str {
-        match self {
-            Pole::Genesis => "belka-field-genesis",
-            Pole::Transmute => "belka-field-transmute",
-            Pole::Consume => "belka-field-consume",
         }
     }
 }
@@ -480,197 +441,6 @@ fn place_poles(model: &BelkaModel) -> Vec<PlacedPole> {
             }
         })
         .collect()
-}
-
-// ===== SVG 出力 =====
-
-fn write_document(out: &mut String, graph: &MagiaGraph) -> std::fmt::Result {
-    let Some(module) = graph.modules.first() else {
-        return writeln!(
-            out,
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>"#
-        );
-    };
-    let model = project(module);
-    let placed = place_poles(&model);
-
-    // キャンバス: 力場円の合併 + シグネチャの行間。
-    let reach = placed
-        .iter()
-        .map(|p| p.center.to_vec2().hypot() + p.field_radius)
-        .fold(0.0_f64, f64::max)
-        + MARGIN;
-    writeln!(
-        out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">"#,
-        num(-reach),
-        num(-reach),
-        num(reach * 2.0),
-        num(reach * 2.0),
-    )?;
-
-    // 力場のグラデーション定義 (極ごとに1つ、中心が濃く外周で消える)。
-    // gradientUnits は既定 (objectBoundingBox): 参照元が <circle> なので
-    // 「バウンディングボックス中心 = 円の中心、50% = 半径」となり意図どおり (確認済み)。
-    writeln!(out, "<defs>")?;
-    for pole in POLES {
-        writeln!(
-            out,
-            r#"<radialGradient id="{}"><stop offset="0" stop-color="{}" stop-opacity="{}"/><stop offset="1" stop-color="{}" stop-opacity="0"/></radialGradient>"#,
-            pole.gradient_id(),
-            pole.color(),
-            num(FIELD_OPACITY),
-            pole.color(),
-        )?;
-    }
-    writeln!(out, "</defs>")?;
-
-    // 1) 力場 (最背面、重なりがアディティブに濃くなる)。
-    writeln!(out, r#"<g class="belka-field">"#)?;
-    for p in &placed {
-        writeln!(
-            out,
-            r#"<circle class="field-{}" cx="{}" cy="{}" r="{}" fill="url(#{})"/>"#,
-            p.pole.gradient_id().trim_start_matches("belka-field-"),
-            num(p.center.x),
-            num(p.center.y),
-            num(p.field_radius),
-            p.pole.gradient_id(),
-        )?;
-    }
-    writeln!(out, "</g>")?;
-
-    // 2) フロー線 (極間のデータの流れ。太さ = フロー量)。
-    writeln!(out, r#"<g class="belka-flows">"#)?;
-    for (&(source, target), &count) in &model.flows {
-        if source == target {
-            continue; // 自己フローは力場の強度として表現済み
-        }
-        let from = placed
-            .iter()
-            .find(|p| p.pole == source)
-            .expect("placed は全極を含む");
-        let to = placed
-            .iter()
-            .find(|p| p.pole == target)
-            .expect("placed は全極を含む");
-        write_flow_line(out, from, to, count)?;
-    }
-    writeln!(out, "</g>")?;
-
-    // 3) 極 (頂点円 + ラベル + 操作ドット)。
-    writeln!(out, r#"<g class="belka-poles">"#)?;
-    for p in &placed {
-        write_pole(out, p, &model)?;
-    }
-    writeln!(out, "</g>")?;
-
-    // 4) シグネチャ (上端の平書きテキスト — 円弧ラベルはミッドチルダ式の意匠)。
-    if let Some(signature) = module
-        .sigils
-        .iter()
-        .find(|s| s.kind == SigilKind::MainRing)
-        .and_then(|s| s.layers.type_info.as_ref())
-        .and_then(|t| t.signature.as_deref())
-    {
-        writeln!(
-            out,
-            r##"<text class="signature" x="0" y="{}" font-size="11" fill="#000000" text-anchor="middle">{}</text>"##,
-            num(-reach + 16.0),
-            escape_xml(signature),
-        )?;
-    }
-
-    writeln!(out, "</svg>")
-}
-
-/// 極間のフロー線: 円の縁から縁へ。終端に小さな矢じりを置く。
-fn write_flow_line(
-    out: &mut String,
-    from: &PlacedPole,
-    to: &PlacedPole,
-    count: u32,
-) -> std::fmt::Result {
-    let delta = to.center - from.center;
-    let length = delta.hypot();
-    if length < 1e-6 {
-        return Ok(());
-    }
-    let unit = delta / length;
-    let start = from.center + unit * from.radius;
-    let end = to.center - unit * (to.radius + 6.0);
-    let width = (f64::from(count) * FLOW_WIDTH_STEP + 1.0).min(FLOW_WIDTH_MAX);
-    writeln!(
-        out,
-        r##"<line class="belka-flow" x1="{}" y1="{}" x2="{}" y2="{}" stroke="#555555" stroke-width="{}" stroke-opacity="0.75"/>"##,
-        num(start.x),
-        num(start.y),
-        num(end.x),
-        num(end.y),
-        num(width),
-    )?;
-    // 矢じり (流れの向き)。
-    let perp = kurbo::Vec2::new(-unit.y, unit.x);
-    let tip = to.center - unit * to.radius;
-    let base = tip - unit * 7.0;
-    let wing_a = base + perp * 4.5;
-    let wing_b = base - perp * 4.5;
-    writeln!(
-        out,
-        r##"<polygon class="belka-flow-head" points="{},{} {},{} {},{}" fill="#555555"/>"##,
-        num(tip.x),
-        num(tip.y),
-        num(wing_a.x),
-        num(wing_a.y),
-        num(wing_b.x),
-        num(wing_b.y),
-    )
-}
-
-/// 極1つ: 頂点円 + 極名 + 操作ドット (phyllotaxis 配置)。
-fn write_pole(out: &mut String, p: &PlacedPole, model: &BelkaModel) -> std::fmt::Result {
-    writeln!(
-        out,
-        r##"<circle class="belka-pole" cx="{}" cy="{}" r="{}" fill="#ffffff" fill-opacity="0.6" stroke="{}" stroke-width="2"/>"##,
-        num(p.center.x),
-        num(p.center.y),
-        num(p.radius),
-        p.pole.color(),
-    )?;
-    // 極名は円の外側 (中心から離れる方向) に置き、ドットと重ねない。
-    let direction = p.center.to_vec2();
-    let label_direction = if direction.hypot() < 1e-6 {
-        kurbo::Vec2::new(0.0, -1.0)
-    } else {
-        direction / direction.hypot()
-    };
-    let label_at = p.center + label_direction * (p.radius + 14.0);
-    writeln!(
-        out,
-        r#"<text class="belka-pole-label" x="{}" y="{}" font-size="12" fill="{}" text-anchor="middle">{}</text>"#,
-        num(label_at.x),
-        num(label_at.y + 4.0), // ベースライン補正
-        p.pole.color(),
-        p.pole.label(),
-    )?;
-
-    // 操作ドット: ひまわり配置で円内を均一に埋める (個数によらず決定論的)。
-    let dots = model.dots.get(&p.pole).map_or(&[][..], Vec::as_slice);
-    let count = dots.len();
-    for (index, category) in dots.iter().enumerate() {
-        let fraction = (usize_to_f64(index) + 0.5) / usize_to_f64(count.max(1));
-        let r = (p.radius - DOT_RADIUS - 4.0).max(0.0) * fraction.sqrt();
-        let theta = usize_to_f64(index) * GOLDEN_ANGLE;
-        writeln!(
-            out,
-            r#"<circle class="op-dot" cx="{}" cy="{}" r="{}" fill="{}"/>"#,
-            num(p.center.x + r * theta.cos()),
-            num(p.center.y + r * theta.sin()),
-            num(DOT_RADIUS),
-            palette::color_of(*category),
-        )?;
-    }
-    Ok(())
 }
 
 /// カウントは 2^53 未満なので精度劣化は起きない (layout 側と同じ判断)。

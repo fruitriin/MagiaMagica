@@ -11,6 +11,47 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 
+use magia_core::filter::{FilterSpec, LayerName};
+use magia_core::render::ir_export::{DiffMarkIr, SpellIr};
+
+/// `magia-render` への描画リクエストを JSON 文字列に組む。
+/// フィルタ (`.magia` の show/hide/effects) は適用結果 (表示レイヤー集合 +
+/// カテゴリ列) へ畳んでから渡す — Vue 側に FilterSpec の解釈を持ち込まない。
+pub(crate) fn render_request(
+    ir: &SpellIr,
+    diff_overlay: Option<&[DiffMarkIr]>,
+    spec: &FilterSpec,
+) -> Result<String> {
+    let mut request = serde_json::json!({ "ir": ir });
+    if let Some(marks) = diff_overlay {
+        request["diff_overlay"] = serde_json::to_value(marks)?;
+    }
+    let all = [
+        LayerName::ControlFlow,
+        LayerName::Effects,
+        LayerName::TypeInfo,
+    ];
+    let visible: Vec<&str> = all
+        .into_iter()
+        .filter(|layer| spec.is_visible(*layer))
+        .map(LayerName::as_str)
+        .collect();
+    if visible.len() < all.len() {
+        request["show_layers"] = serde_json::to_value(&visible)?;
+    }
+    if let Some(categories) = spec.effect_categories() {
+        let names: Vec<&str> = categories.iter().map(|c| c.as_str()).collect();
+        request["effects"] = serde_json::to_value(&names)?;
+    }
+    Ok(request.to_string())
+}
+
+/// ベルカ式の描画リクエスト (フィルタはレイヤー語彙が合わないため受けない —
+/// CLI が `--style belka` + フィルタ併用を明示エラーにする既存規約のまま)。
+pub(crate) fn belka_request(belka: &magia_core::render::belka::BelkaIr) -> String {
+    serde_json::json!({ "belka": belka }).to_string()
+}
+
 /// `magia-render` のパス解決 (CLAUDE.repo.md・CI と同期):
 /// 1) `MAGIA_RENDER_PATH` 環境変数 (明示指定 — 存在しなければエラー)
 /// 2) `magia` 実行ファイルと同じディレクトリ (配布形態: 2バイナリ同梱)

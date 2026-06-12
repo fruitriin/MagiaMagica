@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import golden from "../../golden/phase2x/spell_write_document.json";
 import { irToSchema } from "../converters/irToSchema.ts";
-import type { IrSpell } from "../types/magia.ts";
+import type { BelkaIr, IrSpell } from "../types/magia.ts";
 import { renderSpellSvg, toStandaloneSvg } from "./ssr.ts";
 
 const IR = golden.ir as IrSpell;
@@ -43,6 +43,34 @@ describe("renderSpellSvg (SSR — 動的 UI と同じコンポーネントツリ
     const a = await renderSpellSvg({ ir: IR });
     const b = await renderSpellSvg({ ir: IR });
     expect(a).toBe(b);
+  });
+});
+
+describe("renderSpellSvg (ベルカ式 — Phase 4.3 M5)", () => {
+  it("belka リクエストは BelkaCircle で描く (三極 + 力場 + ラベル)", async () => {
+    const belka: BelkaIr = {
+      view_box: [-100, -100, 200, 200],
+      poles: [
+        {
+          pole: "genesis",
+          x: 0,
+          y: -50,
+          radius: 26,
+          field_radius: 50,
+          label_x: 0,
+          label_y: -90,
+          dots: [{ x: 0, y: -50, effect: "pure" }],
+        },
+      ],
+      flows: [{ x1: 0, y1: -24, x2: 0, y2: 40, width: 1.9, tip_x: 0, tip_y: 46 }],
+      signature: { text: "fn t()", x: 0, y: -84 },
+    };
+    const svg = await renderSpellSvg({ belka });
+    expect(svg).toContain("belka-pole");
+    expect(svg).toContain("radialGradient");
+    expect(svg).toContain("生成");
+    expect(svg).toContain("belka-flow-head");
+    expect(svg).not.toContain("data-v-");
   });
 });
 
