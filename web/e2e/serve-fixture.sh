@@ -30,7 +30,7 @@ EOF
 cat > "$E2E_DIR/orbit.rs" << 'ORBITEOF'
 fn orbit(radius: f64) -> f64 {
     let label = greet("orbit");
-    let _chained = label.trim().to_uppercase().len();
+    let _chained = label.trim().chars().filter(|c| c.is_alphabetic()).count();
     radius * 2.0 * 3.14159
 }
 ORBITEOF

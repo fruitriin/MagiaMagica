@@ -78,6 +78,7 @@ fn main_ring_sentence(main: &Sigil) -> String {
 fn aux_rings_sentence(module: &Module) -> Option<String> {
     let mut branches = 0usize;
     let mut loops = 0usize;
+    let mut closures = 0usize;
     for sigil in &module.sigils {
         if sigil.kind != SigilKind::AuxRing {
             continue;
@@ -90,16 +91,25 @@ fn aux_rings_sentence(module: &Module) -> Option<String> {
             .map(|role| role.kind);
         match kind {
             Some(AuxRingKind::LoopBody(_)) => loops += 1,
-            // 分岐系 (if/else/match アーム)。role 欠落も分岐扱いに倒す (防御)。
+            Some(AuxRingKind::Closure) => closures += 1,
+            // 分岐系: IfBranch | ElseBranch | MatchArm。role 欠落も分岐扱いに倒す (防御)。
+            // !!! AuxRingKind に変種を足したらここの分類を再確認すること
+            // (Closure 追加時にデフォルト分類のまま件数文が崩れた前科あり)。
             _ => branches += 1,
         }
     }
-    let total = branches + loops;
+    let total = branches + loops + closures;
     if total == 0 {
         return None;
     }
+    // クロージャ (Phase 4.8 M2) は存在するときだけ内訳に出す (旧文面の互換)。
+    let closure_part = if closures > 0 {
+        format!("、クロージャ{closures}")
+    } else {
+        String::new()
+    };
     Some(format!(
-        "補助リングを{total}個持つ (分岐{branches}、ループ{loops}。入れ子を含む)。"
+        "補助リングを{total}個持つ (分岐{branches}、ループ{loops}{closure_part}。入れ子を含む)。"
     ))
 }
 

@@ -888,4 +888,55 @@ mod tests {
         assert!(targets.contains(&".solo"));
         assert!(targets.contains(&"g"));
     }
+
+    #[test]
+    fn closure_callbacks_become_aux_rings_on_glyphs() {
+        // Phase 4.8 M2: 召喚の引数のクロージャは glyph に係留される補助陣になり、
+        // 本体の呼び出しは補助陣の中に入る (リング外周へは平坦化されない)。
+        let src = "fn f(v: V) { v.iter().filter(|line| keep(line)).count(); }";
+        let graph = parse_function(src, "f").unwrap();
+        let module = &graph.modules[0];
+        assert_ring_invariants(module);
+        let aux = aux_rings(module);
+        assert_eq!(aux.len(), 1, "クロージャの補助陣が1つ");
+        let role = aux[0]
+            .layers
+            .control_flow
+            .as_ref()
+            .unwrap()
+            .role
+            .as_ref()
+            .unwrap();
+        assert_eq!(role.kind, AuxRingKind::Closure);
+        assert_eq!(role.label.as_deref(), Some("|line|"));
+        // 補助陣の親は .filter の glyph (ControlFlow source が SummonGlyph)。
+        let parent = module
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::ControlFlow && e.target == aux[0].id)
+            .map(|e| e.source)
+            .unwrap();
+        let parent_sigil = module.sigils.iter().find(|s| s.id == parent).unwrap();
+        assert_eq!(parent_sigil.kind, SigilKind::SummonGlyph);
+        assert_eq!(
+            parent_sigil.content[0].payload.call_target.as_deref(),
+            Some(".filter")
+        );
+        // keep は補助陣に係留される (リングへ平坦化されない)。
+        let keep_glyph = module
+            .sigils
+            .iter()
+            .find(|s| {
+                s.kind == SigilKind::SummonGlyph
+                    && s.content[0].payload.call_target.as_deref() == Some("keep")
+            })
+            .unwrap();
+        let keep_parent = module
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::ControlFlow && e.target == keep_glyph.id)
+            .map(|e| e.source)
+            .unwrap();
+        assert_eq!(keep_parent, aux[0].id, "keep の親はクロージャ補助陣");
+    }
 }

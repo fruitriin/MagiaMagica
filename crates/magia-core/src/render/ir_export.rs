@@ -262,8 +262,9 @@ fn ring_ir(
     } else {
         match aux_kind(sigil) {
             Some(AuxRingKind::LoopBody(_)) => Some(RingSymbol::Loop),
+            // クロージャ (Phase 4.8 M2) は分岐でもループでもない — 記号なしの素リング。
+            Some(AuxRingKind::Closure) | None => None,
             Some(_) => Some(RingSymbol::Branch),
-            None => None,
         }
     };
     let track = (radius - OPERATION_DOT_INSET).max(6.0);

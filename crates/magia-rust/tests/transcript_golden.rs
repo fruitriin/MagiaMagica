@@ -34,7 +34,8 @@ fn golden_transcript_dense_dispatch() {
         include_str!("../../../fixtures/dense_dispatch.rs"),
         "dense_dispatch",
     );
-    assert!(text.contains("補助リングを9個持つ (分岐7、ループ2。入れ子を含む)。"));
+    // Phase 4.8 M2: `map_or(0, |_| reload())` のクロージャが補助リングに数えられる。
+    assert!(text.contains("補助リングを10個持つ (分岐7、ループ2、クロージャ1。入れ子を含む)。"));
     assert!(text.contains("ファイルシステム副作用"));
     assert_transcript_snapshot("transcript_dense_dispatch", &text);
 }

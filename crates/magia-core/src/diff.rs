@@ -244,6 +244,7 @@ fn ring_kind_discriminant(kind: AuxRingKind) -> u8 {
         AuxRingKind::LoopBody(LoopKind::For) => 4,
         AuxRingKind::LoopBody(LoopKind::While) => 5,
         AuxRingKind::LoopBody(LoopKind::Loop) => 6,
+        AuxRingKind::Closure => 7,
     }
 }
 
@@ -268,6 +269,10 @@ fn node_label(sigil: &Sigil) -> String {
                         },
                         AuxRingKind::LoopBody(LoopKind::For) => "forループ本体".to_string(),
                         AuxRingKind::LoopBody(LoopKind::While) => "whileループ本体".to_string(),
+                        AuxRingKind::Closure => match &role.label {
+                            Some(label) => format!("クロージャ {label}"),
+                            None => "クロージャ".to_string(),
+                        },
                         AuxRingKind::LoopBody(LoopKind::Loop) => "loopループ本体".to_string(),
                     };
                     format!(

@@ -26,8 +26,9 @@ use petgraph::graph::{DiGraph, NodeIndex};
 
 use crate::ir::{EdgeKind, MagiaGraph, Module, Sigil, SigilId, SigilKind};
 use crate::layout::constants::{
-    AUX_RING_RADIUS, CANVAS_MARGIN, CROSSING_OPT_MAX_PASSES, CROSSING_OPT_ROTATION_STEP_RAD,
-    GLYPH_GAP, GLYPH_MARGIN, MAIN_RING_RADIUS, RING_GAP, RING_MARGIN, SUMMON_GLYPH_RADIUS,
+    AUX_RING_RADIUS, CANVAS_MARGIN, CLOSURE_SIBLING_SPREAD_RAD, CROSSING_OPT_MAX_PASSES,
+    CROSSING_OPT_ROTATION_STEP_RAD, GLYPH_GAP, GLYPH_MARGIN, MAIN_RING_RADIUS, RING_GAP,
+    RING_MARGIN, SUMMON_GLYPH_RADIUS,
 };
 use crate::layout::crossing::{Segment, count_crossings};
 
@@ -136,6 +137,12 @@ fn layout_module(
     // 含まれないため、ここで初めて配置される。
     place_chain_glyphs(module, &placements, placed);
 
+    // glyph に係留された補助陣 (クロージャ、Phase 4.8 M2) の波及配置。
+    // glyph の位置が確定して初めて置けるため、リング → fan → 鎖の後 (ここ) で
+    // 「未配置の glyph 係留リング」が無くなるまで波を繰り返す
+    // (クロージャ内の鎖 → その鎖のクロージャ、のような入れ子に対応)。
+    place_glyph_anchored_rings(module, &adjacency, options, &mut placements, placed);
+
     // 不変条件が壊れた IR (MainRing 欠落・到達不能 Sigil) への防御:
     // 未配置の Sigil は原点に置き、結果が常に全 Sigil を覆う規約を守る。
     for sigil in &module.sigils {
@@ -203,6 +210,114 @@ fn place_chain_glyphs(
             cursor = follower;
             step += 1.0;
         }
+    }
+}
+
+/// glyph に係留された補助陣 (クロージャのコールバック、Phase 4.8 M2) を配置する。
+///
+/// 各波: ①未配置かつ「配置済み glyph から ControlFlow を受ける」AuxRing を、
+/// glyph の係留元 → glyph の外向き延長線上に置く ②その配下のリング (クロージャ内の
+/// if/match) を place_aux_rings で展開 ③波のリングだけを対象に fan 配置
+/// (既存 fan の交差最小化結果は上書きしない) ④新 glyph からの鎖を配置。
+/// 衝突回避は鎖 (M1) と同様に未実施 — まず素直な配置を目視判定に出す。
+fn place_glyph_anchored_rings(
+    module: &Module,
+    adjacency: &Adjacency,
+    options: LayoutOptions,
+    placements: &mut BTreeMap<SigilId, RingPlacement>,
+    placed: &mut BTreeMap<SigilId, PlacedSigil>,
+) {
+    // glyph の係留元 (ControlFlow / Chain の source) — 外向きの基準。
+    let anchor_of: BTreeMap<SigilId, SigilId> = module
+        .edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::ControlFlow || e.kind == EdgeKind::Chain)
+        .map(|e| (e.target, e.source))
+        .collect();
+    // 防御: 全リング数を超えて波が続くことはない (新規配置が無ければ即終了する)。
+    for _ in 0..module.sigils.len() {
+        // glyph ごとに係留リングを集める (兄弟 = 同一呼び出しの複数クロージャ引数。
+        // SigilId 昇順 = ordinal 順なので決定論的)。
+        let mut by_glyph: BTreeMap<SigilId, Vec<SigilId>> = BTreeMap::new();
+        for edge in &module.edges {
+            if edge.kind != EdgeKind::ControlFlow || placements.contains_key(&edge.target) {
+                continue;
+            }
+            let is_glyph_to_ring = adjacency
+                .sigil(edge.source)
+                .is_some_and(|s| s.kind == SigilKind::SummonGlyph)
+                && adjacency
+                    .sigil(edge.target)
+                    .is_some_and(|s| s.kind == SigilKind::AuxRing);
+            if !is_glyph_to_ring || !placed.contains_key(&edge.source) {
+                continue; // glyph 未配置のものは次の波で拾う
+            }
+            by_glyph.entry(edge.source).or_default().push(edge.target);
+        }
+        let mut wave: BTreeMap<SigilId, RingPlacement> = BTreeMap::new();
+        for (glyph_id, mut rings) in by_glyph {
+            rings.sort_unstable();
+            let glyph = placed[&glyph_id];
+            let anchor_center = anchor_of
+                .get(&glyph_id)
+                .and_then(|src| placed.get(src))
+                .map_or(Point::ZERO, |p| p.center);
+            let dir = glyph.center - anchor_center;
+            let base_angle = if dir.hypot() < 1e-9 { 0.0 } else { dir.atan2() };
+            // 兄弟 (複数クロージャ引数 — rayon::join 等) は外向きを中心に扇形分散
+            // (レビュー W1: 同位置の重なり防止)。1個なら外向きそのまま。
+            let count = usize_to_f64(rings.len());
+            for (i, ring) in rings.into_iter().enumerate() {
+                let offset = (usize_to_f64(i) - (count - 1.0) / 2.0) * CLOSURE_SIBLING_SPREAD_RAD;
+                let angle = base_angle + offset;
+                let dir = Vec2::new(angle.cos(), angle.sin());
+                wave.insert(
+                    ring,
+                    RingPlacement {
+                        center: glyph.center + dir * (glyph.radius + RING_GAP + AUX_RING_RADIUS),
+                        outward: angle,
+                        radius: AUX_RING_RADIUS,
+                    },
+                );
+            }
+        }
+        if wave.is_empty() {
+            return;
+        }
+        // クロージャ内の入れ子制御 (if/match 等) を波のリングから展開する。
+        let roots: Vec<SigilId> = wave.keys().copied().collect();
+        for root in roots {
+            place_aux_rings(adjacency, root, &mut wave);
+        }
+        // 波のリングだけ fan 配置 (既存リングの交差最小化結果に触らない)。
+        let mut fans = place_summon_glyphs(adjacency, &wave);
+        if options.minimize_crossings {
+            let fixed = ring_segments(adjacency, &wave);
+            minimize_glyph_crossings(&mut fans, &fixed);
+        }
+        for (id, placement) in &wave {
+            placed.insert(
+                *id,
+                PlacedSigil {
+                    center: placement.center,
+                    radius: placement.radius,
+                },
+            );
+            placements.insert(*id, *placement);
+        }
+        for fan in &fans {
+            for (glyph, point) in fan.glyph_ids.iter().zip(fan.positions()) {
+                placed.insert(
+                    *glyph,
+                    PlacedSigil {
+                        center: point,
+                        radius: SUMMON_GLYPH_RADIUS,
+                    },
+                );
+            }
+        }
+        // 波で増えた glyph からの鎖 (クロージャ内のメソッドチェーン)。
+        place_chain_glyphs(module, placements, placed);
     }
 }
 

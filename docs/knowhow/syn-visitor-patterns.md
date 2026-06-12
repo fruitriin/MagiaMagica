@@ -284,3 +284,20 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
   Adjacency (layout) / diff.rs Tree::build / ir_export / 不変条件テスト /
   edge_kind_rank の5箇所。**diff の木は見落としやすい** (レビュー Critical で検出 —
   係留 Edge を増やしたら diff の親子復元も必ず追従)
+
+## クロージャの補助陣化 (Phase 4.8 M2)
+
+- **クロージャ本体は visitor から「収集しない」と決めたら、全経路で default 再帰を
+  廃止する**: visit_expr_call / 単独メソッド / チェーンの3経路全部を手動再帰
+  (クロージャ以外の引数 + 基底/関数位置のみ) にしないと、どれか1経路から
+  default 再帰が走って平坦化が復活する。関数位置の ExprClosure (即時呼び出し) は
+  非対称のまま許容してコメントで明示する
+- **CallSite を AST 借用にすると (`CallSite<'ast>`)、テストヘルパが
+  「ローカル parse → 借用 escape」で死ぬ** — ヘルパは所有値 (target, effects) に
+  写して返す形に変える
+- **glyph に子リング (係留 Edge の source が SummonGlyph) が増えると、レイアウトは
+  波 (wave) 配置になる**: リング → fan → 鎖 → glyph 係留リング → (その中の
+  リング/fan/鎖) と、位置が確定した親から繰り返す。波ごとの fan 配置は wave の
+  リングだけに限定する (全体に再適用すると既存 fan の交差最小化結果を上書きする)
+- 兄弟の glyph 係留リング (複数クロージャ引数) は外向き中心の扇形分散
+  (CLOSURE_SIBLING_SPREAD_RAD) — 同位置重なりはレビューで指摘される定番

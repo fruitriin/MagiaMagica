@@ -92,7 +92,7 @@ impl UseMap {
 }
 
 /// 抽出された call site 1件。SummonGlyph の素材。
-pub(crate) struct CallSite {
+pub(crate) struct CallSite<'ast> {
     /// 近似解決後の呼び出し先 (`std::fs::read_to_string`, `println!`,
     /// メソッド呼び出しは `.method` 形式)。
     pub(crate) target: String,
@@ -106,13 +106,35 @@ pub(crate) struct CallSite {
     /// index 0 が最初に実行される呼び出し (レシーバ入れ子の最奥)。
     /// 単独の呼び出し (チェーン長1) は None。
     pub(crate) chain: Option<(u32, u32)>,
+    /// 引数に直接渡されたクロージャ (コールバック、Phase 4.8 M2)。
+    /// 本体は補助陣として展開される — visitor はここへ再帰しない (二重計上防止)。
+    pub(crate) closures: Vec<&'ast syn::ExprClosure>,
+}
+
+/// 引数列をクロージャ (参照は透過) とそれ以外に分ける。
+fn split_closures<'ast>(
+    args: impl IntoIterator<Item = &'ast Expr>,
+) -> (Vec<&'ast syn::ExprClosure>, Vec<&'ast Expr>) {
+    let mut closures = Vec::new();
+    let mut rest = Vec::new();
+    for arg in args {
+        let mut inner = arg;
+        while let Expr::Reference(r) = inner {
+            inner = &r.expr;
+        }
+        match inner {
+            Expr::Closure(c) => closures.push(c),
+            _ => rest.push(arg),
+        }
+    }
+    (closures, rest)
 }
 
 /// statement 全体から call site を収集する (非制御 statement 用)。
 ///
 /// `let x = if ...` のような式内制御構造の本体に含まれる call も、その statement を
 /// 持つリングに係留される (制御構造を切り出さない判断と整合)。
-pub(crate) fn collect_calls_in_stmt(stmt: &Stmt, uses: &UseMap) -> Vec<CallSite> {
+pub(crate) fn collect_calls_in_stmt<'ast>(stmt: &'ast Stmt, uses: &UseMap) -> Vec<CallSite<'ast>> {
     let mut visitor = CallVisitor {
         uses,
         calls: Vec::new(),
@@ -125,7 +147,7 @@ pub(crate) fn collect_calls_in_stmt(stmt: &Stmt, uses: &UseMap) -> Vec<CallSite>
 /// 式から call site を収集する (制御構造のガード式・被検査式・イテレータ式用)。
 ///
 /// 本体ブロックは AuxRing 側のリング構築時に収集されるため、ここに渡すと二重計上になる。
-pub(crate) fn collect_calls_in_expr(expr: &Expr, uses: &UseMap) -> Vec<CallSite> {
+pub(crate) fn collect_calls_in_expr<'ast>(expr: &'ast Expr, uses: &UseMap) -> Vec<CallSite<'ast>> {
     let mut visitor = CallVisitor {
         uses,
         calls: Vec::new(),
@@ -142,9 +164,9 @@ pub(crate) fn collect_calls_in_expr(expr: &Expr, uses: &UseMap) -> Vec<CallSite>
 /// 走査しないため拾えない (Phase 1 の既知の限界)。
 /// 引数位置のネスト呼び出し (`outer(inner())`) は独立した glyph として同一の
 /// 所属リングに平坦化され、「inner が outer の引数である」関係は IR 上では失われる。
-struct CallVisitor<'a> {
+struct CallVisitor<'a, 'ast> {
     uses: &'a UseMap,
-    calls: Vec<CallSite>,
+    calls: Vec<CallSite<'ast>>,
     /// 次に割り振るチェーン番号 (visitor 1個 = 1収集単位の中で一意)。
     chain_seq: u32,
 }
@@ -182,7 +204,7 @@ fn chain_members(outermost: &syn::ExprMethodCall) -> (Vec<ChainMember<'_>>, Opti
     }
 }
 
-impl<'ast> Visit<'ast> for CallVisitor<'_> {
+impl<'ast> Visit<'ast> for CallVisitor<'_, 'ast> {
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
         // 関数位置がパス式 (`foo(..)`, `HashMap::new(..)`) のときのみ解決を試みる。
         // クロージャ呼び出し等のパスでない式は記述のまま保持する。
@@ -190,14 +212,25 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
             Expr::Path(path) => self.uses.expand(&path_to_string(&path.path)),
             other => other.to_token_stream().to_string(),
         };
+        let (closures, rest) = split_closures(&node.args);
         self.calls.push(CallSite {
             effects: effects_for_path(&target),
             excerpt: node.to_token_stream().to_string(),
             span: node.span(),
             target,
             chain: None,
+            closures,
         });
-        syn::visit::visit_expr_call(self, node);
+        // クロージャ本体は補助陣側で処理する — それ以外の引数と、パスでない
+        // 関数位置 (`(get_fn())(x)` 等) だけ再帰する (default 再帰は使わない)。
+        // 関数位置の ExprClosure (即時呼び出し `(|x| f(x))(val)`) は args の
+        // クロージャと異なり補助陣化せず平坦化される — 既知の非対称 (極めて稀)。
+        for arg in rest {
+            syn::visit::visit_expr(self, arg);
+        }
+        if !matches!(node.func.as_ref(), Expr::Path(_)) {
+            syn::visit::visit_expr(self, &node.func);
+        }
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
@@ -209,14 +242,20 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
         if members.len() < 2 {
             // レシーバ型が分からないため解決不能 (Phase 1a)。`.method` 形式で保持し pure 扱い。
             let target = format!(".{}", node.method);
+            let (closures, rest) = split_closures(&node.args);
             self.calls.push(CallSite {
                 effects: effects_for_path(&target),
                 excerpt: node.to_token_stream().to_string(),
                 span: node.span(),
                 target,
                 chain: None,
+                closures,
             });
-            syn::visit::visit_expr_method_call(self, node);
+            // クロージャ以外の引数とレシーバ (基底) だけ再帰する。
+            for arg in rest {
+                syn::visit::visit_expr(self, arg);
+            }
+            syn::visit::visit_expr(self, &node.receiver);
             return;
         }
         let chain_id = self.chain_seq;
@@ -232,6 +271,7 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
                         span: m.span(),
                         target,
                         chain: Some((chain_id, index)),
+                        closures: split_closures(&m.args).0,
                     });
                 }
                 ChainMember::Call(c) => {
@@ -245,20 +285,22 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
                         span: c.span(),
                         target,
                         chain: Some((chain_id, index)),
+                        closures: split_closures(&c.args).0,
                     });
                 }
             }
         }
-        // 引数・基底式の中の呼び出しは独立 glyph として従来どおり収集する。
+        // クロージャ以外の引数・基底式の中の呼び出しは独立 glyph として収集する
+        // (クロージャ本体は補助陣側で処理 — Phase 4.8 M2)。
         for member in &members {
             match member {
                 ChainMember::Method(m) => {
-                    for arg in &m.args {
+                    for arg in split_closures(&m.args).1 {
                         syn::visit::visit_expr(self, arg);
                     }
                 }
                 ChainMember::Call(c) => {
-                    for arg in &c.args {
+                    for arg in split_closures(&c.args).1 {
                         syn::visit::visit_expr(self, arg);
                     }
                 }
@@ -283,6 +325,7 @@ impl<'ast> Visit<'ast> for CallVisitor<'_> {
             span: node.span(),
             target: format!("{name}!"),
             chain: None,
+            closures: Vec::new(),
         });
         syn::visit::visit_macro(self, node);
     }
@@ -306,9 +349,13 @@ mod tests {
         UseMap::from_file(&syn::parse_str::<File>(src).expect("parse file"))
     }
 
-    fn calls(stmt_src: &str, uses: &UseMap) -> Vec<CallSite> {
+    /// CallSite は AST を借用するため、テストでは所有値 (target, effects) に写して返す。
+    fn calls(stmt_src: &str, uses: &UseMap) -> Vec<(String, EffectSet)> {
         let stmt = syn::parse_str::<Stmt>(stmt_src).expect("parse stmt");
         collect_calls_in_stmt(&stmt, uses)
+            .into_iter()
+            .map(|c| (c.target, c.effects))
+            .collect()
     }
 
     #[test]
@@ -339,7 +386,7 @@ mod tests {
     fn call_paths_are_collected_in_source_order() {
         let uses = use_map("");
         let sites = calls("let x = outer(inner());", &uses);
-        let targets: Vec<_> = sites.iter().map(|c| c.target.as_str()).collect();
+        let targets: Vec<_> = sites.iter().map(|(t, _)| t.as_str()).collect();
         assert_eq!(targets, vec!["outer", "inner"]);
     }
 
@@ -348,15 +395,15 @@ mod tests {
         let uses = use_map("");
         let sites = calls("println!(\"x\");", &uses);
         assert_eq!(sites.len(), 1);
-        assert_eq!(sites[0].target, "println!");
-        assert!(sites[0].effects.io);
+        assert_eq!(sites[0].0, "println!");
+        assert!(sites[0].1.io);
     }
 
     #[test]
     fn method_call_is_pure_with_dot_prefix() {
         let uses = use_map("");
         let sites = calls("file.read_to_string(&mut buf);", &uses);
-        assert_eq!(sites[0].target, ".read_to_string");
-        assert!(sites[0].effects.pure);
+        assert_eq!(sites[0].0, ".read_to_string");
+        assert!(sites[0].1.pure);
     }
 }

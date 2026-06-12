@@ -478,7 +478,8 @@ impl RingBuilder<'_> {
     /// glyph は「呼び出し1件 = Call Operation 1個」を content に持つ。呼び出し先パスと
     /// 効果カテゴリは Operation 側 (`call_target` / `EffectSet`) に載せ、Sigil の layers
     /// はリング専用の `control_flow` を持たない。
-    fn spawn_glyphs(&mut self, parent: SigilId, calls: Vec<CallSite>) {
+    /// `calls` はファイル AST を借用する (クロージャ本体の参照 — spawn 中に clone で所有化)。
+    fn spawn_glyphs(&mut self, parent: SigilId, calls: Vec<CallSite<'_>>) {
         // チェーン番号 → そのチェーンで直近に生成した glyph (Phase 4.8)。
         // collect が実行順 (index 昇順) で返す規約により、後続の参照先は必ず登録済み。
         // BTreeMap はプロジェクト規約 (決定論)。ここは lookup のみだが揃えておく。
@@ -533,6 +534,26 @@ impl RingBuilder<'_> {
                 cardinality: 1.0,
                 layers: EdgeLayerData::default(),
             });
+            // 引数のクロージャ (コールバック) は召喚陣に係留される補助陣として
+            // 展開する (Phase 4.8 M2 — glyph が子リングを持つ唯一の形)。
+            for (ordinal, closure) in call.closures.iter().enumerate() {
+                let params = closure
+                    .inputs
+                    .iter()
+                    .map(|pat| pat.to_token_stream().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let seeds: Vec<String> = closure.inputs.iter().flat_map(pattern_idents).collect();
+                let role = aux_role(
+                    AuxRingKind::Closure,
+                    0, // glyph の content は Call 1個 (添字0)
+                    u32::try_from(ordinal).expect("クロージャ引数の数が u32 を超えることはない"),
+                    Some(format!("|{params}|")),
+                    // リングホバーでクロージャ全体の原文が見える (ガード相当の扱い)
+                    Some(source_span(closure.span())),
+                );
+                self.spawn_expr_child_with_seeds(glyph, role, &closure.body, &seeds);
+            }
         }
     }
 

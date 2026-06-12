@@ -80,6 +80,9 @@ pub enum AuxRingKind {
     MatchArm,
     /// ループ本体。
     LoopBody(LoopKind),
+    /// 召喚の引数に渡されたクロージャ (コールバック) の本体 (Phase 4.8 M2)。
+    /// 親は SummonGlyph (glyph が子リングを持つ唯一の形)。
+    Closure,
 }
 
 /// ループ種別。

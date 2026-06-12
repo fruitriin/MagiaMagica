@@ -123,3 +123,23 @@ fn medium_fixture_stays_close_to_approved_baseline() {
         );
     }
 }
+
+#[test]
+fn sibling_closure_rings_do_not_overlap() {
+    // Phase 4.8 M2 レビュー W1 の回帰: 1つの召喚に複数のクロージャ引数
+    // (rayon::join 形) があっても補助陣が同位置に重ならない。
+    use magia_core::ir::SigilKind;
+    let src = "fn f() { join(|| left(), || right()); }";
+    let graph = magia_rust::parse_function(src, "f").unwrap();
+    let layout = magia_core::layout::layout(&graph);
+    let module = &graph.modules[0];
+    let rings: Vec<_> = module
+        .sigils
+        .iter()
+        .filter(|s| s.kind == SigilKind::AuxRing)
+        .map(|s| layout.positions[&s.id])
+        .collect();
+    assert_eq!(rings.len(), 2, "クロージャ補助陣2つ");
+    let d = ((rings[0].x - rings[1].x).powi(2) + (rings[0].y - rings[1].y).powi(2)).sqrt();
+    assert!(d > 20.0, "兄弟の補助陣は分散される (距離 {d:.1})");
+}
