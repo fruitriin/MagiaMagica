@@ -8,18 +8,33 @@
 import { computed } from "vue";
 
 import { useFocusStore } from "../../stores/focus.ts";
+import { usePaletteStore } from "../../stores/palette.ts";
 import type { NeighborChip } from "../../types/magia.ts";
 
 const props = defineProps<{ chip: NeighborChip }>();
 const emit = defineEmits<{ pin: [qualified: string] }>();
 
 const focus = useFocusStore();
+const palette = usePaletteStore();
 
 /** チップ内に収まるよう関数名を短縮する (詳細は title ツールチップで補完)。 */
 const displayName = () => {
   const name = props.chip.name;
   return name.length > 12 ? `${name.slice(0, 11)}…` : name;
 };
+
+/** 引数行 (細部修正 2026-06-12)。チェックボックスの組合せで
+ *  `(a, b)` / `(i32, &str)` / `(a: i32, b: &str)` を出し分ける。両方 OFF なら出さない。 */
+const argsLabel = computed(() => {
+  if (!palette.argNames && !palette.argTypes) return null;
+  const args = props.chip.args ?? [];
+  const parts = args.map((a) => {
+    if (palette.argNames && palette.argTypes) return `${a.name}: ${a.ty}`;
+    return palette.argNames ? a.name : a.ty;
+  });
+  const text = `(${parts.join(", ")})`;
+  return text.length > 22 ? `${text.slice(0, 21)}…)` : text;
+});
 
 /** 呼び出し関係の向きマーク (フォーカス基準)。 */
 const RELATION_MARK = {
@@ -65,11 +80,25 @@ const isLinked = computed(() => focus.hoveredLink === props.chip.qualified);
     <text
       text-anchor="middle"
       dominant-baseline="middle"
+      :y="argsLabel === null ? 0 : -6"
       font-size="11"
       font-family="ui-monospace, monospace"
       fill="#000000"
     >
       {{ displayName() }}
+    </text>
+    <!-- 引数行 (パレットのチェックボックスで切替)。引数なしは () を出して区別する -->
+    <text
+      v-if="argsLabel !== null"
+      class="chip-args"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      y="8"
+      font-size="8"
+      font-family="ui-monospace, monospace"
+      fill="#555555"
+    >
+      {{ argsLabel }}
     </text>
     <!-- 呼び出し関係の向き (フォーカス基準、Phase 4.4)。チップ上端に小さく -->
     <text

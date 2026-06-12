@@ -118,6 +118,18 @@ function onApply() {
       </button>
     </div>
 
+    <strong mt-3 block text-xs text-gray-500>周辺チップの引数</strong>
+    <div mt-1 flex gap-3>
+      <label flex items-center gap-1>
+        <input v-model="palette.argNames" type="checkbox" />
+        変数名
+      </label>
+      <label flex items-center gap-1>
+        <input v-model="palette.argTypes" type="checkbox" />
+        型名
+      </label>
+    </div>
+
     <strong mt-3 block text-xs text-gray-500>Spell Diff (基準 rev)</strong>
     <div mt-1 flex items-center gap-1>
       <input

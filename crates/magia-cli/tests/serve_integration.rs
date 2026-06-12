@@ -154,6 +154,11 @@ fn serves_function_index_api() {
     assert_eq!(cast["impl_context"], "Caster");
     assert!(cast["start_line"].as_u64().unwrap() > 0);
 
+    // ソースペインのファイル全体表示 (細部修正 2026-06-12): 行ごと SH 済み HTML。
+    let lines = state["source_lines"].as_array().unwrap();
+    assert_eq!(lines.len(), INITIAL.lines().count());
+    assert!(lines[0].as_str().unwrap().contains("watched"));
+
     // ?fn= 付き URL でもトップページが返る (リロード・共有経路)。
     let with_fn = http_get(server.port, "/?fn=Caster%3A%3Acast&style=belka");
     assert!(with_fn.contains("200") && with_fn.contains(r#"<div id="app">"#));

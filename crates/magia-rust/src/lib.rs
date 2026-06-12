@@ -18,8 +18,8 @@ mod summon;
 
 pub use error::Error;
 pub use index::{
-    CallEdge, CrossFileEdge, FileIndex, FunctionEntry, function_index, function_index_with_calls,
-    workspace_index,
+    CallEdge, CrossFileEdge, FileIndex, FunctionArg, FunctionEntry, function_index,
+    function_index_with_calls, workspace_index,
 };
 
 use magia_core::ir::{ConcurrencyInfo, MagiaGraph, Module, ModuleId, ProjectMetadata};

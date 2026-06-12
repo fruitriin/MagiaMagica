@@ -9,6 +9,7 @@ const STATE: StateResponse = {
   error: null,
   file: "demo.rs",
   version: 1,
+  source_lines: ["fn greet() {", "}", "", "struct Caster;", "impl Caster {", "fn cast() {}", "}"],
   functions: [
     {
       name: "greet",
@@ -98,13 +99,18 @@ describe("useFocusStore", () => {
     expect(focus.currentFn).toBe("greet");
   });
 
-  it("取得成功で source store にハイライト HTML を分配する", async () => {
+  it("loadState でソース全文 (行 HTML) を分配し、選択で強調範囲が移る", async () => {
     const focus = useFocusStore();
     await focus.loadState();
-    await focus.selectFunction("greet");
     const source = useSourceStore();
-    expect(source.sourceHtml).toBe("<pre>greet</pre>");
-    expect(source.startLine).toBe(1);
+    // ファイル全体表示 (細部修正 2026-06-12): 行は /state 由来。
+    expect(source.lines.length).toBe(7);
+    await focus.selectFunction("greet");
+    expect([source.focusStart, source.focusEnd]).toEqual([1, 3]);
+    // 関数を切り替えてもソースは差し替わらず、強調範囲だけが移る。
+    await focus.selectFunction("Caster::cast");
+    expect([source.focusStart, source.focusEnd]).toEqual([5, 7]);
+    expect(source.lines.length).toBe(7);
   });
 
   it("取得失敗時は直前の spell を保持して loadError に記録する", async () => {

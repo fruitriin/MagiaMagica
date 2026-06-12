@@ -27,20 +27,19 @@ type TocEntry = {
 const entries = computed<TocEntry[]>(() => {
   const layout = focus.spell?.focus_layout;
   if (pinnedOnly.value && layout && focus.currentFn !== null) {
-    return [
-      {
-        qualified: focus.currentFn,
-        label: focus.spell?.signature ?? focus.currentFn,
-        title: "ピン中",
-        distance: 0,
-      },
-      ...layout.neighbors.map((chip) => ({
-        qualified: chip.qualified,
-        label: chip.signature,
-        title: `距離 ${chip.distance}`,
-        distance: chip.distance,
-      })),
-    ];
+    // 並びは常に定義順 (focus.functions の順) — ピンを切り替えても行が
+    // 入れ替わらない (オーナー指示 2026-06-12)。距離は title に退避。
+    const distanceOf = new Map<string, number>(
+      layout.neighbors.map((chip) => [chip.qualified, chip.distance]),
+    );
+    return focus.functions
+      .filter((f) => f.qualified === focus.currentFn || distanceOf.has(f.qualified))
+      .map((f) => ({
+        qualified: f.qualified,
+        label: f.signature,
+        title: f.qualified === focus.currentFn ? "ピン中" : `距離 ${distanceOf.get(f.qualified)}`,
+        distance: distanceOf.get(f.qualified) ?? 0,
+      }));
   }
   return focus.functions.map((f) => ({
     qualified: f.qualified,

@@ -34,6 +34,28 @@ pub struct FunctionEntry {
     pub end_line: usize,
     /// シグネチャの文字列 (非整形トークン列、表示用)。
     pub signature: String,
+    /// 引数 (self を除く)。チップの引数表示オプション (Phase 4.5 細部修正) の素材。
+    pub args: Vec<FunctionArg>,
+}
+
+/// 関数引数1つ分 (パターンと型のコンパクトな文字列表現)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionArg {
+    /// 引数名 (パターン。`mut x` や `(a, b)` もそのまま)。
+    pub name: String,
+    /// 型 (`&str` / `Vec<Neighbor>` — トークン列の空白を詰めた表示用)。
+    pub ty: String,
+}
+
+/// トークン列文字列の表示用コンパクト化 (`Vec < Neighbor >` → `Vec<Neighbor>`)。
+fn compact_tokens(tokens: &str) -> String {
+    tokens
+        .replace(" :: ", "::")
+        .replace(" < ", "<")
+        .replace(" >", ">")
+        .replace("& ", "&")
+        .replace(" ,", ",")
+        .replace("' ", "'")
 }
 
 /// ファイル全体を走査して関数索引を返す (ソース出現順)。
@@ -336,6 +358,19 @@ impl FunctionWalker {
             Some(context) => format!("{context}::{name}"),
             None => name.clone(),
         };
+        let args = item
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|input| match input {
+                // self レシーバは「引数」として表示しない (チップは関数の外形が目的)。
+                syn::FnArg::Receiver(_) => None,
+                syn::FnArg::Typed(typed) => Some(FunctionArg {
+                    name: compact_tokens(&typed.pat.to_token_stream().to_string()),
+                    ty: compact_tokens(&typed.ty.to_token_stream().to_string()),
+                }),
+            })
+            .collect();
         self.entries.push(FunctionEntry {
             name,
             impl_context,
@@ -343,6 +378,7 @@ impl FunctionWalker {
             start_line: span.start().line,
             end_line: span.end().line,
             signature: item.sig.to_token_stream().to_string(),
+            args,
         });
         self.bodies.push(item);
     }
@@ -511,6 +547,40 @@ fn recurse() -> i32 { recurse() }
 struct B;\nimpl B {\n    fn run(&self) { self.render(); }\n    fn render(&self) {}\n}\n";
         let (_, edges) = function_index_with_calls(source).unwrap();
         assert_eq!(edges, [("B::run".to_string(), "B::render".to_string())]);
+    }
+
+    #[test]
+    fn compact_tokens_covers_common_type_shapes() {
+        // 表示用の最良努力変換 (レビュー W2 のケース網羅)。
+        assert_eq!(compact_tokens("& str"), "&str");
+        assert_eq!(compact_tokens("Vec < Neighbor >"), "Vec<Neighbor>");
+        assert_eq!(compact_tokens("& 'a str"), "&'a str");
+        assert_eq!(compact_tokens("& mut T"), "&mut T");
+        assert_eq!(
+            compact_tokens("std :: path :: PathBuf"),
+            "std::path::PathBuf"
+        );
+        assert_eq!(
+            compact_tokens("& [(String , String)]"),
+            "&[(String, String)]"
+        );
+    }
+
+    #[test]
+    fn function_entry_args_extracts_pat_and_ty() {
+        let index = function_index(
+            "fn f(a: i32, list: &[Vec<u8>]) {}\nstruct S;\nimpl S { fn m(&self, x: &str) {} }\n",
+        )
+        .unwrap();
+        let f_args: Vec<(&str, &str)> = index[0]
+            .args
+            .iter()
+            .map(|a| (a.name.as_str(), a.ty.as_str()))
+            .collect();
+        assert_eq!(f_args, [("a", "i32"), ("list", "&[Vec<u8>]")]);
+        // self レシーバは引数に含めない。
+        let m_args: Vec<&str> = index[1].args.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(m_args, ["x"]);
     }
 
     #[test]

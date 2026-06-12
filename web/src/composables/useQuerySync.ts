@@ -59,6 +59,11 @@ export function useQuerySync() {
     // 監視ファイルの希望 (Phase 4.4.5)。切替の発火は下の watch (file 確定後)。
     focus.setRequestedFile(asString(query["file"]));
 
+    // 周辺チップの引数表示 (細部修正 2026-06-12)。`name` / `type` のカンマ区切り。
+    const args = (asString(query["args"]) ?? "").split(",");
+    palette.argNames = args.includes("name");
+    palette.argTypes = args.includes("type");
+
     // 視野 (Phase 4.5)。workspace 以外の値は focus に倒す。
     const scope = asString(query["scope"]) === "workspace" ? "workspace" : "focus";
     if (scope !== focus.scope) {
@@ -72,6 +77,10 @@ export function useQuerySync() {
     if (focus.requestedFile !== null) params["file"] = focus.requestedFile;
     if (focus.diffRev !== null) params["diff"] = focus.diffRev;
     if (focus.scope === "workspace") params["scope"] = "workspace";
+    const argParts = [palette.argNames ? "name" : null, palette.argTypes ? "type" : null].filter(
+      (p): p is string => p !== null,
+    );
+    if (argParts.length > 0) params["args"] = argParts.join(",");
     if (palette.style === "belka") params["style"] = "belka";
     const shown = LAYERS.filter((l) => palette.layers[l].visible);
     if (shown.length < LAYERS.length) params["layers"] = shown.join(",");
@@ -93,10 +102,18 @@ export function useQuerySync() {
   // 監視ファイルの切替 (Phase 4.4.5): サーバの file が確定してから希望と比較する
   // (SSE 初回前は file = null で判定できない)。switchFile は同値なら何もしないため
   // 「POST → SSE → file 更新 → ここが再発火 → 同値」でループが止まる。
+  // URL 由来の復元 POST は**1ページロードにつき最初の不一致の1回だけ** (細部修正
+  // 2026-06-12): 以後の不一致は「他のタブ/操作がファイルを切り替えた」なので、
+  // 主張し返さずサーバに追従する (複数タブの ?file= 綱引きで無限 POST になる穴)。
+  let restoreAttempted = false;
   watch([() => focus.file, () => focus.requestedFile], ([current, requested]) => {
-    if (current !== null && requested !== null && requested !== current) {
-      void focus.switchFile(requested);
+    if (current === null || requested === null || requested === current) return;
+    if (restoreAttempted) {
+      focus.setRequestedFile(current); // サーバ追従 (URL の ?file= も書き換わる)
+      return;
     }
+    restoreAttempted = true;
+    void focus.switchFile(requested);
   });
 
   watch(
@@ -107,6 +124,8 @@ export function useQuerySync() {
       () => focus.scope,
       () => palette.style,
       () => palette.layers,
+      () => palette.argNames,
+      () => palette.argTypes,
     ],
     () => {
       const next = buildQuery();

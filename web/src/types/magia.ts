@@ -166,6 +166,8 @@ export type StateResponse = {
   error: ServerError | null;
   file: string;
   functions: FunctionMeta[];
+  /** ファイル全体の行ごと SH 済み HTML (ソースペインの全体表示 — 細部修正 2026-06-12)。 */
+  source_lines: string[];
   /** ファイル更新ごとに進む世代番号 (SSE の `data:` と同じ系列)。 */
   version: number;
 };
@@ -290,6 +292,8 @@ export type NeighborChip = {
   signature: string;
   /** フォーカス基準の呼び出しの向き (Phase 4.4)。関係がなければ省略。 */
   relation?: "calls" | "called_by" | "mutual";
+  /** 引数一覧 (表示の組み立てはパレットのチェックボックスで切替)。空なら省略。 */
+  args?: { name: string; ty: string }[];
   /** リング距離: 1 = 同 impl、2 = 同ファイル (スタブ近接度 — 4.2 で本実装)。 */
   distance: number;
   x: number;

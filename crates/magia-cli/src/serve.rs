@@ -29,7 +29,7 @@ use magia_core::proximity::{NeighborSeed, classify_neighbors};
 use magia_core::render::ir_export::{NeighborMeta, SpanIr, SpellIr, focus_layout, spell_ir};
 use magia_rust::{FunctionEntry, function_index_with_calls, parse_function, workspace_index};
 
-use crate::srcview::highlight_rust;
+use crate::srcview::{highlight_rust, highlight_rust_lines};
 
 /// エディタの「テンポラリ書き込み → rename」保存で複数イベントが連射されるため、
 /// 最後のイベントからこの時間だけ静まるのを待ってから1回だけ再解析する。
@@ -47,6 +47,9 @@ struct GoodSnapshot {
     /// 関数間の呼び出しエッジ (近接度の入力)。reload 時に1回だけ構築する
     /// (リクエストごとの再パースを避ける — Phase 4.2)。
     call_edges: Vec<(String, String)>,
+    /// ファイル全体の行ごと SH 済み HTML (ソースペインの全体表示 — 細部修正
+    /// 2026-06-12)。reload 時に1回だけ構築する (保存ごとに syntect 1パス)。
+    source_lines: Vec<String>,
 }
 
 /// 現在の解析エラー (正常時は None)。
@@ -127,6 +130,7 @@ impl Shared {
             "version": self.version.load(Ordering::SeqCst),
             "file": good.file.display().to_string(),
             "functions": functions,
+            "source_lines": good.source_lines,
             "error": error.as_ref().map(|e| serde_json::json!({
                 "message": e.message,
                 "line": e.line,
@@ -325,11 +329,13 @@ fn load_snapshot(file: &Path) -> Result<GoodSnapshot, ServeError> {
         line: syntax_error_line(&e),
         message: e.to_string(),
     })?;
+    let source_lines = highlight_rust_lines(&source);
     Ok(GoodSnapshot {
         file: file.to_path_buf(),
         source,
         functions,
         call_edges,
+        source_lines,
     })
 }
 
@@ -406,6 +412,11 @@ fn render_spell(
                     NeighborMeta {
                         name: meta.name.clone(),
                         signature: meta.signature.clone(),
+                        args: meta
+                            .args
+                            .iter()
+                            .map(|a| (a.name.clone(), a.ty.clone()))
+                            .collect(),
                     },
                 ))
             })

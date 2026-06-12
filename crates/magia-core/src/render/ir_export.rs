@@ -438,12 +438,23 @@ pub struct NeighborChip {
     /// 向きを UI に出す根拠)。関係がなければ None (フィールド省略)。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relation: Option<CallRelation>,
+    /// 引数一覧 (表示はクライアントのチェックボックスで切替)。空なら省略。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<ArgIr>,
     pub x: f64,
     pub y: f64,
     pub scale: f64,
     pub opacity: f64,
     /// チップ円の半径 (スケール前)。
     pub radius: f64,
+}
+
+/// 関数引数1つ分 (チップの引数表示オプション — 細部修正 2026-06-12)。
+/// 表示の組み立て (名前のみ / 型のみ / 両方) はクライアント側の関心。
+#[derive(Serialize)]
+pub struct ArgIr {
+    pub name: String,
+    pub ty: String,
 }
 
 /// フォーカス基準の呼び出しの向き (spec v0.3 §16 追補、Phase 4.4)。
@@ -552,6 +563,14 @@ pub fn focus_layout(
             qualified: neighbor.qualified.clone(),
             name: meta.name.clone(),
             signature: meta.signature.clone(),
+            args: meta
+                .args
+                .iter()
+                .map(|(name, ty)| ArgIr {
+                    name: name.clone(),
+                    ty: ty.clone(),
+                })
+                .collect(),
             distance: ring,
             relation: call_relation(focus_qualified, &neighbor.qualified, call_edges),
             x: nz(center_x + radius * angle.cos()),
@@ -590,4 +609,6 @@ pub fn focus_layout(
 pub struct NeighborMeta {
     pub name: String,
     pub signature: String,
+    /// 引数 (name, ty)。チップの引数表示オプション (細部修正 2026-06-12)。
+    pub args: Vec<(String, String)>,
 }

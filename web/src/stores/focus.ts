@@ -152,12 +152,20 @@ export const useFocusStore = defineStore("focus", () => {
     currentFn.value = fn;
   }
 
-  /** `/state` を読み直して関数一覧を更新する。 */
+  /** `/state` を読み直して関数一覧とソース全文 (行 HTML) を更新する。 */
   async function loadState() {
     const state = await fetchState();
+    const fileChanged = file.value !== null && state.file !== file.value;
     file.value = state.file;
     functions.value = state.functions;
     serverError.value = state.error;
+    // ソースペインはファイル全体表示 (細部修正 2026-06-12)。フォーカスは行範囲で示す。
+    const source = useSourceStore();
+    if (fileChanged) {
+      // 旧ファイルの強調範囲を新ファイルに持ち越さない (範囲は selectFunction が引き直す)
+      source.clear();
+    }
+    source.setLines(state.source_lines);
   }
 
   /** 切替候補 (.rs 一覧) を取得する。 */
@@ -212,7 +220,11 @@ export const useFocusStore = defineStore("focus", () => {
       // 図が差し替わるとホバー元のドットが消えて mouseleave が来ないことがある
       hoverExcerpt.value = null;
       hoveredLink.value = null;
-      useSourceStore().setSource(next.source_html, next.start_line);
+      // ソースペインの強調範囲をフォーカス関数に合わせる (全文は /state 由来)。
+      const entry = functions.value.find((f) => f.qualified === target);
+      if (entry !== undefined) {
+        useSourceStore().setFocusRange(entry.start_line, entry.end_line);
+      }
     } catch (e) {
       if (seq !== selectSeq.value) return;
       loadError.value = e instanceof Error ? e.message : String(e);

@@ -54,7 +54,8 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
   <div flex h-screen flex-col font-sans>
     <header flex items-baseline gap-3 border-b border-gray-200 px-4 py-2>
       <h1 text-lg font-bold tracking-wide>MagiaMagica</h1>
-      <span v-if="focus.currentFn" text-sm text-gray-600 font-mono>{{ focus.currentFn }}</span>
+      <!-- 並びは「タイトル → ファイルパス → 関数名」固定 — 関数名の長さで
+           ファイルパスの位置が動かない (オーナー指示 2026-06-12)。 -->
       <!-- 監視ファイルの切替 (Phase 4.4.5)。候補はワークスペース配下の .rs -->
       <select
         v-if="focus.file"
@@ -72,6 +73,7 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
       >
         <option v-for="f in fileOptions" :key="f" :value="f">{{ f }}</option>
       </select>
+      <span v-if="focus.currentFn" text-sm text-gray-600 font-mono>{{ focus.currentFn }}</span>
       <!-- 俯瞰トグル (Phase 4.5): ピン中心 ⇆ ワークスペース全体のズーム切替 -->
       <button
         ml-auto

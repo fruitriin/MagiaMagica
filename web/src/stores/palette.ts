@@ -34,6 +34,10 @@ function allVisible(): Record<LayerName, LayerState> {
 export const usePaletteStore = defineStore("palette", () => {
   const style = ref<RenderStyle>("midchilda");
   const layers = ref<Record<LayerName, LayerState>>(allVisible());
+  // 周辺チップの引数表示 (細部修正 2026-06-12)。`?args=name,type` と同期。
+  // どちらか片方だけのニーズがあるため独立したチェックボックス。
+  const argNames = ref(false);
+  const argTypes = ref(false);
 
   function setStyle(next: RenderStyle) {
     style.value = next;
@@ -63,6 +67,8 @@ export const usePaletteStore = defineStore("palette", () => {
   return {
     style,
     layers,
+    argNames,
+    argTypes,
     setStyle,
     setVisible,
     setOpacity,
