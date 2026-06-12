@@ -14,6 +14,8 @@ use anyhow::{Context, Result, bail};
 ///
 /// パスは現在のインデックス上のリポジトリ相対パスで解決する
 /// (リネームを跨ぐ比較は Phase 3 では追わない)。
+/// `-` 始まりの rev (git オプションに化ける) は呼び出し側が事前に拒否する前提
+/// (serve の `?diff=` パースが弾く。CLI 引数は clap が値として受けるため安全)。
 pub fn show_file_at(rev: &str, file: &Path) -> Result<String> {
     let dir = context_dir(file);
     let relative = repo_relative(file)?;

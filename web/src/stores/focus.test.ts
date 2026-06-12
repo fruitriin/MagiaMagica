@@ -135,7 +135,8 @@ describe("useFocusStore — Spell Diff (Phase 4.3.7)", () => {
     await focus.loadState();
     await focus.selectFunction("greet");
     await focus.setDiffRev("HEAD~1");
-    const calls = vi.mocked(globalThis.fetch).mock.calls.map((c) => String(c[0]));
+    // mock の fetch は path 文字列で呼ばれる (mockFetch の契約)。
+    const calls = vi.mocked(globalThis.fetch).mock.calls.map((c) => c[0] as string);
     expect(calls.some((u) => u.includes("diff=HEAD~1"))).toBe(true);
     expect(focus.diffRev).toBe("HEAD~1");
     // 空白はクリア (null) に正規化。

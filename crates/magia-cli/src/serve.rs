@@ -318,6 +318,7 @@ fn render_spell(
 type ExcerptMap = serde_json::Map<String, serde_json::Value>;
 
 /// 原文断片マップ群 (ホバープレビュー・インスペクタ用、Phase 4.1) を構築する。
+/// 返り値は **`(call, op, ring)` の順** (3要素とも同型なので取り違えに注意):
 /// - call: 召喚印の呼び出し式 (glyph id)。レシーバ・引数込みの式全体
 /// - op: 操作ドットの文・ヘッダ (`<ring_id>-<出現順>` = Vue の Operation.irKey)
 /// - ring: 補助リングのガード・ヘッダ (ring id)
@@ -366,6 +367,10 @@ fn diff_before_graph(
     input: &DiffInput<'_>,
     qualified: &str,
 ) -> Result<magia_core::ir::MagiaGraph, String> {
+    // before はリクエストのたびに git へ問い合わせる (キャッシュしない)。
+    // rev のファイル内容は不変だが、保存 → SSE → このパスの再実行が
+    // 「作業ツリーの変更が即ハローに現れる」live diff の成立条件 — after 側の
+    // 再計算と対で動くため、ここだけ最適化すると将来 rev 切替時の整合を壊しやすい。
     let before_source = crate::gitio::show_file_at(input.rev, input.file)
         .map_err(|e| format!("リビジョン {} を読めません: {e:#}", input.rev))?;
     parse_function(&before_source, qualified).map_err(|e| match e {
@@ -570,7 +575,10 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
                         .find_map(|kv| kv.strip_prefix("diff="))
                         .map(percent_decode)
                 })
-                .filter(|rev| !rev.is_empty());
+                .filter(|rev| !rev.is_empty())
+                // `-` 始まりは git のオプションとして解釈されうる (--format=%H 等の
+                // オプション注入)。rev として正当な名前に `-` 始まりは無いので弾く。
+                .filter(|rev| !rev.starts_with('-'));
             request.respond(spell_response(
                 shared,
                 &qualified,

@@ -52,7 +52,8 @@ export function useQuerySync() {
       void focus.selectFunction(fn);
     }
 
-    // diff 基準 rev (Phase 4.3.7)。setDiffRev は同値なら何もしない。
+    // diff 基準 rev (Phase 4.3.7)。pin のような変更ガードは置かず
+    // setDiffRev の同値スキップに任せる (初期化パスでは null === null で素通り)。
     void focus.setDiffRev(asString(query["diff"]));
   }
 

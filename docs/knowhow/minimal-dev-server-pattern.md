@@ -98,3 +98,16 @@
 - `crates/magia-cli/src/srcview.rs` — syntect は default-features を切り
   `default-syntaxes + default-themes + html + regex-fancy` に絞る (onig の C 依存回避)。
   SyntaxSet/Theme は OnceLock で初回のみロード
+
+
+## live diff (`?diff=<REV>`) の設計 (Phase 4.3.7)
+
+- 失敗 (rev 不正 / git 外 / before に関数なし) は **エラーでなく案内文 (`diff_note`)**
+  に畳んで応答を壊さない — エラー中も図を出し続ける「会話を切らない」原則の diff 版
+- before (git 内容) は**意図的にキャッシュしない**: 保存 → SSE → 再計算の経路が
+  そのまま「書いている変更が即ハローに現れる」live diff になる
+- `?diff=` の値は `-` 始まりを弾く (`git show --format=...` 等のオプション注入防御。
+  Command::args 経由なのでシェル注入は元々ない)
+- e2e は fixture ディレクトリを git init + 初期 commit して実 git で検証する —
+  beforeEach の「既知内容に書き戻す」運用と合わせると「HEAD = 初期内容」が固定され、
+  テスト内のファイル変更がそのまま差分になる

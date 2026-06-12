@@ -8,6 +8,8 @@
 
 ## オーナーフィードバック
 
+- **報告 (Phase 4.3.7 完了, 2026-06-12)**: Spell Diff の web 表示が完了しました。パレットに rev 入力 (HEAD~1 / main プリセット)、URL は `?diff=<rev>`。**live diff** — `?diff=main` を開いたままコードを書くと、保存のたびに金ハローが追従します (e2e で実 git により検証済み)。素材は「serve.rs の render_spell を ?diff=HEAD で見る」自己ホスティング — 今回実装した diff 機能自身の差分が映っています。判定ポイント: パレットの diff UI の操作感 / 要約 (diff_report) の置き場 / ハローの見え方。**次は 4.0.6 後半・4.3.5 (意匠系、Vue のみで実施可) か 4.4 (呼び出しジャンプ)** です
+
 - **報告 (Phase 4.3 完了, 2026-06-12)**: 静止画レンダの Vue SSR 一本化が判定合格で完了しました (M3 ベルカ / M4 diff とも新旧並置で等価確認、diff サブコマンドの実機確認も合格)。**Rust SVG レンダラは削除済み [break] (-1879行)** — `magia render` / `magia diff --svg` は全経路 Vue SSR (`target/magia-render`、ウォーム30ms)。**意匠の正は Vue 側だけ**になったので、4.3.5 (結節点シンボル)・4.0.6 後半 (入口サイン・補助陣ラベル)・4.6 (テーマ) は Vue コンポーネントの変更だけで実施できます。**次は 4.3.7 (diff を web に)**。注意: `cargo install` 版の magia から `--svg` を使うときは `MAGIA_RENDER_PATH=~/workspace/MagiaMagica/target/magia-render` の指定が要ります (リポジトリ内の `target/debug/magia` なら不要)
 
 - **報告 (Phase 4.2 完了, 2026-06-12)**: 近接度モデルが**判定合格で完了**しました (「よさそう」2026-06-12)。呼び出し関係が距離に効くようになり、ピン中心ビューが「同impl = 内 / 呼び出し相手 = 中 / その他 = 外」の3層になりました。関数間 call graph (`function_index_with_calls`) を新設 — 4.4 (呼び出しジャンプ) の入力としてそのまま使えます。**次は 4.3 (Vue SSR 一本化)** です
