@@ -31,7 +31,7 @@ use magia_core::render::{
     ir_export::{NeighborMeta, SpanIr, focus_layout, spell_ir},
     render,
 };
-use magia_rust::{FunctionEntry, function_index, parse_function};
+use magia_rust::{FunctionEntry, function_index_with_calls, parse_function};
 
 use crate::srcview::highlight_rust;
 
@@ -44,6 +44,9 @@ const DEBOUNCE: Duration = Duration::from_millis(120);
 struct GoodSnapshot {
     source: String,
     functions: Vec<FunctionEntry>,
+    /// 関数間の呼び出しエッジ (近接度の入力)。reload 時に1回だけ構築する
+    /// (リクエストごとの再パースを避ける — Phase 4.2)。
+    call_edges: Vec<(String, String)>,
 }
 
 /// 現在の解析エラー (正常時は None)。
@@ -136,26 +139,36 @@ impl Shared {
     fn spell_json(&self, qualified: &str, with_neighbors: bool) -> Option<Result<String, String>> {
         // レンダリング (parse + layout + render ×2 + syntect) は重いので、
         // ロックは複製を取るまでに留める — reload (保存) を /spell がブロックしない。
-        let (source, entry, all) = {
+        let (source, entry, all, call_edges) = {
             let good = lock_or_recover(&self.good);
             let entry = good
                 .functions
                 .iter()
                 .find(|entry| entry.qualified == qualified)?
                 .clone();
-            let all = if with_neighbors {
-                good.functions.clone()
+            let (all, call_edges) = if with_neighbors {
+                (good.functions.clone(), good.call_edges.clone())
             } else {
-                Vec::new()
+                (Vec::new(), Vec::new())
             };
-            (good.source.clone(), entry, all)
+            (good.source.clone(), entry, all, call_edges)
         };
         Some(render_spell(
             &source,
             &entry,
-            with_neighbors.then_some(all.as_slice()),
+            with_neighbors.then_some(NeighborsInput {
+                functions: &all,
+                call_edges: &call_edges,
+            }),
         ))
     }
+}
+
+/// ピン中心ビューの周辺計算入力 (`?with=neighbors` のときだけ渡る)。
+struct NeighborsInput<'a> {
+    functions: &'a [FunctionEntry],
+    /// 関数間の呼び出しエッジ (caller, callee) — 近接度の「呼び出し関係」成分。
+    call_edges: &'a [(String, String)],
 }
 
 /// ファイルを読み、関数索引つきのスナップショットを作る。
@@ -164,11 +177,15 @@ fn load_snapshot(file: &Path) -> Result<GoodSnapshot, ServeError> {
         message: format!("ファイルを読み込めません: {}: {e}", file.display()),
         line: None,
     })?;
-    let functions = function_index(&source).map_err(|e| ServeError {
+    let (functions, call_edges) = function_index_with_calls(&source).map_err(|e| ServeError {
         line: syntax_error_line(&e),
         message: e.to_string(),
     })?;
-    Ok(GoodSnapshot { source, functions })
+    Ok(GoodSnapshot {
+        source,
+        functions,
+        call_edges,
+    })
 }
 
 /// 構文エラーの行番号 (ソースペインの案内に使う)。
@@ -186,7 +203,7 @@ fn syntax_error_line(error: &magia_rust::Error) -> Option<usize> {
 fn render_spell(
     source: &str,
     entry: &FunctionEntry,
-    neighbors_from: Option<&[FunctionEntry]>,
+    neighbors_from: Option<NeighborsInput<'_>>,
 ) -> Result<String, String> {
     let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
@@ -195,14 +212,19 @@ fn render_spell(
     // SVG 文字列は出さない (v1.0 前は旧を消す)。ベルカ式の Vue 移植は Phase 4.3 で
     // 行うため、svg_belka のみ SVG 文字列を温存する。
     let spell = spell_ir(&graph, &placed);
-    // Phase 4.1: ピン中心ビューの周辺配置。近接度はスタブ (proximity.rs、4.2 で本実装)。
-    let focus_layout = neighbors_from.map(|all| {
+    // Phase 4.1/4.2: ピン中心ビューの周辺配置。近接度は同impl/呼び出し関係/
+    // 同ファイルの連続距離 (proximity.rs)、リング離散化は focus_layout 側。
+    let focus_layout = neighbors_from.map(|input| {
+        let all = input.functions;
         let seed = |e: &FunctionEntry| NeighborSeed {
             qualified: e.qualified.clone(),
             impl_context: e.impl_context.clone(),
         };
-        let classified =
-            classify_neighbors(&seed(entry), &all.iter().map(seed).collect::<Vec<_>>());
+        let classified = classify_neighbors(
+            &seed(entry),
+            &all.iter().map(seed).collect::<Vec<_>>(),
+            input.call_edges,
+        );
         let with_meta: Vec<_> = classified
             .into_iter()
             .filter_map(|neighbor| {

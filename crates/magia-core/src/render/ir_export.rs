@@ -325,15 +325,14 @@ pub struct FocusLayout {
     pub neighbors: Vec<NeighborChip>,
 }
 
-/// 周辺関数のチップ (縮小盾)。スタブ段階は1種 (円 + 関数名) で、
-/// 距離は scale / opacity の差として現れる。3段階の縮小表現は Phase 4.2 の
-/// 本実装近接度と合わせて精緻化する。
+/// 周辺関数のチップ (縮小盾)。距離はリング所属 + scale / opacity の差として現れる。
 #[derive(Serialize)]
 pub struct NeighborChip {
     pub qualified: String,
     pub name: String,
     pub signature: String,
-    /// リング距離 (proximity::Neighbor と同値)。
+    /// リング番号 (1 = 内 / 2 = 中 / 3 = 外)。連続距離 (`proximity::Neighbor`) を
+    /// `ring_of` で離散化した描画上の所属 — 連続値は外部契約に出さない (情報隠蔽)。
     pub distance: u8,
     pub x: f64,
     pub y: f64,
@@ -345,9 +344,34 @@ pub struct NeighborChip {
 
 /// チップ円の基準半径 (スケール前)。
 const CHIP_RADIUS: f64 = 44.0;
-/// 中央魔法陣の外接円からリングまでのマージン。
-const RING_1_MARGIN: f64 = 90.0;
-const RING_2_MARGIN: f64 = 190.0;
+/// 中央魔法陣の外接円からリングまでのマージン (内 / 中 / 外)。
+const RING_MARGINS: [f64; 3] = [90.0, 190.0, 290.0];
+const RING_SCALES: [f64; 3] = [0.55, 0.45, 0.35];
+const RING_OPACITIES: [f64; 3] = [0.85, 0.72, 0.6];
+
+/// 連続距離 → リング番号 (1..=3) の離散化境界。リング所属は UI の都合なので
+/// モデル (proximity) でなくここに置く (計画 4.2 の設計判断)。
+/// 同ファイルスコープの距離は {0.5 同impl, 0.7 呼び出し, 1.0 同ファイル} —
+/// 「同 impl = 内 / 呼び出し関係 = 中 / その他 = 外」に対応する
+/// (計画書の境界 1.1 では呼び出しと同ファイルが同リングになるため 0.9 に変更)。
+const RING_BOUNDARY_1: f32 = 0.6;
+const RING_BOUNDARY_2: f32 = 0.9;
+
+/// 連続距離をリング番号 (1..=3) へ離散化する。
+fn ring_of(distance: f32) -> u8 {
+    if distance <= RING_BOUNDARY_1 {
+        1
+    } else if distance <= RING_BOUNDARY_2 {
+        2
+    } else {
+        3
+    }
+}
+
+/// リング番号 (1..=3) で添字を引く (`ring` は `ring_of` の値域なので 0 は来ない)。
+fn ring_value(table: [f64; 3], ring: u8) -> f64 {
+    table[usize::from(ring.clamp(1, 3)) - 1]
+}
 
 /// フォーカスの viewBox と周辺リストから配置を計算する。
 ///
@@ -367,52 +391,50 @@ pub fn focus_layout(
     let center_y = min_y + height / 2.0;
     let focus_radius = (width.max(height)) / 2.0;
 
-    let ring_radius = |distance: u8| -> f64 {
-        focus_radius
-            + match distance {
-                1 => RING_1_MARGIN,
-                _ => RING_2_MARGIN,
-            }
-    };
-    let ring_scale = |distance: u8| if distance == 1 { 0.55 } else { 0.35 };
-    let ring_opacity = |distance: u8| if distance == 1 { 0.85 } else { 0.6 };
-
     // リングごとの member 数 (等角度割付の分母)。
-    let count_in_ring = |distance: u8| {
+    let count_in_ring = |ring: u8| {
         neighbors
             .iter()
-            .filter(|(n, _)| n.distance == distance)
+            .filter(|(n, _)| ring_of(n.distance) == ring)
             .count()
     };
 
     let mut chips = Vec::with_capacity(neighbors.len());
     let mut index_in_ring = std::collections::BTreeMap::new();
     for (neighbor, meta) in neighbors {
-        let total = count_in_ring(neighbor.distance).max(1);
-        let index = index_in_ring.entry(neighbor.distance).or_insert(0usize);
+        let ring = ring_of(neighbor.distance);
+        let total = count_in_ring(ring).max(1);
+        let index = index_in_ring.entry(ring).or_insert(0usize);
         // 12時起点 (-90°)・時計回り。
         let angle = -std::f64::consts::FRAC_PI_2 + TAU * usize_to_f64(*index) / usize_to_f64(total);
         *index += 1;
-        let radius = ring_radius(neighbor.distance);
+        let radius = focus_radius + ring_value(RING_MARGINS, ring);
         chips.push(NeighborChip {
             qualified: neighbor.qualified.clone(),
             name: meta.name.clone(),
             signature: meta.signature.clone(),
-            distance: neighbor.distance,
+            distance: ring,
             x: nz(center_x + radius * angle.cos()),
             y: nz(center_y + radius * angle.sin()),
-            scale: ring_scale(neighbor.distance),
-            opacity: ring_opacity(neighbor.distance),
+            scale: ring_value(RING_SCALES, ring),
+            opacity: ring_value(RING_OPACITIES, ring),
             radius: CHIP_RADIUS,
         });
     }
 
-    // 全体 viewBox: 最遠リング + スケール後チップ + ラベル余白まで広げる。
-    let max_extent = if chips.is_empty() {
-        focus_radius
-    } else {
-        focus_radius + RING_2_MARGIN + CHIP_RADIUS * 0.55 + 24.0
-    };
+    // 全体 viewBox: **実際に使われた**最遠リング + スケール後チップ + ラベル余白
+    // まで広げる (距離1チップだけのとき広すぎた 4.1 レビュー S1 への対応)。
+    let max_extent =
+        chips
+            .iter()
+            .map(|chip| chip.distance)
+            .max()
+            .map_or(focus_radius, |outermost_ring| {
+                focus_radius
+                    + ring_value(RING_MARGINS, outermost_ring)
+                    + CHIP_RADIUS * ring_value(RING_SCALES, outermost_ring)
+                    + 24.0
+            });
     FocusLayout {
         view_box: [
             nz(center_x - max_extent),

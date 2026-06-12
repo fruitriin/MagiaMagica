@@ -222,10 +222,11 @@ fn spell_with_neighbors_returns_focus_layout() {
     let spell = body_json_at(server.port, "/spell/watched?with=neighbors");
     let layout = &spell["focus_layout"];
     let neighbors = layout["neighbors"].as_array().unwrap();
-    // INITIAL は watched + Caster::cast の2関数 — 周辺は cast のみ (同ファイル = 距離2)。
+    // INITIAL は watched + Caster::cast の2関数 — 周辺は cast のみ
+    // (呼び出し関係なし・impl 違いの同ファイル = 外リング 3、Phase 4.2)。
     assert_eq!(neighbors.len(), 1);
     assert_eq!(neighbors[0]["qualified"], "Caster::cast");
-    assert_eq!(neighbors[0]["distance"], 2);
+    assert_eq!(neighbors[0]["distance"], 3);
     assert!(neighbors[0]["scale"].as_f64().unwrap() < 1.0);
     assert!(neighbors[0]["opacity"].as_f64().unwrap() < 1.0);
     assert!(neighbors[0]["x"].is_number() && neighbors[0]["y"].is_number());
@@ -233,9 +234,46 @@ fn spell_with_neighbors_returns_focus_layout() {
     let focus_w = spell["ir"]["view_box"][2].as_f64().unwrap();
     assert!(layout["view_box"][2].as_f64().unwrap() > focus_w);
 
-    // 同 impl は距離 1 になる (Caster::cast を focus にすると watched は 2 のまま)。
+    // 逆方向 (Caster::cast を focus) でも同じ分類 — 近接度は無向。
     let cast = body_json_at(server.port, "/spell/Caster%3A%3Acast?with=neighbors");
-    assert_eq!(cast["focus_layout"]["neighbors"][0]["distance"], 2);
+    assert_eq!(cast["focus_layout"]["neighbors"][0]["distance"], 3);
+}
+
+/// Phase 4.2: 近接度の本実装 — 同 impl = 内リング (1)、呼び出し関係 = 中リング (2)、
+/// その他の同ファイル = 外リング (3)。呼び出しは無向 (caller 側も近い)。
+#[test]
+fn proximity_rings_reflect_impl_and_call_relations() {
+    let source = "fn entry(v: i32) -> i32 { helper(v) }\n\
+fn helper(v: i32) -> i32 { v }\n\
+fn loner() {}\n\
+struct Wand;\n\
+impl Wand {\n    fn cast(&self) -> i32 { self.charge() }\n    fn charge(&self) -> i32 { 1 }\n}\n";
+    let file = temp_fixture("proximity.rs", source);
+    let server = spawn_server(&file);
+
+    let ring_of = |spell: &serde_json::Value, name: &str| -> u64 {
+        spell["focus_layout"]["neighbors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["qualified"] == name)
+            .unwrap_or_else(|| panic!("{name} が周辺にいる"))["distance"]
+            .as_u64()
+            .unwrap()
+    };
+
+    // entry → helper の呼び出しで helper は中リング、無関係な loner は外リング。
+    let entry = body_json_at(server.port, "/spell/entry?with=neighbors");
+    assert_eq!(ring_of(&entry, "helper"), 2);
+    assert_eq!(ring_of(&entry, "loner"), 3);
+
+    // 無向: helper を focus にしても entry は中リング。
+    let helper = body_json_at(server.port, "/spell/helper?with=neighbors");
+    assert_eq!(ring_of(&helper, "entry"), 2);
+
+    // 同 impl (かつ `.charge()` 呼び出し) は min で内リング。
+    let cast = body_json_at(server.port, "/spell/Wand%3A%3Acast?with=neighbors");
+    assert_eq!(ring_of(&cast, "Wand::charge"), 1);
 }
 
 #[test]

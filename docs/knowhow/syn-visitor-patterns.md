@@ -213,6 +213,23 @@ fn build_ring(&mut self, kind, stmts, role, span) -> SigilId {
   意図的な例外として明記する)。list / parse / serve の3者が同じ walker を共有すれば
   「列挙された名前は必ず再発見できる」規約が一点で守れる (`magia-rust/src/index.rs`)
 
+## 関数間 call graph の近似解決 (Phase 4.2 近接度)
+
+ファイル1本から関数間の呼び出しエッジを取る定型 (`index.rs::function_index_with_calls`):
+
+- **索引とエッジは1パースで取る**: `function_index` と別 API に分けると同一ソースを
+  syn で2回パースする。walker (entries + bodies) を1回走らせ、bodies から call site を
+  収集して entries と照合する形に統合する
+- **呼び出し先の同ファイル解決は3段フォールバック**: qualified 完全一致 →
+  **呼び出し元と同じ impl の名前一致** → 定義順先頭の名前一致。`self.method()` は
+  レシーバ型が取れないため、同名メソッドが複数 impl にあるときの最有力は
+  呼び出し元の impl (レビューで指摘された偽陽性の典型)
+- **`Self::x` は呼び出し元の impl_context で置換**してから照合する
+- **マクロ (`name!`) はエッジにしない**: UI の定義ジャンプ (resolveCall) は寛容で
+  よいが、自動計算 (近接度) では偽陽性を避ける — 同じ「名前照合」でも用途で
+  厳しさを変える
+- 自己再帰・重複呼び出しはエッジにしない (近接度は回数を見ない)
+
 ## span から原文を切り出す (Phase 4.1 呼び出し式表示)
 
 `node.span()` の範囲で元ソースから式を抜き出してユーザーに見せる定型

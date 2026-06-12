@@ -17,7 +17,7 @@ mod statement;
 mod summon;
 
 pub use error::Error;
-pub use index::{FunctionEntry, function_index};
+pub use index::{CallEdge, FunctionEntry, function_index, function_index_with_calls};
 
 use magia_core::ir::{ConcurrencyInfo, MagiaGraph, Module, ModuleId, ProjectMetadata};
 use syn::visit::Visit;

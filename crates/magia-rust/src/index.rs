@@ -7,10 +7,17 @@
 //! 名前は impl 文脈つきの **qualified 形式** (`Foo::bar`、トップレベルは `bar`) を
 //! 正とする (同名メソッドが impl 違いで複数あるケースの一意キー、計画の設計判断)。
 
+use std::collections::BTreeSet;
+
 use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{File, ItemFn};
+
+use crate::summon::{UseMap, collect_calls_in_stmt};
+
+/// 関数間の呼び出しエッジ (caller → callee、いずれも qualified)。
+pub type CallEdge = (String, String);
 
 /// 関数1つ分の索引情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +43,77 @@ pub fn function_index(source: &str) -> Result<Vec<FunctionEntry>, crate::Error> 
     let mut walker = FunctionWalker::default();
     walker.visit_file(&file);
     Ok(walker.entries)
+}
+
+/// 関数索引 + 関数間の呼び出しエッジ (caller → callee、いずれも qualified) を
+/// 1回のパースで返す (Phase 4.2 近接度モデルの入力 — serve はファイル保存ごとに
+/// 両方使うため、`function_index` → `call_graph` と分けて2回パースしない)。
+///
+/// 各関数本体の call site (`summon` の収集) を**同ファイルの関数**に解決する。
+/// 解決規則:
+/// - `.method` はレシーバ型が分からないため名前照合 (best effort — web の
+///   `resolveCall` と同じ判断)。呼び出し元と同じ impl の同名メソッドを優先し、
+///   それも無ければ定義順の先頭
+/// - `Self::x` は呼び出し元の impl 文脈で置換してから qualified 照合
+/// - `name!` (マクロ) は関数ではないのでエッジにしない (`resolveCall` は定義
+///   ジャンプ用に寛容だが、自動計算の近接度では偽陽性を避ける)
+/// - 未解決 (外部呼び出し)・自己再帰はエッジにしない
+/// - 同じ相手への複数回呼び出しは1本に潰す (近接度は回数を見ない)
+pub fn function_index_with_calls(
+    source: &str,
+) -> Result<(Vec<FunctionEntry>, Vec<CallEdge>), crate::Error> {
+    let file: File = syn::parse_str(source)?;
+    let uses = UseMap::from_file(&file);
+    let mut walker = FunctionWalker::default();
+    walker.visit_file(&file);
+    let mut seen = BTreeSet::new();
+    let mut edges = Vec::new();
+    for (entry, body) in walker.entries.iter().zip(&walker.bodies) {
+        for stmt in &body.block.stmts {
+            for call in collect_calls_in_stmt(stmt, &uses) {
+                let Some(callee) = resolve_local_target(&call.target, entry, &walker.entries)
+                else {
+                    continue;
+                };
+                if callee == entry.qualified {
+                    continue;
+                }
+                if seen.insert((entry.qualified.clone(), callee.clone())) {
+                    edges.push((entry.qualified.clone(), callee));
+                }
+            }
+        }
+    }
+    Ok((walker.entries, edges))
+}
+
+/// 呼び出し先の名前を同ファイルの関数 (qualified) へ解決する。
+fn resolve_local_target(
+    target: &str,
+    caller: &FunctionEntry,
+    entries: &[FunctionEntry],
+) -> Option<String> {
+    if target.ends_with('!') {
+        return None;
+    }
+    let plain = target.strip_prefix('.').unwrap_or(target);
+    let plain = match plain.strip_prefix("Self::") {
+        Some(rest) => format!("{}::{rest}", caller.impl_context.as_ref()?),
+        None => plain.to_string(),
+    };
+    // 同名メソッドが複数 impl にあるときは呼び出し元と同じ impl を優先する
+    // (`self.method()` の最も確からしい解決)。qualified 完全一致 → 同 impl の
+    // 名前一致 → 定義順先頭の名前一致、の3段フォールバック。
+    entries
+        .iter()
+        .find(|e| e.qualified == plain)
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|e| e.name == plain && e.impl_context == caller.impl_context)
+        })
+        .or_else(|| entries.iter().find(|e| e.name == plain))
+        .map(|e| e.qualified.clone())
 }
 
 /// qualified 名 (`Foo::bar`) または素の名前 (`bar`) で関数本体を探す。
@@ -216,5 +294,57 @@ impl std::fmt::Display for Widget {
         let error = find_function(&file, "nope").unwrap_err();
         let message = error.to_string();
         assert!(message.contains("nope"));
+    }
+
+    const CALL_SOURCE: &str = r#"
+fn entry(v: i32) -> i32 { helper(v) + external::thing(v) }
+
+fn helper(v: i32) -> i32 {
+    format!("{v}");
+    v * 2
+}
+
+struct Wand;
+impl Wand {
+    fn cast(&self) -> i32 { self.charge() + Self::calibrate() }
+    fn charge(&self) -> i32 { 1 }
+    fn calibrate() -> i32 { recurse() }
+}
+
+fn recurse() -> i32 { recurse() }
+"#;
+
+    #[test]
+    fn call_graph_resolves_local_calls_only() {
+        let (_, edges) = function_index_with_calls(CALL_SOURCE).unwrap();
+        // 外部呼び出し (external::thing)・マクロ (format!)・自己再帰 (recurse) は出ない。
+        assert_eq!(
+            edges,
+            [
+                ("entry".to_string(), "helper".to_string()),
+                // `.charge()` はレシーバ型不明の名前照合 (best effort)
+                ("Wand::cast".to_string(), "Wand::charge".to_string()),
+                // `Self::calibrate()` は impl 文脈で置換して解決
+                ("Wand::cast".to_string(), "Wand::calibrate".to_string()),
+                ("Wand::calibrate".to_string(), "recurse".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn call_graph_prefers_same_impl_for_method_names() {
+        // 同名メソッドが複数 impl にあるとき `.render()` は呼び出し元の impl を優先する
+        // (レビュー W2: 定義順先頭だと Widget::render が B 側からも誤って選ばれる)。
+        let source = "struct A;\nimpl A {\n    fn render(&self) {}\n}\n\
+struct B;\nimpl B {\n    fn run(&self) { self.render(); }\n    fn render(&self) {}\n}\n";
+        let (_, edges) = function_index_with_calls(source).unwrap();
+        assert_eq!(edges, [("B::run".to_string(), "B::render".to_string())]);
+    }
+
+    #[test]
+    fn call_graph_dedupes_repeated_calls() {
+        let source = "fn a() { b(); b(); b(); }\nfn b() {}\n";
+        let (_, edges) = function_index_with_calls(source).unwrap();
+        assert_eq!(edges, [("a".to_string(), "b".to_string())]);
     }
 }
