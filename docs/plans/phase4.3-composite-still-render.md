@@ -161,3 +161,30 @@ Phase 3.5 のベルカ式:
 - **既存 Phase 3.x の golden 大量更新**: 移行で 100+ の golden SVG が動く可能性。`UPDATE_GOLDENS=1` 環境変数で一括更新、レビューで diff 内容を確認
 - **CI 時間増**: Bun bundling + 既存 cargo test の合算で CI が長くなる。並列ジョブ + Bun キャッシュで吸収
 - **意匠の二重管理リスク回避**: Rust 側に色定数を残さないよう grep で確認。色は UnoCSS theme + Vue コンポーネントだけが持つ状態にする (Phase 4.0.5 の「`palette.rs` と一致」原則を Vue 側に逆転)
+
+## 実装結果メモ (2026-06-12 完了)
+
+**判定: M3 (ベルカ)・M4 (diff) とも新旧並置で合格** (「ベルカ式ちゃんと動いてそう」「いいねえ」)。
+Rust SVG レンダラは削除済み `[break]` — **-1879 行**。SVG 出力は全経路 Vue SSR。
+
+### 計画とのギャップ・実装判断
+
+- **配布形態は案 A (独立バイナリ) を採用** (計画どおり)。`cargo install` 単体では
+  magia-render が見つからない問題は MAGIA_RENDER_PATH で回避 (CLAUDE.repo.md 記載)。
+  2バイナリ同梱の配布パッケージは将来のリリース整備で
+- **diff の意匠は「IR に diff_status フィールド」でなく「配置済みマーク列 (DiffMarkIr) の
+  重畳」**: 旧 render_diff と同じ構造の方が等価性検証が素直 (viewBox 拡張まで一致を確認)
+- **SSR 出力の後処理 (toStandaloneSvg) が必須と判明**: viewbox 小文字化 / 値なし data-v
+  (XML 無効) / hydration コメント / 数値ノイズ。詳細は knowhow (vue-ssr-static-render.md)
+- **IR の nz() を2桁丸めに拡張**: sin/cos の数値ノイズ (7e-15) が SSR 出力に漏れていた
+  (Rust レンダラの num() が担っていた正規化を IR 層へ移した)
+- **golden SVG (insta) は削除し、IR 構造テスト + SSR vitest + CLI 統合 + 目視判定に移行**
+- バイナリサイズ: magia-render 59MB (基準 50MB を 9MB 超過 — サイズ方針で許容)。
+  起動は 30ms (ウォーム) で基準 200ms を大幅クリア
+
+### 後続への引き継ぎ
+
+- **4.3.7 (diff を web に)**: diff_spell_ir / overlay prop は完成済み — serve の配線だけ
+- **4.3.5 (結節点シンボル) / 4.0.6 後半 / 4.6 (テーマ)**: 意匠変更は Vue コンポーネント
+  だけで完結する状態になった (本計画の主目的)
+- `--format png` / クロスコンパイル CI / 2バイナリ同梱リリースは後続候補のまま

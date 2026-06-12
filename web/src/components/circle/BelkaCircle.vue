@@ -5,11 +5,11 @@
 // 意匠は旧 Rust SVG レンダラ (belka.rs write_document) と画素等価が目標。
 import { useId } from "vue";
 
-import type { BelkaFlowIr, BelkaIr, BelkaPoleKind } from "../../types/magia.ts";
+import type { BelkaFlowIr, BelkaIr, BelkaPoleKind, EffectCategory } from "../../types/magia.ts";
 
 const props = defineProps<{ belka: BelkaIr }>();
 
-/** 極の意匠 (palette.rs の BELKA_* と同値 — 色変更時は両方直す)。 */
+/** 極の意匠 (uno.config.ts の theme と同語彙 — 色の正は Vue 側、Phase 4.3 M5)。 */
 const POLE_STYLE: Record<BelkaPoleKind, { color: string; label: string }> = {
   genesis: { color: "#2f86c9", label: "生成" },
   transmute: { color: "#c98a2f", label: "変換" },
@@ -17,7 +17,7 @@ const POLE_STYLE: Record<BelkaPoleKind, { color: string; label: string }> = {
 };
 
 /** 効果カテゴリ → 色 (irToSchema の COLOR_BY_EFFECT と同テーブル)。 */
-const DOT_COLOR: Record<string, string> = {
+const DOT_COLOR: Record<EffectCategory, string> = {
   pure: "#000000",
   io: "#1f4dff",
   network: "#7b3ff5",
@@ -46,7 +46,7 @@ function arrowHead(flow: BelkaFlowIr): string {
   const uy = dy / length;
   const baseX = flow.tip_x - ux * 7;
   const baseY = flow.tip_y - uy * 7;
-  // 進行方向の垂直ベクトル × 羽幅 4.5 (belka.rs write_flow_line と同値)。
+  // 進行方向の垂直ベクトル × 羽幅 4.5 (旧 Rust レンダラの意匠を踏襲)。
   const wingAx = baseX + -uy * 4.5;
   const wingAy = baseY + ux * 4.5;
   const wingBx = baseX - -uy * 4.5;
@@ -126,7 +126,7 @@ function arrowHead(flow: BelkaFlowIr): string {
           :cx="dot.x"
           :cy="dot.y"
           :r="DOT_RADIUS"
-          :fill="DOT_COLOR[dot.effect] ?? '#000000'"
+          :fill="DOT_COLOR[dot.effect]"
         />
       </template>
     </g>

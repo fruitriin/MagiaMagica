@@ -19,6 +19,7 @@
 
 | ファイル | 要約 | キーワード |
 |---|---|---|
+| [vue-ssr-static-render.md](vue-ssr-static-render.md) | Vue SSR + Bun compile による静止画レンダ (vite SSR ビルド→bun compile 二段, toStandaloneSvg 正規化 — viewbox 小文字化/data-v は XML 無効/数値丸め, サブプロセス4段パス解決, フィルタは適用結果を境界に, 色一本化後の stale コメント一掃) | Vue SSR, renderToString, bun build --compile, magia-render, toStandaloneSvg, viewbox, data-v, hydration マーカー, import.meta.main, createSSRApp, Pinia SSR, stdin drop, wait_with_output, MAGIA_RENDER_PATH, build.rs, show_layers, 静止画, Vue 1本化 |
 | [viteplus-bun-frontend-bootstrap.md](viteplus-bun-frontend-bootstrap.md) | Vite+ (vp) + Bun でのフロントエンド基盤立ち上げ (bunx の bin 解決の罠, vp create は vanilla-ts 生成 + PATH に vp 必須, 同一採番ピン, ::1 listen, PORT 差し替え, vanilla→Vue 化最小セット, vp check 一括窓口) | Vite+, vite-plus, vp, vp create, vp check, bunx, Bun, oxfmt, oxlint, Vue 3, vue-tsc, @vitejs/plugin-vue, UnoCSS, preset-attributify, Pinia, vue-router, consistent-type-definitions, erasableSyntaxOnly, strict, env.d.ts, *.vue shim, IPv6, localhost, autoPort, PORT, proxy, overrides, vite-plus-core |
 
 ## Rust 実装

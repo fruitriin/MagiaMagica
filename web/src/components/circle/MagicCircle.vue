@@ -26,8 +26,8 @@ const props = defineProps<{
 
 const palette = usePaletteStore();
 
-/** 差分強調の意匠 (palette.rs の DIFF_* / layout constants と同値 —
- *  ハロー = 実線、ゴースト (removed) = 破線・半透明)。 */
+/** 差分強調の意匠 (色の正は Vue 側 — uno.config.ts の theme と同語彙)。
+ *  ハロー = 実線、ゴースト (removed) = 破線・半透明。 */
 const DIFF_STYLE: Record<DiffMark["status"], { color: string; dash?: string; opacity?: number }> = {
   added: { color: "#d4a017" },
   changed: { color: "#00a0c0" },

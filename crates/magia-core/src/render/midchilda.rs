@@ -146,7 +146,6 @@ pub(crate) fn usize_to_f64(value: usize) -> f64 {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -61,7 +61,7 @@ function applyFilter(schema: MagicCircleSchema, request: RenderRequest): MagicCi
  *  `viewbox` は無効)。テンプレート内の静的な camelCase (textPath / startOffset)
  *  は SFC コンパイラが保持するが、動的バインド (`:viewBox`) は小文字化される。
  *  新しい camelCase 属性を使うときはここに足す (XML validity テストが検出する)。 */
-const CAMEL_ATTRS = ["viewBox", "gradientUnits", "gradientTransform", "preserveAspectRatio"];
+const CAMEL_ATTRS = ["viewBox", "gradientUnits", "preserveAspectRatio"];
 
 /** renderToString の出力をスタンドアロン SVG (XML) に整える。
  *  - fragment コメント (`<!--[-->` 等) は Vue の hydration マーカー — 静止画に不要
@@ -77,6 +77,8 @@ export function toStandaloneSvg(html: string): string {
   for (const attr of CAMEL_ATTRS) {
     svg = svg.replaceAll(` ${attr.toLowerCase()}="`, ` ${attr}="`);
   }
+  // テキストノードも対象になるが、表示テキスト (極ラベル・関数シグネチャ) に
+  // 小数3桁以上は現れないため実質属性値のみに効く。
   svg = svg.replace(/-?\d+\.\d{3,}(?:e-?\d+)?/g, (token) => {
     const value = Number(token);
     return Number.isFinite(value) ? String(Math.round(value * 100) / 100) : token;

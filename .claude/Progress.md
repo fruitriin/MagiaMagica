@@ -55,36 +55,4 @@
 
 ## タスク
 
-### Phase 4.3 — 静止画レンダ Vue SSR + Bun 一本化 (docs/plans/phase4.3-composite-still-render.md)
-
-**設計確定 (着手時)**: 計画書どおり配布形態は案 A (`magia-render` 独立バイナリ、bun build --compile)。マイルストーン分割で進める — M1/M2 は機能 (Stage 1 ゲートのみ)、M3 (ベルカ Vue 移植) / M4 (Spell Diff Vue 移植) は意匠判定ゲート。Rust SVG レンダラ削除 [break] は M3/M4 の等価判定合格後 (M5/M6)。
-
-**M1 — SSR 基盤の技術検証 + 確立**
-- [x] 1. spike 成功: `vue/server-renderer` で `<MagicCircle>` が SVG 文字列になるか + `bun build --compile` が single-file executable を吐くか (想定リスクの本丸を先に踏む)
-- [x] 2. web/src/render/ssr.ts (renderSpellSvg + toStandaloneSvg 正規化 — viewbox 小文字化 / hydration コメント / 値なし data-v (XML 無効) / 空 style を除去) — stdin で IR JSON (`{ir, style, focus_layout?}`) → irToSchema → renderToString → stdout に SVG。エラーは stderr + 非0 exit
-- [x] 3. build:render スクリプト + build.rs 統合 (target/magia-render、59MB、ウォーム 30ms — 基準 200ms クリア。50MB 基準は 9MB 超過 → サイズ方針で許容) (ローカル darwin-arm64) + 起動時間計測 (目標 200ms 以下)
-- [x] 4. vitest 5本 (XML validity / 要素数一致 / 決定論 / 正規化単体)。完全 DOM 等価は M5 の golden 切替で確認: serve の動的 UI が描く SVG と SSR 出力の DOM 等価テスト (vitest)
-
-**M2 — Rust 統合 + magia render CLI (ミッドチルダ経路)**
-- [x] 5. ssr.rs: magia-render spawn (パス解決 4段: env → 同dir → 親dir → PATH)、stderr 伝達 (パス解決: MAGIA_RENDER_PATH → 同 dir → PATH)、stdin/stdout 配管、エラー伝達
-- [x] 6. magia render の基本経路 (midchilda + フィルタなし) を SSR に切替。62ms。IR の nz() を2桁丸めに拡張 (sin/cos の 1e-15 ノイズが SVG に漏れていた) (--style midchilda のみ。belka は M3 まで Rust 経路温存)
-- [x] 7. 統合テスト (XML 契約) + Stage 1 全通過 (cargo 17 / clippy / fmt / ADDF / vp check / vitest 38 / playwright 18)
-
-**M3 — ベルカ式 Vue 移植 (意匠判定ゲート)**
-- [x] 8. belka.rs に belka_ir() (射影 project / 配置 place_poles を再利用、SVG 文字列化なし) + BelkaIr 型 (pole 語彙 genesis/transmute/consume — 色・ラベルは Vue 側テーブル)。矢じりは tip 座標だけ IR に載せ羽の形は Vue 計算 (belka.rs の射影モデルを IR 化) + Vue コンポーネント (BelkaCircle ツリー)
-- [x] 9. serve に belka_ir 追加、MagicCircleView を BelkaCircle に切替 (svg_belka は比較用に温存 — M5 で削除)。SSR 対応は M5 の --style belka 移行で
-- [x] 10. 等価素材 (loop_accumulate 新旧) → **判定合格** (「ベルカ式ちゃんと動いてそう」2026-06-12)
-
-**M4 — Spell Diff Vue 移植 (意匠判定ゲート)**
-- [x] 11. ir_export::diff_spell_ir (after 基準 SpellIr + viewBox ゴースト拡張 + DiffMarkIr 列。配置・半径は Rust / 色・破線は Vue) + MagicCircle の overlay prop + ssr.ts の diff_overlay + magia diff --svg の基本経路を SSR 化 (フィルタ付きは M5 まで Rust 温存)。SSR 出力の数値2桁丸め (Vue 計算のエッジ端点ノイズ対応) を toStandaloneSvg に追加 (diff_status: added/removed/modified + ゴースト座標) + Vue overlay (金ハロー/シアン/灰破線)
-- [x] 12. 等価素材 (process_order 新旧並置 — viewBox 拡張まで一致) → **判定合格** (「いいねえ」2026-06-12)。既存 diff_svg_writes_overlay_channel が SSR 経路の契約テストとしてそのまま通過
-
-**M5 — 経路統一 + Rust SVG レンダラ削除 [break]**
-- [x] 13. 全経路 SSR 化: render (--layers/--filter/--style belka 含む) / diff --svg (highlight: changed 含む)。フィルタは適用結果 (show_layers + effects) に畳んで Vue へ — FilterSpec の解釈は Rust 側 (ssr::render_request)。CI (spell-diff.yml) は target/debug/magia 経由なので自動で SSR に乗る
-- [x] 14. [break] Rust SVG レンダラ削除: midchilda.rs は幾何ヘルパ (772→158行)、belka.rs は射影+配置+IR、mod.rs の render/render_with/render_diff 削除、palette.rs は category_of のみ (色 HEX は Vue が正)。render_golden/render_svg/ir_export_cross_check/render_self.rs と SVG snapshot 群を削除、spell_diff.rs と belka_golden.rs を IR ベースに書き換え。cli_integration のフィルタ検証を SSR 語彙 (要素単位) に更新 (レイアウト計算・IR 加工は残す)。色定数の Rust 残置を grep 確認
-- [x] 15. CI は対応済み確認 (ci.yml / spell-diff.yml に setup-bun、build.rs が magia-render を自動ビルド)
-
-**M6 — ドキュメント + 完了処理**
-- [x] 16. CLAUDE.repo.md に magia-render 節 (意匠の正は Vue / パス解決4段 / cargo install 時は MAGIA_RENDER_PATH)
-- [ ] 17. Stage 1 全ゲート + Stage 2 レビュー + 指摘対応
-- [ ] 18. 計画 memo、knowhow、Feedback / TODO 更新、アーカイブ、コミット
+（現在タスクなし）

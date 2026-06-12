@@ -102,12 +102,17 @@ pub(crate) fn render_via_ssr(request_json: &str) -> Result<String> {
                 bin.display()
             )
         })?;
-    child
-        .stdin
-        .as_mut()
-        .expect("piped stdin は spawn 直後に必ず存在する")
-        .write_all(request_json.as_bytes())
-        .context("magia-render への IR 書き込みに失敗しました")?;
+    {
+        // ブロックで drop して EOF を送ってから待つ (wait_with_output も内部で
+        // stdin を閉じるが、意図を読み手に明示する — レビュー W1)。
+        let mut stdin = child
+            .stdin
+            .take()
+            .expect("piped stdin は spawn 直後に必ず存在する");
+        stdin
+            .write_all(request_json.as_bytes())
+            .context("magia-render への IR 書き込みに失敗しました")?;
+    }
     let output = child
         .wait_with_output()
         .context("magia-render の完了待ちに失敗しました")?;

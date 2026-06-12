@@ -7,8 +7,8 @@
 
 import type { ControlSymbol, EffectCategory, IrSpell, MagicCircleSchema } from "../types/magia.ts";
 
-/** 効果カテゴリ → 色 (palette.rs / uno.config.ts theme と同語彙の正引き)。
- *  !!! palette.rs の定数・uno.config.ts の theme と手動同期 — 色変更時は全て直す。 */
+/** 効果カテゴリ → 色 (**色の正はここ** — Phase 4.3 M5 で Rust 側の色定数は削除済み)。
+ *  !!! uno.config.ts の theme / BelkaCircle.vue の DOT_COLOR と手動同期。 */
 const COLOR_BY_EFFECT: Record<EffectCategory, string> = {
   pure: "#000000",
   io: "#1f4dff",
