@@ -94,6 +94,8 @@ export type Signature = {
   /** 直線配置の座標 (arcPath が null のとき使用)。 */
   x: number;
   y: number;
+  /** 円弧の半径。テキストが弧長 (π×半径) を超えるときのフィット計算に使う。 */
+  arcRadius?: number;
   /** 組み立て表示用の部品 (細部修正 2026-06-12)。変数名/型名チェックボックスが
    *  ON のとき text の代わりにクライアントが組み立てる。 */
   name?: string;
@@ -240,6 +242,8 @@ export type IrSpell = {
   signature: {
     text: string;
     arc_path: string;
+    /** 円弧の半径 (弧長フィットの入力)。旧 IR では省略。 */
+    arc_radius?: number;
     /** 組み立て表示用の部品 (細部修正 2026-06-12)。旧 IR では省略。 */
     name?: string;
     args?: { name: string; ty: string }[];

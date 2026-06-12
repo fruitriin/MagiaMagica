@@ -13,6 +13,7 @@ import { computed, useId } from "vue";
 
 import { usePaletteStore } from "../../stores/palette.ts";
 import type { Signature } from "../../types/magia.ts";
+import { fitToArc } from "./signatureFit.ts";
 
 const props = defineProps<{ signature: Signature }>();
 const arcId = `sig-arc-${useId()}`;
@@ -30,6 +31,12 @@ const displayText = computed(() => {
   const ret = sig.ret === undefined ? "" : ` -> ${sig.ret}`;
   return `fn ${sig.name}(${parts.join(", ")})${ret}`;
 });
+
+// 弧長フィット (細部修正 2026-06-12): textPath はパスより長いテキストを両端で
+// 切り捨てるため、フォント縮小 → 省略記号の順で必ず収める。
+const fitted = computed(() =>
+  fitToArc(displayText.value, props.signature.fontSize, props.signature.arcRadius),
+);
 </script>
 
 <template>
@@ -37,9 +44,9 @@ const displayText = computed(() => {
     <defs>
       <path :id="arcId" :d="signature.arcPath" fill="none" />
     </defs>
-    <text class="signature" :font-size="signature.fontSize" fill="#000000">
+    <text class="signature" :font-size="fitted.fontSize" fill="#000000">
       <textPath :href="`#${arcId}`" startOffset="50%" text-anchor="middle">{{
-        displayText
+        fitted.text
       }}</textPath>
     </text>
   </template>

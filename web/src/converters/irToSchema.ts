@@ -149,6 +149,7 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
     schema.signature = {
       text: ir.signature.text,
       arcPath: ir.signature.arc_path,
+      arcRadius: ir.signature.arc_radius,
       x: 0,
       y: 0,
       fontSize: 11,

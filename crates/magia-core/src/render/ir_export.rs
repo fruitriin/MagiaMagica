@@ -136,6 +136,9 @@ pub struct SignatureIr {
     pub text: String,
     /// 円弧 textPath の path データ (9時 → 頂上 → 3時の上半円、衝突回避済み)。
     pub arc_path: String,
+    /// 円弧の半径。弧長 (= π × 半径) を超えるテキストのフィット計算
+    /// (フォント縮小・省略) はクライアントの関心 (細部修正 2026-06-12)。
+    pub arc_radius: f64,
     /// 組み立て表示用の構造化部品 (細部修正 2026-06-12)。チェックボックス
     /// (変数名/型名) ON のときクライアントが text の代わりに組み立てる。
     /// OFF のときは text をそのまま使う (SSR 静止画も既定は text)。
@@ -316,6 +319,7 @@ fn push_type_info(
         ir.signature = Some(SignatureIr {
             text: text.clone(),
             arc_path: normalize_path_numbers(&arc.to_path(0.1).to_svg()),
+            arc_radius: nz(arc_radius),
             name: type_info.fn_name.clone(),
             args: type_info
                 .args
