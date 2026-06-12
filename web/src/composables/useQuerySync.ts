@@ -55,11 +55,15 @@ export function useQuerySync() {
     // diff 基準 rev (Phase 4.3.7)。pin のような変更ガードは置かず
     // setDiffRev の同値スキップに任せる (初期化パスでは null === null で素通り)。
     void focus.setDiffRev(asString(query["diff"]));
+
+    // 監視ファイルの希望 (Phase 4.4.5)。切替の発火は下の watch (file 確定後)。
+    focus.setRequestedFile(asString(query["file"]));
   }
 
   function buildQuery(): Record<string, string> {
     const params: Record<string, string> = {};
     if (focus.currentFn !== null) params["pin"] = focus.currentFn;
+    if (focus.requestedFile !== null) params["file"] = focus.requestedFile;
     if (focus.diffRev !== null) params["diff"] = focus.diffRev;
     if (palette.style === "belka") params["style"] = "belka";
     const shown = LAYERS.filter((l) => palette.layers[l].visible);
@@ -79,8 +83,23 @@ export function useQuerySync() {
   // 比較はキー順に依存させない (URL が ?style=..&fn=.. の順で入力されても同値と扱う)。
   const canonical = (params: Record<string, string>) =>
     JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)));
+  // 監視ファイルの切替 (Phase 4.4.5): サーバの file が確定してから希望と比較する
+  // (SSE 初回前は file = null で判定できない)。switchFile は同値なら何もしないため
+  // 「POST → SSE → file 更新 → ここが再発火 → 同値」でループが止まる。
+  watch([() => focus.file, () => focus.requestedFile], ([current, requested]) => {
+    if (current !== null && requested !== null && requested !== current) {
+      void focus.switchFile(requested);
+    }
+  });
+
   watch(
-    [() => focus.currentFn, () => focus.diffRev, () => palette.style, () => palette.layers],
+    [
+      () => focus.currentFn,
+      () => focus.requestedFile,
+      () => focus.diffRev,
+      () => palette.style,
+      () => palette.layers,
+    ],
     () => {
       const next = buildQuery();
       const current = Object.fromEntries(

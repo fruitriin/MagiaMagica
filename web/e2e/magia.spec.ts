@@ -287,6 +287,26 @@ test("Spell Diff on web: 不正な rev は案内文で受ける (UI を壊さな
   await expect(page.locator(".pin-view circle.main-ring").first()).toBeVisible();
 });
 
+test("監視ファイル切替: ヘッダのドロップダウンで別ファイルへ移り URL で復元できる (Phase 4.4.5)", async ({
+  page,
+}) => {
+  await page.goto("/?pin=greet");
+  const picker = page.getByLabel("監視ファイル");
+  await expect(picker).toHaveValue("sample.rs");
+  // 切替 → SSE 経由で関数一覧・ヘッダが新ファイルに追従し、?file= が付く。
+  await picker.selectOption("orbit.rs");
+  await expect(page.locator("header span").first()).toHaveText("orbit", { timeout: 10_000 });
+  await expect(page).toHaveURL(/file=orbit\.rs/);
+  await expect(page.locator("nav button", { hasText: "orbit" })).toBeVisible();
+  // URL 直開きでも復元される (希望 → POST → SSE 追従)。
+  await page.goto("/?file=orbit.rs");
+  await expect(page.locator("header span").first()).toHaveText("orbit", { timeout: 10_000 });
+  await expect(picker).toHaveValue("orbit.rs");
+  // 戻し (他テストは sample.rs 前提 — beforeEach はファイル内容しか戻さないため)。
+  await picker.selectOption("sample.rs");
+  await expect(page.locator("header span").first()).toHaveText("greet", { timeout: 10_000 });
+});
+
 test("凡例: 開閉式で色と記号の意味が参照できる (Phase 4.0.6)", async ({ page }) => {
   await page.goto("/?pin=greet");
   const legend = page.locator("details", { hasText: "凡例" }); // 魔法陣ペイン下 (4.0.6 判定)

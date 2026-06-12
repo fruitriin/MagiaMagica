@@ -3,7 +3,7 @@
 // UI 操作 → store → URL (replace) → watch → store の一方向で流す (useQuerySync)。
 // 関数切替 (?fn=) だけは FunctionToc が push して履歴に積む。
 // 初回ロードは SSE 接続直後イベント (serve.rs 仕様) の refresh に一本化する。
-import { onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted } from "vue";
 
 import CallInspector from "../components/CallInspector.vue";
 import FunctionToc from "../components/FunctionToc.vue";
@@ -20,6 +20,22 @@ import { useFocusStore } from "../stores/focus.ts";
 const focus = useFocusStore();
 useQuerySync();
 useMagiaSync();
+
+// 監視ファイルの切替候補 (Phase 4.4.5)。一覧はヘッダのドロップダウンで使う。
+onMounted(() => void focus.loadFiles());
+
+/** ドロップダウンの候補。現在のファイルが一覧外 (絶対パス起動等) でも選択肢に出す。 */
+const fileOptions = computed(() => {
+  const options = [...focus.files];
+  if (focus.file !== null && !options.includes(focus.file)) {
+    options.unshift(focus.file);
+  }
+  return options;
+});
+
+function onFileChange(event: Event) {
+  void focus.switchFile((event.target as HTMLSelectElement).value);
+}
 
 // F = フォーカス中心へ視点を戻す (Phase 4.1 キーボードナビ。
 // Tab/Enter のチップ巡回はチップの button 化によりブラウザ標準動作)。
@@ -38,7 +54,23 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
     <header flex items-baseline gap-3 border-b border-gray-200 px-4 py-2>
       <h1 text-lg font-bold tracking-wide>MagiaMagica</h1>
       <span v-if="focus.currentFn" text-sm text-gray-600 font-mono>{{ focus.currentFn }}</span>
-      <span v-if="focus.file" text-xs text-gray-400>{{ focus.file }}</span>
+      <!-- 監視ファイルの切替 (Phase 4.4.5)。候補はワークスペース配下の .rs -->
+      <select
+        v-if="focus.file"
+        :value="focus.file"
+        aria-label="監視ファイル"
+        max-w-80
+        border-none
+        bg-transparent
+        text-xs
+        text-gray-400
+        font-mono
+        cursor-pointer
+        hover:text-gray-700
+        @change="onFileChange"
+      >
+        <option v-for="f in fileOptions" :key="f" :value="f">{{ f }}</option>
+      </select>
     </header>
 
     <div v-if="focus.serverError" border-b border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800>

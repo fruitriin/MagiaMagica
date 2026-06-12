@@ -23,8 +23,14 @@ impl Drop for DevServer {
 
 /// Phase 4.0: `--fn` は廃止 — ファイルだけで起動する。
 fn spawn_server(file: &std::path::Path) -> DevServer {
+    spawn_server_in(file.parent().expect("fixture は親を持つ"), file)
+}
+
+/// cwd を指定して起動する (Phase 4.4.5 — /files・/file は cwd がワークスペース境界)。
+fn spawn_server_in(cwd: &std::path::Path, file: &std::path::Path) -> DevServer {
     let binary = assert_cmd::cargo::cargo_bin("magia");
     let mut child = Command::new(binary)
+        .current_dir(cwd)
         .arg("serve")
         .arg(file)
         .arg("--port")
@@ -451,4 +457,85 @@ fn spell_diff_query_returns_overlay_and_notes() {
     assert!(plain.get("diff_overlay").is_none());
     assert!(plain.get("diff_report").is_none());
     assert!(plain.get("diff_note").is_none());
+}
+
+/// Phase 4.4.5: 監視ファイルの一覧 (`GET /files`) と切替 (`POST /file`)。
+#[test]
+fn file_listing_and_switching() {
+    let file = temp_fixture("switch.rs", INITIAL);
+    let dir = file.parent().unwrap().to_path_buf();
+    std::fs::write(dir.join("second.rs"), "fn beta(x: u8) -> u8 { x + 1 }\n").unwrap();
+    std::fs::create_dir_all(dir.join("target")).unwrap();
+    std::fs::write(dir.join("target/generated.rs"), "fn hidden() {}\n").unwrap();
+    let server = spawn_server_in(&dir, &file);
+
+    // 一覧: cwd 配下の .rs (target/ は除外、ソート済み)。
+    let files = body_json_at(server.port, "/files");
+    let listed: Vec<&str> = files["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f.as_str().unwrap())
+        .collect();
+    assert_eq!(listed, ["second.rs", "switch.rs"]);
+
+    // 切替: /state と /spell が新ファイルへ追従する (watcher スレッド経由なので待つ)。
+    let response = http_post_json(server.port, "/file", r#"{"path":"second.rs"}"#);
+    assert!(response.contains("200"), "{response}");
+    assert!(response.contains(r#""file":"second.rs""#));
+    let state = wait_for(server.port, |s| s["file"] == "second.rs");
+    let names: Vec<&str> = state["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["qualified"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["beta"]);
+    let spell = body_json_at(server.port, "/spell/beta");
+    assert!(
+        spell["ir"]["rings"]
+            .as_array()
+            .is_some_and(|r| !r.is_empty())
+    );
+
+    // 切替後はファイル保存の live 更新も新ファイルで動く (watch 張り替えの検証)。
+    std::fs::write(
+        dir.join("second.rs"),
+        "fn beta(x: u8) -> u8 { x + 1 }\nfn gamma() {}\n",
+    )
+    .unwrap();
+    wait_for(server.port, |s| {
+        s["functions"]
+            .as_array()
+            .is_some_and(|fns| fns.iter().any(|f| f["qualified"] == "gamma"))
+    });
+
+    // 拒否系: ワークスペース外 / 非 .rs / 存在しない / path なし → 400 (状態は不変)。
+    for (body, needle) in [
+        (r#"{"path":"../outside.rs"}"#, "400"),
+        (r#"{"path":"second.txt"}"#, "400"),
+        (r#"{"path":"no_such.rs"}"#, "400"),
+        (r#"{"nope":1}"#, "400"),
+    ] {
+        let rejected = http_post_json(server.port, "/file", body);
+        assert!(rejected.contains(needle), "{body} → {rejected}");
+    }
+    assert_eq!(state_json(server.port)["file"], "second.rs");
+}
+
+/// 素朴な HTTP/1.0 POST (JSON ボディ)。
+fn http_post_json(port: u16, path: &str, body: &str) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("接続できる");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    write!(
+        stream,
+        "POST {path} HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).expect("応答を読める");
+    response
 }

@@ -54,10 +54,11 @@ struct ServeError {
 
 /// ブラウザに配る共有状態。
 struct Shared {
-    /// 表示用ファイル名。
-    file_label: String,
-    /// 監視対象の実パス (diff の gitio 解決に使う — Phase 4.3.7)。
-    file: PathBuf,
+    /// 監視対象の実パス (Phase 4.4.5 で切替可能に — 表示名もここから導出)。
+    file: Mutex<PathBuf>,
+    /// watcher スレッドへの制御送信 (ファイル切替、Phase 4.4.5)。
+    /// 起動順の都合で遅延設定 (spawn_watcher が埋める)。
+    watch_tx: Mutex<Option<Sender<WatchMsg>>>,
     good: Mutex<GoodSnapshot>,
     error: Mutex<Option<ServeError>>,
     /// 更新世代。クライアントはこの値の変化で再取得する。
@@ -76,10 +77,10 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Shared {
-    fn new(file_label: String, file: PathBuf) -> Self {
+    fn new(file: PathBuf) -> Self {
         Self {
-            file_label,
-            file,
+            file: Mutex::new(file),
+            watch_tx: Mutex::new(None),
             good: Mutex::new(GoodSnapshot::default()),
             error: Mutex::new(None),
             version: AtomicU64::new(0),
@@ -123,7 +124,7 @@ impl Shared {
         let error = lock_or_recover(&self.error);
         serde_json::json!({
             "version": self.version.load(Ordering::SeqCst),
-            "file": self.file_label,
+            "file": lock_or_recover(&self.file).display().to_string(),
             "functions": functions,
             "error": error.as_ref().map(|e| serde_json::json!({
                 "message": e.message,
@@ -157,6 +158,7 @@ impl Shared {
             };
             (good.source.clone(), entry, all, call_edges)
         };
+        let file = lock_or_recover(&self.file).clone();
         Some(render_spell(
             &source,
             &entry,
@@ -164,12 +166,76 @@ impl Shared {
                 functions: &all,
                 call_edges: &call_edges,
             }),
-            diff_rev.map(|rev| DiffInput {
-                rev,
-                file: &self.file,
-            }),
+            diff_rev.map(|rev| DiffInput { rev, file: &file }),
         ))
     }
+}
+
+/// ワークスペース (cwd) 配下の .rs ファイルを列挙する (Phase 4.4.5 の切替候補)。
+/// target / 隠しディレクトリ / node_modules は除外。cwd 相対パスのソート済み。
+fn list_rs_files() -> Vec<String> {
+    let mut files = Vec::new();
+    let mut stack = vec![PathBuf::from(".")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if path.is_dir() {
+                if name.starts_with('.') || name == "target" || name == "node_modules" {
+                    continue;
+                }
+                stack.push(path);
+            } else if name.ends_with(".rs") {
+                // "./" プレフィックスを落として URL・表示に使いやすい形へ。
+                let display = path
+                    .strip_prefix(".")
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string();
+                files.push(display);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// 監視ファイルの切替 (Phase 4.4.5)。検証して watcher スレッドへ送る。
+/// 成功時は採用した cwd 相対パス (クライアントが URL に載せる正規形) を返す。
+fn switch_file(shared: &Shared, requested: &str) -> Result<String, String> {
+    let path = Path::new(requested);
+    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+        return Err("対象は .rs ファイルのみです".to_string());
+    }
+    if path.is_absolute() {
+        return Err("ワークスペース相対パスで指定してください".to_string());
+    }
+    // canonicalize でシンボリックリンク・`..` を解決してから境界を検証する
+    // (任意パス読み出しにしない — 計画のセキュリティ境界)。
+    let root = std::fs::canonicalize(".").map_err(|e| format!("cwd を解決できません: {e}"))?;
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|_| format!("ファイルが見つかりません: {requested}"))?;
+    if !canonical.starts_with(&root) {
+        return Err("ワークスペースの外は監視できません".to_string());
+    }
+    if !canonical.is_file() {
+        return Err(format!("ファイルではありません: {requested}"));
+    }
+    let relative = canonical
+        .strip_prefix(&root)
+        .map_err(|_| "相対パスへ変換できません".to_string())?
+        .to_path_buf();
+    let tx = lock_or_recover(&shared.watch_tx);
+    let Some(tx) = tx.as_ref() else {
+        return Err("watcher が初期化されていません".to_string());
+    };
+    tx.send(WatchMsg::Switch(relative.clone()))
+        .map_err(|_| "watcher スレッドが停止しています".to_string())?;
+    Ok(relative.display().to_string())
 }
 
 /// 差分強調の入力 (`?diff=<REV>` のときだけ渡る — Phase 4.3.7)。
@@ -461,8 +527,7 @@ fn source_lines(source: &str, start_line: usize, end_line: usize) -> String {
 /// dev-server を起動する。Ctrl-C で終了するまで戻らない。
 pub(crate) fn run(file: &Path, port: u16) -> Result<()> {
     let file = file.to_path_buf();
-    let label = file.display().to_string();
-    let shared = Arc::new(Shared::new(label, file.clone()));
+    let shared = Arc::new(Shared::new(file.clone()));
 
     // 初回読み込み (エラーでもサーバは起動し、画面にエラーを出す)。
     shared.reload(&file);
@@ -495,35 +560,79 @@ pub(crate) fn run(file: &Path, port: u16) -> Result<()> {
 /// エディタの rename 保存 (テンポラリ書き込み → 置換) でも検知できるよう、
 /// ファイルそのものではなく**親ディレクトリ**を非再帰で監視し、
 /// イベントのパスをファイル名で照合する。
-fn spawn_watcher(shared: Arc<Shared>, file: PathBuf) -> Result<()> {
-    let parent = file
-        .parent()
+/// watcher スレッドへのメッセージ: FS イベントとファイル切替 (Phase 4.4.5) を
+/// 1本の channel に統合する (std mpsc には select が無いため)。
+enum WatchMsg {
+    Fs(notify::Result<notify::Event>),
+    /// 監視対象の切替 (検証済みパス — `switch_file` だけが送る)。
+    Switch(PathBuf),
+}
+
+/// ファイルの親ディレクトリ (notify の監視単位)。
+fn parent_dir(file: &Path) -> PathBuf {
+    file.parent()
         .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+}
+
+fn spawn_watcher(shared: Arc<Shared>, file: PathBuf) -> Result<()> {
+    let parent = parent_dir(&file);
     let watched_name = file
         .file_name()
         .context("監視対象のファイル名を特定できません")?
         .to_os_string();
 
-    let (tx, rx) = channel::<notify::Result<notify::Event>>();
+    let (tx, rx) = channel::<WatchMsg>();
+    let fs_tx = tx.clone();
     let mut watcher = notify::recommended_watcher(move |event| {
-        let _ = tx.send(event);
+        let _ = fs_tx.send(WatchMsg::Fs(event));
     })
     .context("ファイルウォッチャを作成できません")?;
     watcher
         .watch(&parent, RecursiveMode::NonRecursive)
         .with_context(|| format!("監視を開始できません: {}", parent.display()))?;
+    *lock_or_recover(&shared.watch_tx) = Some(tx);
 
     std::thread::spawn(move || {
         // watcher はこのスレッドが握り続ける (drop すると監視が止まる)。
-        let _watcher = watcher;
-        while let Ok(event) = rx.recv() {
-            if !event_touches(&event, &watched_name) {
-                continue;
+        let mut watcher = watcher;
+        let mut current = file;
+        let mut current_parent = parent;
+        let mut current_name = watched_name;
+        while let Ok(message) = rx.recv() {
+            match message {
+                WatchMsg::Fs(event) => {
+                    if !event_touches(&event, &current_name) {
+                        continue;
+                    }
+                    // デバウンス: 静まるまで追加イベントを飲み込む (切替は飲まない)。
+                    while let Ok(WatchMsg::Fs(_)) = rx.recv_timeout(DEBOUNCE) {}
+                    shared.reload(&current);
+                }
+                WatchMsg::Switch(next) => {
+                    let Some(name) = next.file_name() else {
+                        continue; // 検証済みパスのみ届く想定 (防御)
+                    };
+                    let next_parent = parent_dir(&next);
+                    if next_parent != current_parent {
+                        // 旧監視の解除失敗は致命でない (新監視が機能すればよい)。
+                        let _ = watcher.unwatch(&current_parent);
+                        if watcher
+                            .watch(&next_parent, RecursiveMode::NonRecursive)
+                            .is_err()
+                        {
+                            // 新監視に失敗: 旧監視へ戻して切替を中止する (壊れた状態にしない)。
+                            let _ = watcher.watch(&current_parent, RecursiveMode::NonRecursive);
+                            continue;
+                        }
+                        current_parent = next_parent;
+                    }
+                    current_name = name.to_os_string();
+                    lock_or_recover(&shared.file).clone_from(&next);
+                    current = next;
+                    shared.reload(&current);
+                }
             }
-            // デバウンス: 静まるまで追加イベントを飲み込む。
-            while rx.recv_timeout(DEBOUNCE).is_ok() {}
-            shared.reload(&file);
         }
     });
     Ok(())
@@ -585,6 +694,41 @@ fn handle_request(request: tiny_http::Request, shared: &Shared) {
                 with_neighbors,
                 diff_rev.as_deref(),
             ))
+        }
+        // Phase 4.4.5: 監視ファイルの一覧と切替。
+        (tiny_http::Method::Get, "/files") => request.respond(
+            tiny_http::Response::from_string(
+                serde_json::json!({ "files": list_rs_files() }).to_string(),
+            )
+            .with_header(header("Content-Type", "application/json; charset=utf-8")),
+        ),
+        (tiny_http::Method::Post, "/file") => {
+            let mut request = request;
+            let mut body = String::new();
+            let _ = request.as_reader().read_to_string(&mut body);
+            let requested = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v["path"].as_str().map(str::to_string));
+            let json_header = header("Content-Type", "application/json; charset=utf-8");
+            let response = match requested {
+                Some(path) => match switch_file(shared, &path) {
+                    Ok(file) => tiny_http::Response::from_string(
+                        serde_json::json!({ "file": file }).to_string(),
+                    )
+                    .with_header(json_header),
+                    Err(message) => tiny_http::Response::from_string(
+                        serde_json::json!({ "error": message }).to_string(),
+                    )
+                    .with_status_code(400)
+                    .with_header(json_header),
+                },
+                None => tiny_http::Response::from_string(
+                    serde_json::json!({ "error": "JSON ボディに path がありません" }).to_string(),
+                )
+                .with_status_code(400)
+                .with_header(json_header),
+            };
+            request.respond(response)
         }
         (tiny_http::Method::Get, "/events") => {
             let (tx, rx) = channel::<u64>();

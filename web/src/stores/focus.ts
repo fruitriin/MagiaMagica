@@ -5,12 +5,16 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 
-import { fetchSpell, fetchState } from "../composables/api.ts";
+import { fetchFiles, fetchSpell, fetchState, postFile } from "../composables/api.ts";
 import type { FunctionMeta, ServerError, SpellResponse } from "../types/magia.ts";
 import { useSourceStore } from "./source.ts";
 
 export const useFocusStore = defineStore("focus", () => {
   const file = ref<string | null>(null);
+  /** 切替候補 (.rs 一覧、Phase 4.4.5)。loadFiles で遅延取得。 */
+  const files = ref<string[]>([]);
+  /** URL `?file=` 由来の希望ファイル。サーバの採用値 (POST 応答) で正規化する。 */
+  const requestedFile = ref<string | null>(null);
   const functions = ref<FunctionMeta[]>([]);
   /** 構文エラー。エラー中も last-good の魔法陣・ソースを表示し続ける (会話を切らない)。 */
   const serverError = ref<ServerError | null>(null);
@@ -98,6 +102,34 @@ export const useFocusStore = defineStore("focus", () => {
     serverError.value = state.error;
   }
 
+  /** 切替候補 (.rs 一覧) を取得する。 */
+  async function loadFiles() {
+    try {
+      files.value = (await fetchFiles()).files;
+    } catch {
+      files.value = [];
+    }
+  }
+
+  /** 監視対象ファイルを切り替える (Phase 4.4.5)。サーバの採用パスで requestedFile を
+   *  正規化し、以後の同値比較 (URL 同期・refresh) のループを断つ。実際の一覧・図の
+   *  更新は SSE (reload が必ず1イベント流す) の refresh に任せる。 */
+  async function switchFile(path: string) {
+    if (path === file.value) return;
+    try {
+      requestedFile.value = await postFile(path);
+      loadError.value = null;
+    } catch (e) {
+      loadError.value = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  /** URL (`?file=`) 由来の希望値を置く。切替の発火は useQuerySync の watch が担う
+   *  (サーバの file が確定する SSE 初回より前に URL が読まれるため、値とトリガを分離)。 */
+  function setRequestedFile(path: string | null) {
+    requestedFile.value = path;
+  }
+
   /** 選択リクエストの世代。後発の選択があったら先発の応答を捨てる (競合防止)。
    *  ref にしてストアの再生成 (テストの setActivePinia 等) とライフサイクルを揃える。 */
   const selectSeq = ref(0);
@@ -159,6 +191,8 @@ export const useFocusStore = defineStore("focus", () => {
 
   return {
     file,
+    files,
+    requestedFile,
     functions,
     serverError,
     currentFn,
@@ -179,6 +213,9 @@ export const useFocusStore = defineStore("focus", () => {
     setDiffRev,
     setInitialFn,
     loadState,
+    loadFiles,
+    switchFile,
+    setRequestedFile,
     selectFunction,
     refresh,
   };

@@ -15,6 +15,26 @@ export function fetchState(): Promise<StateResponse> {
   return fetchJson<StateResponse>("/state");
 }
 
+/** ワークスペース配下の .rs 一覧 (監視対象の切替候補、Phase 4.4.5)。 */
+export function fetchFiles(): Promise<{ files: string[] }> {
+  return fetchJson<{ files: string[] }>("/files");
+}
+
+/** 監視対象ファイルの切替。成功時はサーバが採用した正規化パスを返す。
+ *  失敗 (境界外・不在など) は fetch ヘルパが throw する。 */
+export async function postFile(path: string): Promise<string> {
+  const res = await fetch("/file", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  const body = (await res.json()) as { file?: string; error?: string };
+  if (!res.ok || body.file === undefined) {
+    throw new Error(body.error ?? `POST /file ${res.status}`);
+  }
+  return body.file;
+}
+
 export function fetchSpell(fn: string, diffRev?: string | null): Promise<SpellResponse> {
   // ピン中心ビュー (Phase 4.1) が標準表示のため、周辺配置を常に併載で取得する。
   // diffRev (Phase 4.3.7) があれば差分強調 (diff_overlay / diff_report) も併載される。
