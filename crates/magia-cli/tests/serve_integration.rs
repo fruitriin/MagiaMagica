@@ -539,3 +539,34 @@ fn http_post_json(port: u16, path: &str, body: &str) -> String {
     stream.read_to_string(&mut response).expect("応答を読める");
     response
 }
+
+/// Phase 4.4: 周辺チップにフォーカス基準の呼び出し関係 (relation) が載る。
+#[test]
+fn neighbor_chips_carry_call_relation() {
+    let source = "fn entry(v: i32) -> i32 { helper(v) }\n\
+fn helper(v: i32) -> i32 { back(v) }\n\
+fn back(v: i32) -> i32 { if v > 0 { helper(v - 1) } else { v } }\n\
+fn loner() {}\n";
+    let file = temp_fixture("relation.rs", source);
+    let server = spawn_server(&file);
+
+    let relation_of = |spell: &serde_json::Value, name: &str| -> serde_json::Value {
+        spell["focus_layout"]["neighbors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["qualified"] == name)
+            .unwrap_or_else(|| panic!("{name} が周辺にいる"))["relation"]
+            .clone()
+    };
+
+    // entry から見て: helper は呼ぶ先 / loner は無関係 (フィールド省略 = null)。
+    let entry = body_json_at(server.port, "/spell/entry?with=neighbors");
+    assert_eq!(relation_of(&entry, "helper"), "calls");
+    assert_eq!(relation_of(&entry, "loner"), serde_json::Value::Null);
+
+    // helper から見て: entry は呼んでくる側 / back は相互 (helper→back→helper)。
+    let helper = body_json_at(server.port, "/spell/helper?with=neighbors");
+    assert_eq!(relation_of(&helper, "entry"), "called_by");
+    assert_eq!(relation_of(&helper, "back"), "mutual");
+}

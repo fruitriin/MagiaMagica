@@ -434,12 +434,49 @@ pub struct NeighborChip {
     /// リング番号 (1 = 内 / 2 = 中 / 3 = 外)。連続距離 (`proximity::Neighbor`) を
     /// `ring_of` で離散化した描画上の所属 — 連続値は外部契約に出さない (情報隠蔽)。
     pub distance: u8,
+    /// フォーカスとの呼び出し関係 (Phase 4.4 — 近接度に畳まれた「呼び出し」の
+    /// 向きを UI に出す根拠)。関係がなければ None (フィールド省略)。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation: Option<CallRelation>,
     pub x: f64,
     pub y: f64,
     pub scale: f64,
     pub opacity: f64,
     /// チップ円の半径 (スケール前)。
     pub radius: f64,
+}
+
+/// フォーカス基準の呼び出しの向き (spec v0.3 §16 追補、Phase 4.4)。
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum CallRelation {
+    /// フォーカスがこの関数を呼ぶ。
+    Calls,
+    /// この関数がフォーカスを呼ぶ。
+    CalledBy,
+    /// 相互 (再帰的な呼び合い)。
+    Mutual,
+}
+
+/// call graph (caller → callee) からフォーカス基準の向きを引く。
+#[must_use]
+pub fn call_relation(
+    focus: &str,
+    other: &str,
+    call_edges: &[(String, String)],
+) -> Option<CallRelation> {
+    let calls = call_edges
+        .iter()
+        .any(|(from, to)| from == focus && to == other);
+    let called_by = call_edges
+        .iter()
+        .any(|(from, to)| from == other && to == focus);
+    match (calls, called_by) {
+        (true, true) => Some(CallRelation::Mutual),
+        (true, false) => Some(CallRelation::Calls),
+        (false, true) => Some(CallRelation::CalledBy),
+        (false, false) => None,
+    }
 }
 
 /// チップ円の基準半径 (スケール前)。
@@ -481,7 +518,9 @@ fn ring_value(table: [f64; 3], ring: u8) -> f64 {
 #[must_use]
 pub fn focus_layout(
     focus_view_box: [f64; 4],
+    focus_qualified: &str,
     neighbors: &[(crate::proximity::Neighbor, NeighborMeta)],
+    call_edges: &[(String, String)],
 ) -> FocusLayout {
     let [min_x, min_y, width, height] = focus_view_box;
     // viewBox の幾何学的中心 = 魔法陣の視覚的中心 (0,0) という前提
@@ -514,6 +553,7 @@ pub fn focus_layout(
             name: meta.name.clone(),
             signature: meta.signature.clone(),
             distance: ring,
+            relation: call_relation(focus_qualified, &neighbor.qualified, call_edges),
             x: nz(center_x + radius * angle.cos()),
             y: nz(center_y + radius * angle.sin()),
             scale: ring_value(RING_SCALES, ring),

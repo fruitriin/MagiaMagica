@@ -356,7 +356,12 @@ fn render_spell(
                 ))
             })
             .collect();
-        focus_layout(spell.view_box, &with_meta)
+        focus_layout(
+            spell.view_box,
+            &entry.qualified,
+            &with_meta,
+            input.call_edges,
+        )
     });
     let (call_excerpts, op_excerpts, ring_excerpts) = excerpt_maps(source, &spell);
     let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;

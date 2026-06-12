@@ -307,6 +307,28 @@ test("監視ファイル切替: ヘッダのドロップダウンで別ファイ
   await expect(page.locator("header span").first()).toHaveText("greet", { timeout: 10_000 });
 });
 
+test("呼び出しジャンプ: チップに関係マークが出て、召喚印ホバーで対応チップが光る (Phase 4.4)", async ({
+  page,
+}) => {
+  await page.goto("/?pin=compute");
+  // compute は helper を呼ぶ → helper チップに「→」(フォーカスが呼ぶ)。
+  const helperChip = page.locator("svg g[role=button]", { hasText: "helper" });
+  await expect(helperChip).toBeVisible();
+  await expect(helperChip.locator("text.relation-mark")).toHaveText("→");
+  // 無関係な greet チップにはマークなし。
+  const greetChip = page.locator("svg g[role=button]", { hasText: "greet" });
+  await expect(greetChip.locator("text.relation-mark")).toHaveCount(0);
+  // 召喚印 (helper 呼び出し) をホバー → 対応する helper チップがリンク強調。
+  await page.locator(".pin-view circle.summon-glyph").first().hover();
+  await expect(helperChip.locator("circle.link-highlight")).toBeVisible();
+  await page.mouse.move(10, 500);
+  await expect(helperChip.locator("circle.link-highlight")).toHaveCount(0);
+  // 逆方向: helper を pin すると compute チップに「←」(フォーカスを呼ぶ)。
+  await page.goto("/?pin=helper");
+  const computeChip = page.locator("svg g[role=button]", { hasText: "compute" });
+  await expect(computeChip.locator("text.relation-mark")).toHaveText("←");
+});
+
 test("凡例: 開閉式で色と記号の意味が参照できる (Phase 4.0.6)", async ({ page }) => {
   await page.goto("/?pin=greet");
   const legend = page.locator("details", { hasText: "凡例" }); // 魔法陣ペイン下 (4.0.6 判定)

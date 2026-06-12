@@ -288,6 +288,8 @@ export type NeighborChip = {
   qualified: string;
   name: string;
   signature: string;
+  /** フォーカス基準の呼び出しの向き (Phase 4.4)。関係がなければ省略。 */
+  relation?: "calls" | "called_by" | "mutual";
   /** リング距離: 1 = 同 impl、2 = 同ファイル (スタブ近接度 — 4.2 で本実装)。 */
   distance: number;
   x: number;

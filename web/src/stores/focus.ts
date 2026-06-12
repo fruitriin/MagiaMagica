@@ -78,6 +78,14 @@ export const useFocusStore = defineStore("focus", () => {
     hoverExcerpt.value = null;
   }
 
+  // 呼び出しリンクのホバー強調 (Phase 4.4)。召喚印とその解決先チップは
+  // 同じ qualified を共有する — どちらをホバーしても1つの状態で双方が光る。
+  const hoveredLink = ref<string | null>(null);
+
+  function setHoveredLink(qualified: string | null) {
+    hoveredLink.value = qualified;
+  }
+
   /** 呼び出し名を同ファイルの関数に解決する (`charge` → `Wand::charge` など)。
    *  名前一致が複数あるときは先頭 (定義順) — 厳密な解決は Phase 4.4 で。 */
   function resolveCall(callTarget: string): string | null {
@@ -209,6 +217,8 @@ export const useFocusStore = defineStore("focus", () => {
     hoverExcerpt,
     showHoverExcerpt,
     hideHoverExcerpt,
+    hoveredLink,
+    setHoveredLink,
     resolveCall,
     setDiffRev,
     setInitialFn,
