@@ -263,9 +263,23 @@ fn place_glyph_anchored_rings(
                 .and_then(|src| placed.get(src))
                 .map_or(Point::ZERO, |p| p.center);
             let dir = glyph.center - anchor_center;
-            let base_angle = if dir.hypot() < 1e-9 { 0.0 } else { dir.atan2() };
-            // 兄弟 (複数クロージャ引数 — rayon::join 等) は外向きを中心に扇形分散
-            // (レビュー W1: 同位置の重なり防止)。1個なら外向きそのまま。
+            let outward = if dir.hypot() < 1e-9 { 0.0 } else { dir.atan2() };
+            // 鎖の途中の glyph (係留元が SummonGlyph) のクロージャ陣は、鎖の
+            // 進行方向と直交方向に伸ばす — そうしないと次の glyph と次の
+            // クロージャ陣の場所を奪い合い、補助陣どうしが重なる (オーナー判定
+            // 2026-06-13)。先頭の glyph (係留元がリング) は従来どおり外向き。
+            let parent_is_glyph = adjacency
+                .sigil(glyph_id)
+                .and_then(|_| anchor_of.get(&glyph_id))
+                .and_then(|src| adjacency.sigil(*src))
+                .is_some_and(|s| s.kind == SigilKind::SummonGlyph);
+            let base_angle = if parent_is_glyph {
+                outward + std::f64::consts::FRAC_PI_2
+            } else {
+                outward
+            };
+            // 兄弟 (複数クロージャ引数 — rayon::join 等) は基準角を中心に扇形分散
+            // (レビュー W1: 同位置の重なり防止)。1個なら基準角そのまま。
             let count = usize_to_f64(rings.len());
             for (i, ring) in rings.into_iter().enumerate() {
                 let offset = (usize_to_f64(i) - (count - 1.0) / 2.0) * CLOSURE_SIBLING_SPREAD_RAD;
