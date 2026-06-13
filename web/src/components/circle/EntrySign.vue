@@ -38,9 +38,10 @@ const geometry = computed(() => {
   const rlen = Math.hypot(rx, ry) || 1;
   const dirX = ry / rlen;
   const dirY = -rx / rlen;
-  // 判定 2026-06-13: 「召喚陣の半分」から「今の倍くらい」へ拡大。
-  const arrowLen = 14; // 召喚陣半径と同等
-  const arrowHalfWidth = 10;
+  // 判定 2026-06-13 (3回目): ▷ で向き感は確保できたので矢じりは最初の控えめ
+  // サイズへ戻す。接線計算 (角度修正後) はそのまま。
+  const arrowLen = 5;
+  const arrowHalfWidth = 3;
   const back = {
     x: end.x - arrowLen * dirX,
     y: end.y - arrowLen * dirY,
