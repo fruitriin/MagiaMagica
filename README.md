@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo-readme.png" alt="まぎあ☆マギカ — Magical Circuit Renderer" width="640">
+</p>
+
 # まぎあマギカ計画 (MagiaMagica)
 
 コードベースを「魔法陣」として描画する可視化システム。
@@ -141,3 +145,16 @@ cd web && bun run vp check && bun run build
 ## ライセンス
 
 MIT
+
+---
+
+## アセット
+
+ロゴ素材は `docs/images/` 配下に配置している:
+
+- [`docs/images/logo-readme.png`](docs/images/logo-readme.png) — 明るい README 向け（地色あり、ピンク〜クリーム）
+- [`docs/images/magia-readme-gold.png`](docs/images/magia-readme-gold.png) — 暗い背景の README / 配布物向け（濃紺 + 金）
+
+<p align="center">
+  <img src="docs/images/magia-readme-gold.png" alt="MAGIA MAGICA — Magical Circuit Renderer" width="720">
+</p>
