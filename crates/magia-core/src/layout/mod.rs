@@ -200,10 +200,33 @@ fn place_chain_glyphs(
                 break;
             }
             remaining -= 1;
+            // 候補位置: CHAIN_STEP * step を基点に、衝突があれば CHAIN_STEP/4 ずつ
+            // 伸ばして空きを探す (Phase 4.9 M1 — 空きスペースに応じた延長)。
+            // 上限 (CHAIN_STEP * CHAIN_STEP_MAX_FACTOR * step) を超えたら諦めて
+            // その最遠位置に置く (オーバーラン)。
+            let mut extra = 0.0_f64;
+            let max_extra = constants::CHAIN_STEP * (constants::CHAIN_STEP_MAX_FACTOR - 1.0);
+            let center = loop {
+                let candidate = head_placed.center + dir * (constants::CHAIN_STEP * step + extra);
+                let collides = placed.iter().any(|(id, other)| {
+                    if *id == follower {
+                        return false; // 自身 (前回の試行) は除外
+                    }
+                    let dx = candidate.x - other.center.x;
+                    let dy = candidate.y - other.center.y;
+                    let min_dist =
+                        SUMMON_GLYPH_RADIUS + other.radius + constants::CHAIN_AVOID_MARGIN;
+                    dx * dx + dy * dy < min_dist * min_dist
+                });
+                if !collides || extra >= max_extra {
+                    break candidate;
+                }
+                extra += constants::CHAIN_STEP * 0.25;
+            };
             placed.insert(
                 follower,
                 PlacedSigil {
-                    center: head_placed.center + dir * (constants::CHAIN_STEP * step),
+                    center,
                     radius: SUMMON_GLYPH_RADIUS,
                 },
             );

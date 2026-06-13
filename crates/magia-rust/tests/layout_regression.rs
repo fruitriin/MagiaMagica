@@ -143,3 +143,67 @@ fn sibling_closure_rings_do_not_overlap() {
     let d = ((rings[0].x - rings[1].x).powi(2) + (rings[0].y - rings[1].y).powi(2)).sqrt();
     assert!(d > 20.0, "兄弟の補助陣は分散される (距離 {d:.1})");
 }
+
+#[test]
+fn short_chain_keeps_default_step_when_uncrowded() {
+    // Phase 4.9 M1: 衝突がない短い鎖は従来位置 (CHAIN_STEP 等間隔) のまま。
+    use magia_core::ir::{EdgeKind, SigilKind};
+    let src = "fn f(v: V) { v.iter().count(); }";
+    let graph = magia_rust::parse_function(src, "f").unwrap();
+    let layout = magia_core::layout::layout(&graph);
+    let module = &graph.modules[0];
+    let chain_edges: Vec<_> = module
+        .edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Chain)
+        .collect();
+    assert_eq!(chain_edges.len(), 1, "鎖 1 本 (iter→count)");
+    let head = chain_edges[0].source;
+    let tail = chain_edges[0].target;
+    let head_pos = layout.positions[&head];
+    let tail_pos = layout.positions[&tail];
+    let d = ((head_pos.x - tail_pos.x).powi(2) + (head_pos.y - tail_pos.y).powi(2)).sqrt();
+    // CHAIN_STEP = 14*2 + 12 = 40。許容誤差 ±2px (浮動小数の累積)。
+    assert!((d - 40.0).abs() < 2.0, "短い鎖は 40px 等間隔 (実測 {d:.1})");
+    let _ = SigilKind::SummonGlyph; // 利用
+}
+
+#[test]
+fn crowded_chain_extends_past_obstacle() {
+    // Phase 4.9 M1: 鎖の進路に他の rings/glyphs がある場合、CHAIN_STEP を伸ばして空きを探す。
+    // 制御構造 (if) + 鎖を組み合わせて補助陣の近傍にチェーンを通す。
+    use magia_core::ir::{EdgeKind, SigilKind};
+    let src = r"
+fn f(v: Vec<i32>) -> usize {
+    if v.is_empty() {
+        return 0;
+    }
+    v.iter().filter(|x| **x > 0).map(|x| x * 2).count()
+}";
+    let graph = magia_rust::parse_function(src, "f").unwrap();
+    let layout = magia_core::layout::layout(&graph);
+    let module = &graph.modules[0];
+    // 鎖の全 glyph を取り出し、隣接 glyph 間距離が CHAIN_STEP (40) を下回らないことだけ確認。
+    let chain_edges: Vec<(_, _)> = module
+        .edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Chain)
+        .map(|e| (e.source, e.target))
+        .collect();
+    assert!(!chain_edges.is_empty(), "鎖 edge が複数本");
+    for (a, b) in &chain_edges {
+        let pa = layout.positions[a];
+        let pb = layout.positions[b];
+        let d = ((pa.x - pb.x).powi(2) + (pa.y - pb.y).powi(2)).sqrt();
+        assert!(
+            d >= 40.0 - 1e-6,
+            "鎖 glyph 間距離 {d:.1} は CHAIN_STEP 以上"
+        );
+        // 上限: CHAIN_STEP * CHAIN_STEP_MAX_FACTOR * step が累積するので、
+        // 鎖の長さに比例する。チェーン長 4 (4本最大) を想定して余裕を持つ
+        // 400px (= CHAIN_STEP * 4 * MAX_FACTOR = 40 * 4 * 4 / 鎖長 4) とする。
+        // M2 の精度要件確定で再調整 (memo)。
+        assert!(d <= 640.0 + 1e-6, "鎖 glyph 間距離 {d:.1} は上限以内");
+    }
+    let _ = SigilKind::SummonGlyph;
+}

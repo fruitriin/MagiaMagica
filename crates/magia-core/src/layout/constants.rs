@@ -81,3 +81,11 @@ pub const CHAIN_STEP: f64 = SUMMON_GLYPH_RADIUS * 2.0 + 12.0;
 /// 同一召喚の複数クロージャ補助陣 (兄弟) を外向き中心に扇形分散する角度間隔
 /// (Phase 4.8 M2 レビュー W1 — 同位置の重なり防止)。
 pub const CLOSURE_SIBLING_SPREAD_RAD: f64 = 0.9;
+
+/// 鎖の後続 glyph と他要素との最小隙間 (Phase 4.9 M1)。
+/// 衝突判定: 中心間距離 < (rA + rB + この値) なら衝突。CHAIN_STEP の延長で逃げる。
+pub const CHAIN_AVOID_MARGIN: f64 = 6.0;
+
+/// 鎖の延長倍率の上限 (Phase 4.9 M1)。CHAIN_STEP * この値を超えたら諦め、
+/// その時点の候補位置に置く (オーバーラン)。
+pub const CHAIN_STEP_MAX_FACTOR: f64 = 4.0;
