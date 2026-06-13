@@ -14,10 +14,11 @@ const props = defineProps<{ sign: EntrySign }>();
  *  (オーナー判定 2026-06-13)。 */
 const geometry = computed(() => {
   const { x, y, radius } = props.sign;
-  // 三角は内向きの ▷ — チップが内側、底辺がリングの内周直前。控えめサイズ。
+  // 三角 ▷ は外向き (頂点がリング外周方向、底辺が内側) — 「ここから外へ
+  // 流れていく」進入の向き感を出す (オーナー判定 2026-06-13 で頂点方向反転)。
   const tipInset = 4;
-  const tipX = x + radius - 11;
-  const baseX = x + radius - 4;
+  const tipX = x + radius - 4; // 頂点 = リング外周直前
+  const baseX = x + radius - 11; // 底辺 = 内側
   const halfHeight = 4;
   // 反時計回り (画面上 3時 → 12時方向) の円弧。終端角度を -π/3 まで伸ばし、
   // 矢じり付きの円弧として十分な進行を見せる。
