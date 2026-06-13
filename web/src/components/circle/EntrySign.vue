@@ -38,10 +38,9 @@ const geometry = computed(() => {
   const rlen = Math.hypot(rx, ry) || 1;
   const dirX = ry / rlen;
   const dirY = -rx / rlen;
-  // 判定 2026-06-13 (3回目): ▷ で向き感は確保できたので矢じりは最初の控えめ
-  // サイズへ戻す。接線計算 (角度修正後) はそのまま。
-  const arrowLen = 5;
-  const arrowHalfWidth = 3;
+  // 判定 2026-06-13 (4回目): 5x3 は小さすぎたため少し大きく。
+  const arrowLen = 9;
+  const arrowHalfWidth = 5;
   const back = {
     x: end.x - arrowLen * dirX,
     y: end.y - arrowLen * dirY,
