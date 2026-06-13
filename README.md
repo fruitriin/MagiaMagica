@@ -150,11 +150,29 @@ MIT
 
 ## アセット
 
-ロゴ素材は `docs/images/` 配下に配置している:
+ロゴ素材は `docs/images/` 配下に配置している。再生成は次のコマンドでできる（Playwright で実ブラウザに描画 → 要素スクリーンショット、フォントとグラデーション文字を意匠通りに固定するため）:
 
-- [`docs/images/logo-readme.png`](docs/images/logo-readme.png) — 明るい README 向け（地色あり、ピンク〜クリーム）
-- [`docs/images/magia-readme-gold.png`](docs/images/magia-readme-gold.png) — 暗い背景の README / 配布物向け（濃紺 + 金）
+```bash
+bun scripts/render-readme-variants.mjs    # README バナー 4 案
+bun scripts/render-social-previews.mjs    # GitHub Social Preview 4 案
+```
 
-<p align="center">
-  <img src="docs/images/magia-readme-gold.png" alt="MAGIA MAGICA — Magical Circuit Renderer" width="720">
-</p>
+### README バナー (1280×360)
+
+| プレビュー | ファイル / 用途 |
+|---|---|
+| ![](docs/images/logo-readme.png) | [`logo-readme.png`](docs/images/logo-readme.png) — **地色あり** (明るい README 向け、ピンク〜クリーム) |
+| ![](docs/images/logo-readme-transparent.png) | [`logo-readme-transparent.png`](docs/images/logo-readme-transparent.png) — **透過 PNG** (白縁取り、任意の地に乗る) |
+| ![](docs/images/magia-readme-gold.png) | [`magia-readme-gold.png`](docs/images/magia-readme-gold.png) — **濃紺地 + 金** (暗い README そのまま貼り) |
+| ![](docs/images/magia-readme-gold-transparent.png) | [`magia-readme-gold-transparent.png`](docs/images/magia-readme-gold-transparent.png) — **透過 PNG + 金グラデーション文字** |
+
+### GitHub Social Preview (1280×640)
+
+GitHub の Settings → Social preview から差し替え可能。すべて 1MB 以下。
+
+| プレビュー | ファイル / 用途 |
+|---|---|
+| ![](docs/images/social-bright-center.png) | [`social-bright-center.png`](docs/images/social-bright-center.png) — まぎあ☆マギカ・**中央** (明るい背景) |
+| ![](docs/images/social-bright-side.png) | [`social-bright-side.png`](docs/images/social-bright-side.png) — まぎあ☆マギカ・**サイド大シンボル** |
+| ![](docs/images/social-gold-center.png) | [`social-gold-center.png`](docs/images/social-gold-center.png) — Magia Magica・**中央** (濃紺 + 金) |
+| ![](docs/images/social-gold-watermark.png) | [`social-gold-watermark.png`](docs/images/social-gold-watermark.png) — Magia Magica・**M 透かし左寄せ** |
