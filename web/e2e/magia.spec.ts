@@ -483,3 +483,24 @@ test("メソッドチェーン: 鎖の後続が数珠つなぎになり細線で
   await page.getByLabel("監視ファイル").selectOption("sample.rs");
   await expect(page.locator("header span").first()).toHaveText("greet", { timeout: 10_000 });
 });
+
+test("入口サインと補助陣ラベル: メイン3時の三角と補助陣の弧テキスト (Phase 4.0.6 後半)", async ({
+  page,
+}) => {
+  await page.goto("/?pin=compute");
+  // 入口サイン: メインリングに対して1つ (制御フロー)。
+  await expect(page.locator(".pin-view g.entry-sign")).toHaveCount(1);
+  // 補助陣ラベル: compute は if 1つ → ラベル "if" がリング上端に出る。
+  const labels = page.locator(".pin-view g.ring-label text");
+  await expect(labels).toContainText(["if"]);
+});
+
+test("凡例: 入口サインと補助陣ラベルの説明が追加されている (Phase 4.0.6 後半)", async ({
+  page,
+}) => {
+  await page.goto("/?pin=greet");
+  const legend = page.locator("details", { hasText: "凡例" });
+  await legend.locator("summary").click();
+  await expect(legend.getByText("入口と読む向き", { exact: false })).toBeVisible();
+  await expect(legend.getByText("補助陣の上端ラベル", { exact: false })).toBeVisible();
+});

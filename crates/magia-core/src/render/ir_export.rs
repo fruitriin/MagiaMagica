@@ -55,6 +55,11 @@ pub struct RingIr {
     /// `for pat in expr`)。メインリング・無条件の腕 (`else`) は None。
     /// serve 層がホバープレビュー用の切り出しに使う (Phase 4.1 追加要望4)。
     pub guard_span: Option<SpanIr>,
+    /// 補助陣の表示ラベル (Phase 4.0.6 後半 — 弧テキストで上端に添える)。
+    /// kind/match パターン由来 (`if` / `else` / `for` / `|line|` / pat 等)。
+    /// メインリング・ラベル不要のリングは None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -297,6 +302,16 @@ fn ring_ir(
         .and_then(|info| info.role.as_ref())
         .and_then(|role| role.guard_location.as_ref())
         .and_then(span_ir);
+    let label = if is_main {
+        None
+    } else {
+        sigil
+            .layers
+            .control_flow
+            .as_ref()
+            .and_then(|info| info.role.as_ref())
+            .map(role_label)
+    };
     RingIr {
         id: sigil.id.0,
         role: if is_main {
@@ -312,6 +327,27 @@ fn ring_ir(
         early_return,
         operations,
         guard_span,
+        label,
+    }
+}
+
+/// 補助陣の表示ラベルを kind とパターン (match の label フィールド) から組み立てる
+/// (Phase 4.0.6 後半 — 入口サインと対をなす)。Vue 側でなく Rust で決める理由は、
+/// 既存の label (match パターン・クロージャ params) が role に既に詰まっており、
+/// kind の語彙 (LoopKind 等) も Rust が正なため二度書きを避けたい。
+fn role_label(role: &crate::ir::AuxRingRole) -> String {
+    use crate::ir::{AuxRingKind, LoopKind};
+    match (role.kind, role.label.as_deref()) {
+        (AuxRingKind::IfBranch, _) => "if".to_string(),
+        (AuxRingKind::ElseBranch, _) => "else".to_string(),
+        (AuxRingKind::MatchArm, Some(pat)) => pat.to_string(),
+        (AuxRingKind::MatchArm, None) => "match".to_string(),
+        (AuxRingKind::LoopBody(LoopKind::For), _) => "for".to_string(),
+        (AuxRingKind::LoopBody(LoopKind::While), _) => "while".to_string(),
+        (AuxRingKind::LoopBody(LoopKind::Loop), _) => "loop".to_string(),
+        // クロージャは |params| の label をそのまま (4.8 M2 で詰められている)
+        (AuxRingKind::Closure, Some(label)) => label.to_string(),
+        (AuxRingKind::Closure, None) => "||".to_string(),
     }
 }
 

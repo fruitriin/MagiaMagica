@@ -15,6 +15,8 @@ import OperationDot from "./OperationDot.vue";
 import RawFragment from "./RawFragment.vue";
 import RingCircle from "./RingCircle.vue";
 import SignatureArc from "./SignatureArc.vue";
+import EntrySign from "./EntrySign.vue";
+import RingLabel from "./RingLabel.vue";
 import SymbolMark from "./SymbolMark.vue";
 
 const props = defineProps<{
@@ -40,6 +42,8 @@ type DrawItem =
   | { kind: "glyph"; z: number; glyph: MagicCircleSchema["glyphs"][number] }
   | { kind: "edge"; z: number; edge: MagicCircleSchema["edges"][number] }
   | { kind: "symbol"; z: number; symbol: MagicCircleSchema["symbols"][number] }
+  | { kind: "entry"; z: number; entry: MagicCircleSchema["entrySigns"][number] }
+  | { kind: "label"; z: number; label: MagicCircleSchema["ringLabels"][number] }
   | { kind: "raw"; z: number; raw: MagicCircleSchema["raws"][number] };
 
 const drawList = computed<DrawItem[]>(() =>
@@ -49,6 +53,8 @@ const drawList = computed<DrawItem[]>(() =>
     ...props.schema.glyphs.map((glyph): DrawItem => ({ kind: "glyph", z: glyph.z, glyph })),
     ...props.schema.edges.map((edge): DrawItem => ({ kind: "edge", z: edge.z, edge })),
     ...props.schema.symbols.map((symbol): DrawItem => ({ kind: "symbol", z: symbol.z, symbol })),
+    ...props.schema.entrySigns.map((entry): DrawItem => ({ kind: "entry", z: entry.z, entry })),
+    ...props.schema.ringLabels.map((label): DrawItem => ({ kind: "label", z: label.z, label })),
     ...props.schema.raws.map((raw): DrawItem => ({ kind: "raw", z: raw.z, raw })),
   ].sort((a, b) => a.z - b.z),
 );
@@ -65,6 +71,10 @@ function itemId(item: DrawItem): string {
       return item.edge.id;
     case "symbol":
       return item.symbol.id;
+    case "entry":
+      return item.entry.id;
+    case "label":
+      return item.label.id;
     case "raw":
       return item.raw.id;
   }
@@ -82,6 +92,10 @@ function itemLayer(item: DrawItem): SchemaLayer | null {
       return item.edge.layer;
     case "symbol":
       return item.symbol.layer;
+    case "entry":
+      return item.entry.layer;
+    case "label":
+      return item.label.layer;
     case "raw":
       return item.raw.layer;
   }
@@ -127,6 +141,16 @@ function layerStyle(layer: SchemaLayer | null): Record<string, string> {
       <SymbolMark
         v-else-if="item.kind === 'symbol'"
         :symbol="item.symbol"
+        :style="layerStyle(itemLayer(item))"
+      />
+      <EntrySign
+        v-else-if="item.kind === 'entry'"
+        :sign="item.entry"
+        :style="layerStyle(itemLayer(item))"
+      />
+      <RingLabel
+        v-else-if="item.kind === 'label'"
+        :label="item.label"
         :style="layerStyle(itemLayer(item))"
       />
       <RawFragment v-else :raw="item.raw" :style="layerStyle(itemLayer(item))" />

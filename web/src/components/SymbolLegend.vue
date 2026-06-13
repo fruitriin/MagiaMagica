@@ -8,7 +8,9 @@ import type { Circle, ControlSymbol, EffectCategory, Operation } from "../types/
 import EdgeLine from "./circle/EdgeLine.vue";
 import GlyphDot from "./circle/GlyphDot.vue";
 import OperationDot from "./circle/OperationDot.vue";
+import EntrySign from "./circle/EntrySign.vue";
 import RingCircle from "./circle/RingCircle.vue";
+import RingLabel from "./circle/RingLabel.vue";
 import SymbolMark from "./circle/SymbolMark.vue";
 
 const EFFECTS: { effect: EffectCategory; color: string; label: string }[] = [
@@ -155,6 +157,31 @@ const sampleSymbol = (kind: ControlSymbol["kind"]): ControlSymbol => ({
             />
           </svg>
           <span text-xs>線 = 制御フローの接続</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-18 -18 36 36" w-5 h-5 shrink-0>
+            <RingCircle :circle="sampleRing('main')" />
+            <EntrySign
+              :sign="{ id: 'legend-entry', x: 0, y: 0, radius: 14, layer: 'control_flow', z: 0 }"
+            />
+          </svg>
+          <span text-xs>3時の三角 + 矢 = 入口と読む向き (反時計回り)</span>
+        </div>
+        <div mt-1 flex items-center gap-2>
+          <svg viewBox="-22 -22 44 30" w-5 h-5 shrink-0>
+            <RingCircle :circle="sampleRing('aux')" />
+            <RingLabel
+              :label="{
+                id: 'legend-label',
+                text: 'if',
+                arcPath: `M -20 0 A 20 20 0 0 1 20 0`,
+                fontSize: 9,
+                layer: 'type_info',
+                z: 0,
+              }"
+            />
+          </svg>
+          <span text-xs>補助陣の上端ラベル = 種別 (if / for / |params| 等)</span>
         </div>
       </section>
       <section>

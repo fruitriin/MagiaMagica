@@ -22,6 +22,46 @@ const COLOR_BY_EFFECT: Record<EffectCategory, string> = {
  *  RETURN_BRANCH_LENGTH (26.0) と同値必須 (描画定数、spec §16)。 */
 export const RETURN_BRANCH_LENGTH = 26;
 
+/** 補助陣ラベルの弧テキスト用パスを組み立てる (リング上端の半円弧)。
+ *  ラベルが長い場合は signatureFit と同じ近似で fit する (チップ・シグネチャと
+ *  同じ規約で省略を統一)。 */
+function buildRingLabel(
+  ring: { id: number; x: number; y: number; radius: number; label?: string },
+  z: number,
+) {
+  // 弧の半径はリングの少し外 (記号と被らない外周ぎりぎり)。
+  const arcRadius = ring.radius + 6;
+  // 上半円 (9時 → 12時 → 3時) — シグネチャ円弧と同じ向き。
+  const arcPath = `M ${ring.x - arcRadius} ${ring.y} A ${arcRadius} ${arcRadius} 0 0 1 ${ring.x + arcRadius} ${ring.y}`;
+  // fit (charWidthRatio 0.65、fontSize 既定 8 — 補助陣はメインより小さい)。
+  const arcLength = Math.PI * arcRadius;
+  const CHAR_WIDTH_RATIO = 0.65;
+  const MIN_FONT_SIZE = 6;
+  const defaultFontSize = 9;
+  const text = ring.label ?? "";
+  const widthAt = (size: number) => text.length * CHAR_WIDTH_RATIO * size;
+  let fontSize = defaultFontSize;
+  let display = text;
+  if (widthAt(fontSize) > arcLength) {
+    fontSize = Math.max(
+      MIN_FONT_SIZE,
+      Math.floor((arcLength / (text.length * CHAR_WIDTH_RATIO)) * 10) / 10,
+    );
+  }
+  if (widthAt(fontSize) > arcLength) {
+    const maxChars = Math.floor(arcLength / (CHAR_WIDTH_RATIO * fontSize));
+    display = `${text.slice(0, Math.max(1, maxChars - 1))}…`;
+  }
+  return {
+    id: `label-${ring.id}`,
+    text: display,
+    arcPath,
+    fontSize,
+    layer: "type_info" as const,
+    z,
+  };
+}
+
 export function irToSchema(ir: IrSpell): MagicCircleSchema {
   let seq = 0;
   const nextZ = () => seq++;
@@ -35,6 +75,8 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
     edges: [],
     glyphs: [],
     symbols: [],
+    entrySigns: [],
+    ringLabels: [],
     raws: [],
   };
 
@@ -95,6 +137,21 @@ export function irToSchema(ir: IrSpell): MagicCircleSchema {
     if (ring.is_async) symbol("async_inner");
     if (ring.symbol !== null) symbol(ring.symbol);
     if (ring.early_return !== null) symbol("early_return", ring.early_return);
+    // 入口サイン (Phase 4.0.6 後半): 実行順の出発点をメインリング 3 時に置く。
+    if (ring.role === "main") {
+      schema.entrySigns.push({
+        id: `entry-${ring.id}`,
+        x: ring.x,
+        y: ring.y,
+        radius: ring.radius,
+        layer: "control_flow",
+        z: nextZ(),
+      });
+    }
+    // 補助陣ラベル (Phase 4.0.6 後半): 上端の弧テキスト。
+    if (ring.role === "aux" && ring.label !== undefined && ring.label.length > 0) {
+      schema.ringLabels.push(buildRingLabel(ring, nextZ()));
+    }
   }
 
   // --- layer-effects: 操作ドット → 召喚印 ---

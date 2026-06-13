@@ -147,7 +147,36 @@ export type MagicCircleSchema = {
   edges: SchemaEdge[];
   glyphs: EffectGlyph[];
   symbols: ControlSymbol[];
+  /** 入口サイン (実行順の出発点 — メインリング 3 時)。Phase 4.0.6 後半。 */
+  entrySigns: EntrySign[];
+  /** 補助陣のラベル (弧テキスト)。Phase 4.0.6 後半。 */
+  ringLabels: RingLabel[];
   raws: RawElement[];
+};
+
+/** 実行順の出発点を示す入口サイン (メインリング 3 時 — Phase 4.0.6 後半)。 */
+export type EntrySign = {
+  id: string;
+  /** メインリングの中心。 */
+  x: number;
+  y: number;
+  radius: number;
+  /** control_flow レイヤー (パレットで OFF にできる)。 */
+  layer: SchemaLayer;
+  z: number;
+};
+
+/** 補助陣のラベル (Phase 4.0.6 後半 — 弧テキストで上端に添える)。 */
+export type RingLabel = {
+  id: string;
+  /** 表示文字列 (signatureFit 適用で省略済み)。 */
+  text: string;
+  /** 弧パス (textPath 用、defs に置く)。 */
+  arcPath: string;
+  fontSize: number;
+  /** type_info レイヤー (シグネチャと同階層)。 */
+  layer: SchemaLayer;
+  z: number;
 };
 
 // ===== サーバ API 契約 (magia serve, Phase 4.0) =====
@@ -215,6 +244,8 @@ export type IrRing = {
   /** 補助リングのガード・ヘッダの原文位置 (`if cond` / `pat if guard` /
    *  `for pat in expr`)。メインリング・無条件の腕 (`else`) は null。 */
   guard_span: IrSourceSpan | null;
+  /** 補助陣の表示ラベル (Phase 4.0.6 後半)。 */
+  label?: string;
 };
 
 export type IrGlyph = {

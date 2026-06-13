@@ -52,6 +52,10 @@ function applyFilter(schema: MagicCircleSchema, request: RenderRequest): MagicCi
     glyphs: schema.glyphs.filter((g) => layerOk(g.layer) && effectOk(g.effect)),
     edges: schema.edges.filter((e) => layerOk(e.layer)),
     symbols: schema.symbols.filter((s) => layerOk(s.layer)),
+    // 入口サイン (control_flow) / 補助陣ラベル (type_info) も他要素と同じく
+    // レイヤーで hide できる (レビュー Critical — 4.0.6 後半)。
+    entrySigns: schema.entrySigns.filter((e) => layerOk(e.layer)),
+    ringLabels: schema.ringLabels.filter((l) => layerOk(l.layer)),
     raws: schema.raws.filter((r) => layerOk(r.layer)),
     signature: layers === undefined || layers.includes("type_info") ? schema.signature : null,
   };
