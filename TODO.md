@@ -43,7 +43,7 @@ Web 系で PR を分ける、計8件 + addf-knowhow 追記4例) はオーナー�
 | 18.8 | 4.11 | [docs/plans/phase4.11-clockwise-reading-order.md](docs/plans/phase4.11-clockwise-reading-order.md) | 未着手（**陣の描画方向を時計回りに** — 横書き/縦書きの自然な視線移動に合わせる。オーナー要望 2026-06-13。影響範囲は操作ドット/ループ三角/入口サイン/シグネチャ円弧/凡例/spec の6領域。要起点判定） |
 | 18.5 | 4.8 | [docs/plans/phase4.8-method-chain-flow.md](docs/plans/phase4.8-method-chain-flow.md) | **M1 + M2 判定合格**（2026-06-13。鎖 + コールバック補助陣。重なり修正は方向直交化で対応、本格的な空き探索は 4.9 へ） |
 | 18.6 | 4.9 | [docs/plans/phase4.9-space-aware-chain-layout.md](docs/plans/phase4.9-space-aware-chain-layout.md) | **M1 完了**（2026-06-13。鎖の延長のみ。折り曲げ + クロージャ陣 + 警告フラグは M2） |
-| 18.9 | 4.12 | [docs/plans/phase4.12-magia-hobby-wasm-demo.md](docs/plans/phase4.12-magia-hobby-wasm-demo.md) | 未着手（**WASM クライアント完結のデモ版** — magia-core/rust を wasm 化し静的ホスティング。ペースト + ローカルファイルで魔法陣 → `#code=` リンク共有で SNS 拡散、フル機能はチェックアウト誘導。`magia-hobby` は薄ラッパー。オーナー発案 2026-06-24） |
+| 18.9 | 4.12 | [docs/plans/phase4.12-magia-hobby-wasm-demo.md](docs/plans/phase4.12-magia-hobby-wasm-demo.md) | **M1 完了**（2026-06-26。`magia-hobby` crate + WASM 導通。core/rust が wasm32 無修正ビルド、wasm-bindgen 限定依存 + JS グルー生成まで確認、native テスト4本。M2 = hobby Vite ターゲット + WasmDataSource + ペースト/ファイル UI、M3 = #code= 共有 + デプロイ） |
 
 依存関係:
 - 3.0 (仕様化) は全ての前提。3.1 → 3.2 → 3.3 が Spell Diff の系譜

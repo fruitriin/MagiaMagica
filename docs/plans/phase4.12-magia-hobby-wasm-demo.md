@@ -149,4 +149,45 @@ Feedback.md 記載の **「EFFECT_BY_COLOR 3箇所手動同期」と同型の dr
 
 ## 実装結果メモ
 
-(着手時に追記)
+### M1 完了 (2026-06-26)
+
+**導通スパイクは全て合格**:
+- `magia-core` / `magia-rust` は `wasm32-unknown-unknown` で**無修正ビルド通過**
+  (syn / petgraph / kurbo / serde 含む)。ネイティブ依存ゼロの事前調査どおり、対処は
+  一切不要だった (proc-macro2 fallback も getrandom も触らずに済んだ)。
+- `magia-hobby` crate を追加 (`cdylib` + `rlib`)。`wasm-bindgen` は
+  `[target.'cfg(target_arch = "wasm32")'.dependencies]` に置き、**native の cargo test は
+  wasm-bindgen を一切引かない**。pure 関数 `list_json` / `spell_json` を native でテスト
+  (4本パス)、`#[wasm_bindgen]` 薄ラッパーは wasm32 限定 `mod wasm` に隔離。
+- wasm32 リリースビルド + `wasm-bindgen --target web` で JS グルー生成まで通し、
+  `list(source)` / `spell(source, fn_name)` のエクスポートと `.d.ts` を確認。
+  生成 wasm は約 1.9M (wasm-opt 未適用。M3 で `-Oz` 余地あり)。
+- `scripts/build-hobby-wasm.sh` で wasm ビルド → `web/src/hobby/wasm/` へ配置を再現可能に。
+  生成物は `.gitignore` 済み (ソースから再生成)。
+
+**スコープ判断**: 1サイクルでは M1 (crate + 導通 + テスト) に集中。リッチ機能組み立ての
+再利用は意図的に避け、`spell_json` は `{ qualified, signature, ir, transcript, belka_ir,
+start_line }` に絞った (serve `/spell/` 契約のサブセット)。`source_html` (syntect) は
+magia-cli 依存なので除外 — デモではハイライトなし、または将来クライアント側で。
+
+**次サイクル (M2)**: web に hobby 専用 Vite エントリ + `WasmDataSource` (生成 wasm を
+`import` して `list`/`spell` を呼ぶ) + ペースト/ファイル UI。Vue の `<MagicCircle>` /
+凡例 / transcript パネルを流用。`spell_json` がリッチ拡張 (neighbors/excerpts) を欠く点は、
+欲しくなったら (b) 案 (serve.rs の組み立てを magia-core へ抽出) で対応。
+
+#### M1 コードレビュー指摘 → M2 で対応 (Critical なし)
+
+- **[Warning] `SpellResponse` 型との部分非互換**: `web/.../magia.ts` の `SpellResponse` は
+  `source_html` / `call_excerpts` / `op_excerpts` / `ring_excerpts` を**必須**で持つが、
+  `spell_json` はこれらを返さない。Vue の excerpt 系参照は `?.` で安全だが、
+  `CallInspector.vue` の `spell.source_html` は必須参照。M2 で `WasmDataSource.spell()` を
+  `SpellResponse` に流す時点で型エラーになる。**M2 着手時に二択を決める**:
+  1. `HobbySpellResponse` を別型で定義しサブセットを明示 (drift を型で検出)
+  2. `SpellResponse` の該当4フィールドを optional 化し serve 側も `?.` に統一
+  → 推奨は 1 (serve の「常に返す」前提を型から消さない)。`source_html` は hobby では
+     ハイライト無し方針なので、`CallInspector` の表示を optional 化する必要がある。
+- **[Suggestion] `spell_json` の二重パース**: `function_index` で1回、`parse_function` 内部で
+  もう1回 `syn::parse_str` する。WASM は JIT 無しで大ファイルのパースコストが出るため、
+  M2 でユーザー体験を見て、必要なら1走査で entry+graph を返す経路を検討。
+- **[Suggestion] `list_json` に `args` が無い**: パレットの引数表示 (`?args=name,type`) を
+  hobby でも出すなら、`FunctionEntry.args` をレスポンスに追加する。M2 で機能可否を決定。

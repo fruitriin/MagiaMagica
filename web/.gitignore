@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# magia-hobby (Phase 4.12) の生成 WASM — scripts/build-hobby-wasm.sh で再生成する
+src/hobby/wasm/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
