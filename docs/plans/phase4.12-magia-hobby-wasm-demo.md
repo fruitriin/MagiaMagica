@@ -191,3 +191,31 @@ magia-cli 依存なので除外 — デモではハイライトなし、また�
   M2 でユーザー体験を見て、必要なら1走査で entry+graph を返す経路を検討。
 - **[Suggestion] `list_json` に `args` が無い**: パレットの引数表示 (`?args=name,type`) を
   hobby でも出すなら、`FunctionEntry.args` をレスポンスに追加する。M2 で機能可否を決定。
+
+### M2 完了 (2026-06-26)
+
+**別ビルドターゲットで serve と完全分離**:
+- `web/src/hobby/` 一式 (HobbyApp.vue / main.ts / dataSource.ts / examples.ts) +
+  `web/hobby.html` + `web/vite.config.hobby.ts` + `build:hobby` スクリプト。
+  serve 同梱 SPA (`index.html` → `dist/`) はこの設定を読まないため、**serve バイナリに
+  wasm は混入しない** (build 後 `dist/assets` に wasm 無しを確認)。出力は `dist-hobby/`
+  (base `./` で任意ホスト配下に置ける)。
+- データ供給は `makeWasmDataSource(wasm)` (純粋・フェイク注入でテスト可能) と
+  `loadWasmDataSource()` (動的 import で生成 wasm を初期化) に分離。serve の `api.ts`
+  (fetch) と対称な「WasmDataSource」。JSON 契約は serve のサブセットそのまま。
+- 描画は既存 `circle/*` (MagicCircle / BelkaCircle / SymbolLegend) と palette store を
+  **無修正流用**。focus store / router / SSE は持たない (デモは単一画面)。
+- **M1 レビュー Warning 対応**: `HobbySpellResponse = Pick<SpellResponse, ...>` を追加。
+  サブセットを型で明示し、本体 `SpellResponse` が変われば型エラーで drift を検出する。
+- **生成物不在でも main ビルドが通る**: `web/src/hobby/wasm-glue.d.ts` の ambient
+  ワイルドカード宣言で、wasm 未生成 (fresh checkout / CI) でも `vue-tsc` が通過。実体が
+  あれば実体の .d.ts が優先される (両立を実測確認)。生成 wasm は `.gitignore`。
+
+**検証**: vp check (55ファイル クリーン) / vp test (48 passed、dataSource 3本含む) /
+main `vue-tsc` は wasm 有無どちらも通過 / bun での wasm 実行 smoke / Playwright 実機描画
+(prefill `summarize_errors` が魔法陣に、コンソールエラーなし)。生成 wasm 1.95MB (gzip 482KB)、
+アプリ JS 100KB (gzip 38KB)。
+
+**次サイクル (M3)**: `#code=` deflate+base64 共有リンク + OG カードの動的化 (SSR PNG
+function) + Vercel/CF Pages へデプロイ。`build:hobby` の成果物 `dist-hobby/` をそのまま上げる。
+deploy 時の root ファイル名 (`hobby.html` → `index.html` リライト) は M3 で対応。

@@ -392,3 +392,14 @@ export type SpellResponse = {
   /** diff が成立しない場合の案内文 (rev 不正 / git 外 / 新規関数)。 */
   diff_note?: string;
 };
+
+/** WASM デモ版 (magia-hobby, Phase 4.12) の spell レスポンス。
+ *  `SpellResponse` の**サブセット** — `source_html` / excerpts / `focus_layout` /
+ *  diff 系は持たない (デモは list + 素の spell に絞る、計画 (a) 案)。`Pick` で明示し、
+ *  本体 `SpellResponse` の該当フィールドが変わったら型エラーで drift を検出する。
+ *  `qualified` / `start_line` は現状 UI 未使用だが M3 (`#code=` 共有リンク・行表示) で使う
+ *  ため含める (wasm の `spell_json` も返している)。 */
+export type HobbySpellResponse = Pick<
+  SpellResponse,
+  "qualified" | "signature" | "ir" | "belka_ir" | "transcript" | "start_line"
+>;
