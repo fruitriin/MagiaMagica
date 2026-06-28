@@ -12,6 +12,7 @@ import MagicCircle from "../components/circle/MagicCircle.vue";
 import SymbolLegend from "../components/SymbolLegend.vue";
 import { loadWasmDataSource, type WasmDataSource } from "./dataSource.ts";
 import { PREFILL_FN, PREFILL_SOURCE } from "./examples.ts";
+import { buildShareUrl, parseShareHash } from "./share.ts";
 
 const palette = usePaletteStore();
 
@@ -21,6 +22,7 @@ const currentFn = ref<string | null>(null);
 const spell = shallowRef<HobbySpellResponse | null>(null);
 const error = ref<string | null>(null);
 const ready = ref(false);
+const copied = ref(false);
 
 let dataSource: WasmDataSource | null = null;
 
@@ -96,11 +98,37 @@ function onPickFile(event: Event): void {
   );
 }
 
+/** 現在のソース + 選択関数を共有 URL にしてクリップボードへ。URL バーにも反映する。 */
+async function shareLink(): Promise<void> {
+  const base = window.location.origin + window.location.pathname;
+  const url = buildShareUrl(base, source.value, currentFn.value);
+  // URL バーへ反映 (リロードでこの状態が復元される)。replaceState は hashchange を
+  // 発火しない — 将来 hashchange/popstate を購読しても誤発火しない (レビュー W1)。
+  window.history.replaceState(null, "", url.slice(url.indexOf("#")));
+  if (navigator.clipboard === undefined) {
+    error.value = "この環境ではクリップボードを使えません。URL バーからコピーしてください";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    copied.value = true;
+    window.setTimeout(() => {
+      copied.value = false;
+    }, 1500);
+  } catch {
+    error.value = "クリップボードにコピーできませんでした。URL バーからコピーしてください";
+  }
+}
+
 onMounted(async () => {
+  // 共有リンク (`#code=...`) があれば prefill より優先して復元する (Phase 4.12 M3)。
+  const shared = parseShareHash(window.location.hash);
+  if (shared.source !== undefined) source.value = shared.source;
   try {
     dataSource = await loadWasmDataSource();
     ready.value = true;
-    analyze(PREFILL_FN);
+    // 共有 fn 指定 → (共有 source なら先頭) → prefill 既定、の順で対象を決める。
+    analyze(shared.fn ?? (shared.source === undefined ? PREFILL_FN : undefined));
   } catch (e) {
     error.value = `WASM の初期化に失敗しました: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -182,6 +210,20 @@ onMounted(async () => {
               {{ fn.qualified }}
             </option>
           </select>
+          <span flex-1 />
+          <button
+            v-if="spell"
+            type="button"
+            px-2
+            py-1
+            text-sm
+            border
+            rounded
+            bg-white
+            @click="() => void shareLink()"
+          >
+            {{ copied ? "コピーしました" : "共有リンクをコピー" }}
+          </button>
         </div>
         <p v-if="error" text-sm text-red-600 font-mono>{{ error }}</p>
       </section>

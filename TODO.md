@@ -43,7 +43,7 @@ Web 系で PR を分ける、計8件 + addf-knowhow 追記4例) はオーナー�
 | 18.8 | 4.11 | [docs/plans/phase4.11-clockwise-reading-order.md](docs/plans/phase4.11-clockwise-reading-order.md) | 未着手（**陣の描画方向を時計回りに** — 横書き/縦書きの自然な視線移動に合わせる。オーナー要望 2026-06-13。影響範囲は操作ドット/ループ三角/入口サイン/シグネチャ円弧/凡例/spec の6領域。要起点判定） |
 | 18.5 | 4.8 | [docs/plans/phase4.8-method-chain-flow.md](docs/plans/phase4.8-method-chain-flow.md) | **M1 + M2 判定合格**（2026-06-13。鎖 + コールバック補助陣。重なり修正は方向直交化で対応、本格的な空き探索は 4.9 へ） |
 | 18.6 | 4.9 | [docs/plans/phase4.9-space-aware-chain-layout.md](docs/plans/phase4.9-space-aware-chain-layout.md) | **M1 完了**（2026-06-13。鎖の延長のみ。折り曲げ + クロージャ陣 + 警告フラグは M2） |
-| 18.9 | 4.12 | [docs/plans/phase4.12-magia-hobby-wasm-demo.md](docs/plans/phase4.12-magia-hobby-wasm-demo.md) | **M1 + M2 完了**（2026-06-26。M1=`magia-hobby` crate + WASM 導通。M2=hobby 別ビルドターゲット (dist-hobby) + WasmDataSource + ペースト/.rsファイル UI + 既存 circle/* 流用。serve バイナリに wasm 非混入、Playwright 実機描画確認。M3 = #code= 共有 + OG動的化 + Vercel/CF Pages デプロイ） |
+| 18.9 | 4.12 | [docs/plans/phase4.12-magia-hobby-wasm-demo.md](docs/plans/phase4.12-magia-hobby-wasm-demo.md) | **M1〜M3 完了 (デモ系譜 一区切り)**（2026-06-27。M1=`magia-hobby` crate + WASM 導通。M2=hobby 別ビルドターゲット + WasmDataSource + UI + circle/* 流用。M3=`#code=` 共有リンク (share.ts) + ゼロ設定デプロイ (index.html) + デプロイ手順書 [docs/deploy-hobby.md]。実デプロイはオーナーが手順書で実施。残置=OG動的化(SSR PNG function)/リモート供給/ローカルフォルダ） |
 
 依存関係:
 - 3.0 (仕様化) は全ての前提。3.1 → 3.2 → 3.3 が Spell Diff の系譜

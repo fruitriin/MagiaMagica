@@ -72,6 +72,28 @@ WASM デモ版を作ったときの定型。
   HTTP 契約のサブセットに揃えてあるため。レスポンス型は `Pick<FullResponse, ...>` で
   サブセットを明示すると drift を型で検出できる。
 
+## 共有リンク + 静的デプロイ (Phase 4.12 M3)
+
+- **URL fragment に状態を載せる (Playground 方式)**: `#code=<base64url(utf8)>&fn=<関数>` を
+  純粋モジュール (`share.ts`) に閉じる。`encodeShare`/`decodeShare`/`buildShareUrl`/
+  `parseShareHash` の対称 API。サーバ不要で「この関数の魔法陣」をリンク一本で再現でき、SNS
+  拡散に効く。短い断片なら無圧縮 base64url で URL 長に十分収まる (依存なし・同期・全ブラウザ)。
+  **圧縮はこの関数だけ `CompressionStream` (deflate) に差し替え**で後付けできる (POSD: 差し替え
+  点を1関数に隔離)。
+- **base64url の罠**: `btoa`/`atob` は標準 base64 (`+ /`)。URL 安全には `+→- / →_` 置換 +
+  パディング `=` 除去。**デコード時は `=` を補ってから `atob`** (encodeShare がパディングを外す
+  ため。古い Safari は欠落で例外)。UTF-8 は `TextEncoder`/`TextDecoder` を噛ませる。
+- **URL バー反映は `history.replaceState`** で行う (`location.hash =` は `hashchange` を発火し、
+  将来ルーター/購読を足したとき誤発火する)。clipboard は非セキュアコンテキスト/権限で
+  使えないので `navigator.clipboard === undefined` を見て案内に倒す (URL バーには反映済み)。
+- **ゼロ設定デプロイ**: 別ターゲットのエントリ HTML を `hobby.html` で持つと出力も
+  `hobby.html` になる。ビルド末尾で `mv dist-hobby/hobby.html dist-hobby/index.html` すると
+  各ホストがルートで配信できる (`base: "./"` なら同ディレクトリ内リネームで参照が保たれる)。
+- **デプロイ環境に Rust が要る点**: `cargo install wasm-bindgen-cli` はソースビルドで遅く、
+  PaaS は `~/.cargo` をキャッシュしないことがある。**事前ビルド (`dist-hobby/` を作って上げる)
+  が速く再現性が高い**。`.wasm` は `application/wasm` MIME が要る (主要 PaaS は自動)。
+  SharedArrayBuffer 不使用なので COOP/COEP は不要。手順は `docs/deploy-hobby.md`。
+
 ## 注意点・制約
 
 - 生成 wasm は約 1.9M (syn 込み・wasm-opt 未適用)。初回ロードのコストになるので、配布時は

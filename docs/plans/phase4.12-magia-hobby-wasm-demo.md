@@ -219,3 +219,30 @@ main `vue-tsc` は wasm 有無どちらも通過 / bun での wasm 実行 smoke 
 **次サイクル (M3)**: `#code=` deflate+base64 共有リンク + OG カードの動的化 (SSR PNG
 function) + Vercel/CF Pages へデプロイ。`build:hobby` の成果物 `dist-hobby/` をそのまま上げる。
 deploy 時の root ファイル名 (`hobby.html` → `index.html` リライト) は M3 で対応。
+
+### M3 (共有リンク + デプロイ手順) 完了 (2026-06-27)
+
+オーナー指示「デプロイする部分は作業手順を成果にする」に従い、**実装する部分 (共有リンク)**
+と**手順書にする部分 (デプロイ)** に分けた (実デプロイは認証が要る外向き操作なので runbook 化)。
+
+- **`#code=` 共有リンク**: `web/src/hobby/share.ts` (純粋・テスト可能)。base64url(utf8) で
+  `encodeShare`/`decodeShare`、`buildShareUrl`/`parseShareHash`。圧縮 (deflate) は将来
+  `CompressionStream` に**この関数だけ差し替え**で対応できる (短い関数なら base64 で URL 長に
+  十分収まるため、まずは依存なし・同期・全ブラウザの素の base64url。(a) 案の精神)。
+  HobbyApp は onMounted で `#code=` を prefill より優先して復元、「共有リンクをコピー」ボタンを
+  追加 (`history.replaceState` で URL バー反映 + clipboard、非対応/失敗時は案内)。
+- **ゼロ設定デプロイ**: `build:hobby` の末尾で `dist-hobby/hobby.html` → `index.html` に
+  リネーム (`base: "./"` なので同ディレクトリ内リネームで参照は保たれる)。各ホストがルートで
+  そのまま配信できる。
+- **デプロイ手順書**: `docs/deploy-hobby.md` (Vercel / Cloudflare Pages / 事前ビルド方式、
+  MIME/圧縮/キャッシュ/COOP不要/OG の注意)。OG 動的化 (SSR PNG function) は「functions が
+  再登場する唯一の場所」として手順書と計画に残置 (本サイクルでは実装せず)。
+
+**検証**: vp check (57ファイル クリーン) / vp test (55 passed、share 6本含む) / Playwright で
+`#code=...&fn=...` URL を踏むとソース復元 + 関数選択 + 描画 (エラーなし) / build:hobby が
+index.html を出力。M3 レビュー Warning (W1 hashchange→replaceState / W2 base の `#` 防御 /
+W3 async ハンドラ明示) と Suggestion (atob パディング・JSDoc・手順書注記) を同サイクルで対応。
+
+**残置 (後続・別 Phase 候補)**: OG プレビューカードの動的化 (SSR PNG function)、リモート
+供給プロバイダ (raw URL / リポジトリ URL = WASM-in-Worker)、ローカルフォルダ供給。
+**Phase 4.12 のデモ系譜 (M1〜M3) はこれで一区切り** — 実デプロイはオーナーが手順書に沿って実施。
