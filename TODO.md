@@ -43,6 +43,7 @@ Web 系で PR を分ける、計8件 + addf-knowhow 追記4例) はオーナー�
 | 18.8 | 4.11 | [docs/plans/phase4.11-clockwise-reading-order.md](docs/plans/phase4.11-clockwise-reading-order.md) | 未着手（**陣の描画方向を時計回りに** — 横書き/縦書きの自然な視線移動に合わせる。オーナー要望 2026-06-13。影響範囲は操作ドット/ループ三角/入口サイン/シグネチャ円弧/凡例/spec の6領域。要起点判定） |
 | 18.5 | 4.8 | [docs/plans/phase4.8-method-chain-flow.md](docs/plans/phase4.8-method-chain-flow.md) | **M1 + M2 判定合格**（2026-06-13。鎖 + コールバック補助陣。重なり修正は方向直交化で対応、本格的な空き探索は 4.9 へ） |
 | 18.6 | 4.9 | [docs/plans/phase4.9-space-aware-chain-layout.md](docs/plans/phase4.9-space-aware-chain-layout.md) | **M1 完了**（2026-06-13。鎖の延長のみ。折り曲げ + クロージャ陣 + 警告フラグは M2） |
+| 18.9 | 4.12 | [docs/plans/phase4.12-magia-hobby-wasm-demo.md](docs/plans/phase4.12-magia-hobby-wasm-demo.md) | **M1〜M3 完了 (デモ系譜 一区切り)**（2026-06-27。M1=`magia-hobby` crate + WASM 導通。M2=hobby 別ビルドターゲット + WasmDataSource + UI + circle/* 流用。M3=`#code=` 共有リンク (share.ts) + ゼロ設定デプロイ (index.html) + デプロイ手順書 [docs/deploy-hobby.md]。実デプロイはオーナーが手順書で実施。残置=OG動的化(SSR PNG function)/リモート供給/ローカルフォルダ） |
 
 依存関係:
 - 3.0 (仕様化) は全ての前提。3.1 → 3.2 → 3.3 が Spell Diff の系譜
@@ -64,6 +65,7 @@ Web 系で PR を分ける、計8件 + addf-knowhow 追記4例) はオーナー�
 - **4.9 (空きスペースレイアウト) はオーナー観察 (2026-06-13)**。4.8 が確立した鎖・補助陣の構造はそのままに、配置だけ空きスペース探索 (鎖の伸縮・折り曲げ・場所探し) を上に乗せる
 - **4.8 (メソッドチェーン鎖化) はオーナー観察 (2026-06-12)**。チェーン抽出 (magia-rust)・EdgeKind::Chain (IR)・数珠つなぎレイアウト (magia-core) と Rust 土台が主体で、意匠はエッジの線種程度。**4.7 (点Pがチェーンを流れる) と強いシナジー**
 - **4.7 (魔力回路アニメーション) はオーナー要望 (2026-06-12)**。土台 (実行順走査・幾何 IR・ConcurrencyInfo・Vue 一本化) は全て完成済み。**4.0.6 後半 (入口サイン = 点Pの出発点) と強いシナジー** — 同サイクルか連続サイクル推奨
+- **4.12 (WASM デモ版) はオーナー発案 (2026-06-24)**。magia-core/rust が wasm クリーン (ネイティブ依存は magia-cli に隔離済み) なのが前提。`magia-hobby` は `list`/`spell` を JSON in/out する薄ラッパー、機能は (a) 案 (ペースト + ローカルファイル) に絞る。リッチ機能 (neighbors/俯瞰) を足すなら serve.rs の組み立てを magia-core に抽出して **serve も hobby も薄くする** ((b) 案)。デプロイは Vercel/CF Pages 推奨 (OG 用 function を後で足せる)
 - notes の Phase 4 (多言語アダプタ) は **Phase 5 系に繰り下げ**
 
 ---

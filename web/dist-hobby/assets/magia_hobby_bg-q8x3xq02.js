@@ -1,0 +1,1 @@
+var e=``+new URL(`magia_hobby_bg-B3kZb0r3.wasm`,import.meta.url).href;export{e as default};

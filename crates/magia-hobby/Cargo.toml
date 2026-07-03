@@ -1,0 +1,28 @@
+[package]
+name = "magia-hobby"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "WASM クライアント完結のデモ版 — ソース文字列を魔法陣 IR (JSON) に変換する薄ラッパー (Phase 4.12)"
+
+# cdylib: wasm-bindgen が生成する wasm モジュール本体。
+# rlib: native での単体テスト (pure 関数 list_json / spell_json) を可能にする。
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+magia-core = { path = "../magia-core" }
+magia-rust = { path = "../magia-rust" }
+serde_json = "1"
+
+# wasm-bindgen は wasm32 ビルドでのみ要る (JS との文字列 in/out 境界)。
+# native (cargo test) は pure 関数だけを使うため依存に含めない — POSD: ネイティブ依存と
+# 同じく「ターゲット固有のものはそのターゲットに閉じ込める」。
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[lints]
+workspace = true

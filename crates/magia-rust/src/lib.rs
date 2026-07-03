@@ -55,13 +55,35 @@ pub fn list_functions(source: &str) -> Result<Vec<String>, Error> {
 pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> {
     let file: File = syn::parse_str(source)?;
     // qualified 名 (`Foo::bar`) を正、素の名前をフォールバックとして解決する。
-    let item_fn = &index::find_function(&file, fn_name)?;
+    let item_fn = index::find_function(&file, fn_name)?;
+    Ok(build_graph(&file, &item_fn, fn_name))
+}
+
+/// 索引エントリ + MagiaIR を **1回のパース**で返す (qualified 優先・素名フォールバック)。
+///
+/// シグネチャ表示と IR の両方が要る呼び出し側 (magia-hobby の wasm 境界) 向け。
+/// `function_index` → `parse_function` と重ねると同じソースを2回フルパースする —
+/// 「同じソースを2回パースする公開 API を増やさない」規約 (Phase 4.2 レビュー) を守る。
+#[must_use = "IR は呼び出し側で利用されるべき"]
+pub fn parse_function_with_entry(
+    source: &str,
+    fn_name: &str,
+) -> Result<(FunctionEntry, MagiaGraph), Error> {
+    let file: File = syn::parse_str(source)?;
+    let (entry, item_fn) = index::find_function_with_entry(&file, fn_name)?;
+    let graph = build_graph(&file, &item_fn, &entry.qualified);
+    Ok((entry, graph))
+}
+
+/// パース済みファイルと正規化済み関数本体から MagiaIR を組み立てる
+/// (`parse_function` / `parse_function_with_entry` の共通後段)。
+fn build_graph(file: &File, item_fn: &ItemFn, fn_name: &str) -> MagiaGraph {
     let mut allocator = SigilIdAllocator::new();
     let ctx = ParseContext {
         fn_is_unsafe: item_fn.sig.unsafety.is_some(),
     };
     // 同ファイル内の use 文で call site のパスを近似解決する (Phase 1a)。
-    let uses = UseMap::from_file(&file);
+    let uses = UseMap::from_file(file);
     let mut forest = build_rings(item_fn, &mut allocator, ctx, &uses);
 
     // 関数レベルのレイヤー (シグネチャ・並行性) は MainRing にのみ載せる。
@@ -87,7 +109,7 @@ pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> 
         sigils: forest.sigils,
         edges: forest.edges,
     };
-    Ok(MagiaGraph {
+    MagiaGraph {
         modules: vec![module],
         cross_module_edges: Vec::new(),
         metadata: ProjectMetadata {
@@ -95,7 +117,7 @@ pub fn parse_function(source: &str, fn_name: &str) -> Result<MagiaGraph, Error> 
             version: None,
             root_path: None,
         },
-    })
+    }
 }
 
 /// 関数本体内の `.await` 数を数える。
@@ -298,6 +320,23 @@ mod tests {
             }
             Error::Syntax(syntax) => panic!("unexpected syntax error: {syntax:?}"),
         }
+    }
+
+    #[test]
+    fn parse_function_with_entry_resolves_bare_name_and_matches_parse_function() {
+        let src = "struct S;\nimpl S { fn method(&self) -> u8 { 1 } }";
+        let (entry, graph) = parse_function_with_entry(src, "method").unwrap();
+        assert_eq!(
+            entry.qualified, "S::method",
+            "素名は qualified に解決される"
+        );
+        assert!(entry.signature.contains("method"));
+        // 1パース版の IR は従来 API (qualified 指定) と同一 JSON。
+        let direct = parse_function(src, "S::method").unwrap();
+        assert_eq!(
+            serde_json::to_string(&graph).unwrap(),
+            serde_json::to_string(&direct).unwrap()
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ members = [
     "crates/magia-core",
     "crates/magia-rust",
     "crates/magia-cli",
+    "crates/magia-hobby",
 ]
 
 [workspace.package]

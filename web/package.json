@@ -9,7 +9,8 @@
     "preview": "vp preview",
     "test": "vp test",
     "test:e2e": "playwright test",
-    "build:render": "vp build --ssr src/render/ssr.ts --outDir dist-ssr && bun build --compile dist-ssr/ssr.js --outfile ../target/magia-render"
+    "build:render": "vp build --ssr src/render/ssr.ts --outDir dist-ssr && bun build --compile dist-ssr/ssr.js --outfile ../target/magia-render",
+    "build:hobby": "bash ../scripts/build-hobby-wasm.sh && vue-tsc && vp build --config vite.config.hobby.ts && mv dist-hobby/hobby.html dist-hobby/index.html"
   },
   "dependencies": {
     "pinia": "^3.0.4",

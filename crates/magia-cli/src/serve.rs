@@ -111,19 +111,11 @@ impl Shared {
     /// `/state`: ファイルメタ + 関数一覧 + エラー (魔法陣・ソースは `/spell/<fn>` 側)。
     fn state_json(&self) -> String {
         let good = lock_or_recover(&self.good);
+        // 要素の形は FunctionEntry::summary_json が正 (hobby の list と共有契約)。
         let functions: Vec<_> = good
             .functions
             .iter()
-            .map(|entry| {
-                serde_json::json!({
-                    "qualified": entry.qualified,
-                    "name": entry.name,
-                    "impl_context": entry.impl_context,
-                    "signature": entry.signature,
-                    "start_line": entry.start_line,
-                    "end_line": entry.end_line,
-                })
-            })
+            .map(FunctionEntry::summary_json)
             .collect();
         let error = lock_or_recover(&self.error);
         serde_json::json!({
@@ -429,22 +421,22 @@ fn render_spell(
         )
     });
     let (call_excerpts, op_excerpts, ring_excerpts) = excerpt_maps(source, &spell);
-    let ir = serde_json::to_value(spell).map_err(|e| e.to_string())?;
-    // ベルカ式も配置済み IR (Phase 4.3 — Vue の BelkaCircle が描く)。
-    let belka = serde_json::to_value(magia_core::render::belka::belka_ir(&graph))
-        .map_err(|e| e.to_string())?;
-    let mut response = serde_json::json!({
-        "qualified": entry.qualified,
-        "signature": entry.signature,
-        "ir": ir,
-        "belka_ir": belka,
-        "call_excerpts": call_excerpts,
-        "op_excerpts": op_excerpts,
-        "ring_excerpts": ring_excerpts,
-        "source_html": highlight_rust(&snippet),
-        "transcript": magia_core::transcript::transcribe(&graph),
-        "start_line": entry.start_line,
-    });
+    // 共通部 (qualified / signature / ir / belka_ir / transcript / start_line) は
+    // SpellResponseBase が正 — hobby (WASM デモ) と同じ契約を型で共有し、
+    // serve 固有フィールドをその上に足す。ベルカ式も配置済み IR (Phase 4.3)。
+    let base = magia_core::render::ir_export::SpellResponseBase {
+        qualified: entry.qualified.clone(),
+        signature: entry.signature.clone(),
+        ir: spell,
+        belka_ir: magia_core::render::belka::belka_ir(&graph),
+        transcript: magia_core::transcript::transcribe(&graph),
+        start_line: entry.start_line,
+    };
+    let mut response = serde_json::to_value(base).map_err(|e| e.to_string())?;
+    response["call_excerpts"] = serde_json::Value::Object(call_excerpts);
+    response["op_excerpts"] = serde_json::Value::Object(op_excerpts);
+    response["ring_excerpts"] = serde_json::Value::Object(ring_excerpts);
+    response["source_html"] = serde_json::Value::String(highlight_rust(&snippet));
     if let Some(layout) = focus_layout {
         response["focus_layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
     }

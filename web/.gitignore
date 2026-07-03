@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# dist-hobby はコミットする (案C: 事前ビルド成果物をリポジトリに含め、ホストは
+# Output Directory を指すだけにする — オーナー判定 2026-07-03)。
+# hobby 系ソースを変えたら `bun run build:hobby` を回して同じコミットに含めること。
+
+# magia-hobby (Phase 4.12) の生成 WASM — scripts/build-hobby-wasm.sh で再生成する
+src/hobby/wasm/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

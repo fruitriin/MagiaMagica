@@ -20,7 +20,8 @@ syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 thiserror = "2"
+# FunctionEntry::summary_json (serve /state と hobby list の共有契約) が使う。
+serde_json = "1"
 
 [dev-dependencies]
 insta = "1.47.2"
-serde_json = "1"

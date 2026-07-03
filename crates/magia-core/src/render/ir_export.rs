@@ -23,6 +23,22 @@ use crate::render::midchilda::{
 };
 use crate::render::palette;
 
+/// 関数1つ分の魔法陣応答の共通部 (serve `/spell/` と WASM デモ magia-hobby の共有契約)。
+///
+/// キー名の正はこの struct のフィールド名。serve はこれを `Value` 化してから固有
+/// フィールド (excerpts / focus_layout / diff 系) を足し、hobby はそのまま直列化する —
+/// 手書き `json!` の二重化で片方だけ契約が変わる drift を型で防ぐ (Phase 4.12 レビュー)。
+#[derive(Serialize)]
+pub struct SpellResponseBase {
+    pub qualified: String,
+    pub signature: String,
+    pub ir: SpellIr,
+    pub belka_ir: crate::render::belka::BelkaIr,
+    /// スクリーンリーダー向けの呪文書き起こし (spec §15)。
+    pub transcript: String,
+    pub start_line: usize,
+}
+
 /// 関数1つ分の配置済み IR (ミッドチルダ式の意味論)。
 #[derive(Serialize)]
 pub struct SpellIr {
