@@ -10,7 +10,8 @@ import type { FunctionMeta, HobbySpellResponse } from "../types/magia.ts";
 import BelkaCircle from "../components/circle/BelkaCircle.vue";
 import MagicCircle from "../components/circle/MagicCircle.vue";
 import SymbolLegend from "../components/SymbolLegend.vue";
-import { loadWasmDataSource, type WasmDataSource } from "./dataSource.ts";
+import type { WasmDataSource } from "./dataSource.ts";
+import { loadWasmDataSource } from "./wasmLoader.ts";
 import { PREFILL_FN, PREFILL_SOURCE } from "./examples.ts";
 import { buildShareUrl, parseShareHash } from "./share.ts";
 
@@ -42,9 +43,9 @@ function analyze(preferFn?: string): void {
   try {
     listed = dataSource.list(source.value);
   } catch (e) {
-    functions.value = [];
-    currentFn.value = null;
-    spell.value = null;
+    // 構文エラー中も直前の正常な魔法陣・関数一覧を保持する (serve の
+    // last-good スナップショット配信と同じ規約、spec §7) — 書きかけの
+    // 一時的な壊れで、見比べていた陣が消えないように。
     error.value = e instanceof Error ? e.message : String(e);
     return;
   }
@@ -73,7 +74,7 @@ function render(fn: string): void {
     spell.value = dataSource.spell(source.value, fn);
     currentFn.value = fn;
   } catch (e) {
-    spell.value = null;
+    // last-good 保持 (analyze と同じ規約): 直前の陣と選択はそのまま、案内だけ出す。
     error.value = e instanceof Error ? e.message : String(e);
   }
 }
@@ -81,6 +82,9 @@ function render(fn: string): void {
 function onPickFile(event: Event): void {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
+  // 値を空に戻す — 同じファイルの再選択でも change が発火するように
+  // (ネイティブ file input は同一パスの再選択でイベントを出さない)。
+  input.value = "";
   if (!file) return;
   if (dataSource === null) {
     error.value = "WASM を読み込み中です。少し待ってからもう一度お試しください";
@@ -98,10 +102,13 @@ function onPickFile(event: Event): void {
   );
 }
 
-/** 現在のソース + 選択関数を共有 URL にしてクリップボードへ。URL バーにも反映する。 */
+/** 現在のソース + 選択関数 + 表示式を共有 URL にしてクリップボードへ。URL バーにも反映する。 */
 async function shareLink(): Promise<void> {
+  error.value = null; // 前回の失敗案内を持ち越さない (成功表示と矛盾するため)。
   const base = window.location.origin + window.location.pathname;
-  const url = buildShareUrl(base, source.value, currentFn.value);
+  // style は非既定 (ベルカ式) のときだけ載せる — 受け手が同じ見た目で開けるように。
+  const style = palette.style === "belka" ? "belka" : null;
+  const url = buildShareUrl(base, source.value, currentFn.value, style);
   // URL バーへ反映 (リロードでこの状態が復元される)。replaceState は hashchange を
   // 発火しない — 将来 hashchange/popstate を購読しても誤発火しない (レビュー W1)。
   window.history.replaceState(null, "", url.slice(url.indexOf("#")));
@@ -124,6 +131,8 @@ onMounted(async () => {
   // 共有リンク (`#code=...`) があれば prefill より優先して復元する (Phase 4.12 M3)。
   const shared = parseShareHash(window.location.hash);
   if (shared.source !== undefined) source.value = shared.source;
+  // 表示式も復元する (未知の値は黙って無視 — 将来の style 追加リンクを踏んでも壊さない)。
+  if (shared.style === "belka" || shared.style === "midchilda") palette.setStyle(shared.style);
   try {
     dataSource = await loadWasmDataSource();
     ready.value = true;

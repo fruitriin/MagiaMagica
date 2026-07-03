@@ -105,7 +105,7 @@ bun run build:hobby    # = wasm 生成 → vue-tsc → vite build → index.html
 
 - **Vercel**: `vercel deploy --prebuilt` 相当 / もしくは Output Directory に既存 `dist-hobby`
   を指定し Build Command を空に。
-- **Cloudflare Pages**: `npx wrangler pages deploy web/dist-hobby`
+- **Cloudflare Pages**: `bunx wrangler pages deploy web/dist-hobby` (ランタイムは Bun 統一 — CLAUDE.repo.md)
 - **GitHub Pages**: `dist-hobby/` を `gh-pages` ブランチに push (または Actions の
   `actions/deploy-pages`)。サブパス (`/<repo>/`) 配信でも `base: "./"` なのでアセットは解決する。
 

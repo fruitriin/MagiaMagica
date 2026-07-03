@@ -246,3 +246,24 @@ W3 async ハンドラ明示) と Suggestion (atob パディング・JSDoc・手�
 **残置 (後続・別 Phase 候補)**: OG プレビューカードの動的化 (SSR PNG function)、リモート
 供給プロバイダ (raw URL / リポジトリ URL = WASM-in-Worker)、ローカルフォルダ供給。
 **Phase 4.12 のデモ系譜 (M1〜M3) はこれで一区切り** — 実デプロイはオーナーが手順書に沿って実施。
+
+### PR #3 レビュー対応 (2026-07-03)
+
+8観点マルチエージェントレビュー (検証通過 8件) を全て修正:
+
+- **共有リンクの正確性**: `decodeShare` を `TextDecoder("utf-8", { fatal: true })` に —
+  SNS で途中切断されたリンクが U+FFFD 文字化けで「成功」せず、prefill フォールバックに
+  正しく倒れる。共有 URL に `style=belka` を追加 (非既定時のみ) — ベルカ式の見た目ごと
+  共有できる。共有時に前回のエラー表示をクリア
+- **UI 挙動**: file input の値リセット (同一ファイル再選択で change が発火)。構文エラー時は
+  last-good の陣・関数一覧を保持 (serve の spec §7 と同じ規約 — 陣が消えない)
+- **wasm-bindgen init**: 非推奨の裸 URL 位置引数 → `{ module_or_path }` 形式。ambient 宣言
+  (`wasm-glue.d.ts`) も現行形式だけを型に残し回帰を防止
+- **serve/hobby 契約の一点化 (根本修正)**: `FunctionEntry::summary_json` (magia-rust) と
+  `SpellResponseBase` (magia-core ir_export) を新設し、serve `/state` `/spell/` と hobby の
+  `list_json` / `spell_json` が同一実装・同一 struct から直列化 — M1 受け入れ基準
+  「serve と等価」を等価性テストではなく**型共有で構造的に保証**する形に昇格
+- **二重パース解消**: `parse_function_with_entry` (magia-rust) で index + IR を1パースに
+  (「同じソースを2回パースする公開 API を増やさない」Phase 4.2 規約に整合)。さらに
+  dataSource (web) が同一ソースの list/spell をメモ化 — 関数ドロップダウン往復が O(1) に
+- **手順書**: Cloudflare Pages の `npx` → `bunx` (Bun 統一規約)

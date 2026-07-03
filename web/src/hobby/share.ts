@@ -21,30 +21,40 @@ export function decodeShare(code: string): string {
   const base64 = padded.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64);
   const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+  // fatal 必須: 既定の TextDecoder は壊れた UTF-8 (SNS で途中切断されたリンク等) を
+  // U+FFFD に置換して「成功」してしまい、prefill フォールバックが効かなくなる。
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
-/** 現在の状態を `#code=...(&fn=...)` の fragment にした共有 URL を組み立てる。
+/** 現在の状態を `#code=...(&fn=...&style=...)` の fragment にした共有 URL を組み立てる。
  *  `base` は通常 `location.origin + location.pathname`。`base` 内の既存ハッシュは落とす
- *  (`##...` になるのを防ぐ — 呼び出し側が pathname を渡せば通常は無害だが防御する)。 */
-export function buildShareUrl(base: string, source: string, fn: string | null): string {
+ *  (`##...` になるのを防ぐ — 呼び出し側が pathname を渡せば通常は無害だが防御する)。
+ *  `style` は既定 (ミッドチルダ式) なら null で省略 — 「この見た目を見て」という共有の
+ *  意図を受け手でも再現するため、非既定のときだけ運ぶ。 */
+export function buildShareUrl(
+  base: string,
+  source: string,
+  fn: string | null,
+  style: string | null = null,
+): string {
   const safeBase = base.replace(/#.*$/, "");
   const params = new URLSearchParams();
   params.set("code", encodeShare(source));
   if (fn !== null) params.set("fn", fn);
+  if (style !== null) params.set("style", style);
   return `${safeBase}#${params.toString()}`;
 }
 
 /** `location.hash` から共有状態を取り出す。`code` が無ければ空オブジェクト。
- *  `code` のデコードに失敗したら **fn も含めて全体を捨てる** (壊れた source に対して
- *  fn だけ復元する価値がないため)。呼び出し側は source 欠落を prefill に倒す。 */
-export function parseShareHash(hash: string): { source?: string; fn?: string } {
+ *  `code` のデコードに失敗したら **fn / style も含めて全体を捨てる** (壊れた source に
+ *  対して残りだけ復元する価値がないため)。呼び出し側は source 欠落を prefill に倒す。 */
+export function parseShareHash(hash: string): { source?: string; fn?: string; style?: string } {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
   if (raw === "") return {};
   const params = new URLSearchParams(raw);
   const code = params.get("code");
   if (code === null) return {};
-  const result: { source?: string; fn?: string } = {};
+  const result: { source?: string; fn?: string; style?: string } = {};
   try {
     result.source = decodeShare(code);
   } catch {
@@ -53,5 +63,7 @@ export function parseShareHash(hash: string): { source?: string; fn?: string } {
   }
   const fn = params.get("fn");
   if (fn !== null) result.fn = fn;
+  const style = params.get("style");
+  if (style !== null) result.style = style;
   return result;
 }

@@ -39,6 +39,24 @@ pub struct FunctionEntry {
     pub args: Vec<FunctionArg>,
 }
 
+impl FunctionEntry {
+    /// 関数一覧の共通 JSON 形 (serve `/state` の `functions` 要素 = hobby `list` の要素)。
+    /// serve と WASM デモが同じ契約を単一実装から出す — 手書き `json!` の二重化で
+    /// 片方だけフィールドが増減する drift を防ぐ (Phase 4.12 レビュー)。
+    /// `args` は要素には出さない (serve は neighbors 側で別途運ぶ)。
+    #[must_use]
+    pub fn summary_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "qualified": self.qualified,
+            "name": self.name,
+            "impl_context": self.impl_context,
+            "signature": self.signature,
+            "start_line": self.start_line,
+            "end_line": self.end_line,
+        })
+    }
+}
+
 /// 関数引数1つ分 (パターンと型のコンパクトな文字列表現)。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionArg {
@@ -307,6 +325,15 @@ fn unique<T>(candidates: Option<&Vec<T>>) -> Option<&T> {
 /// 素の名前は qualified 完全一致が無いときのフォールバックで、ソース出現順の
 /// 最初の同名関数に決定論的に解決する。
 pub(crate) fn find_function(file: &File, fn_name: &str) -> Result<ItemFn, crate::Error> {
+    find_function_with_entry(file, fn_name).map(|(_, body)| body)
+}
+
+/// `find_function` の索引エントリ込み版。シグネチャ表示と IR の両方が要る呼び出し側
+/// (`parse_function_with_entry`) が、走査1回でエントリと本体を同時に得るための入口。
+pub(crate) fn find_function_with_entry(
+    file: &File,
+    fn_name: &str,
+) -> Result<(FunctionEntry, ItemFn), crate::Error> {
     let mut walker = FunctionWalker::default();
     walker.visit_file(file);
     let found = walker
@@ -322,7 +349,7 @@ pub(crate) fn find_function(file: &File, fn_name: &str) -> Result<ItemFn, crate:
                 .find(|(entry, _)| entry.name == fn_name)
         });
     match found {
-        Some((_, body)) => Ok(body.clone()),
+        Some((entry, body)) => Ok((entry.clone(), body.clone())),
         None => Err(crate::Error::FunctionNotFound {
             name: fn_name.to_string(),
             candidates: walker.entries.into_iter().map(|e| e.qualified).collect(),

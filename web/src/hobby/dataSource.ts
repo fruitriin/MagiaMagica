@@ -20,25 +20,41 @@ export type WasmDataSource = {
   spell(source: string, fnName: string): HobbySpellResponse;
 };
 
-/** 注入された wasm 境界から DataSource を組み立てる (純粋・テスト可能)。 */
+/** 注入された wasm 境界から DataSource を組み立てる (純粋・テスト可能)。
+ *
+ *  同一ソースへの繰り返し呼び出し (関数ドロップダウンの往復 — デモの主動線) は
+ *  結果をメモ化して wasm の再パースなしで返す。ソースが変われば丸ごと捨てる —
+ *  デモは「今のソース」1つしか見ないので、キャッシュは直近1ソース分で足りる。
+ *  wasm の例外 (構文エラー等) はキャッシュせず素通しする (再試行で再評価される)。 */
 export function makeWasmDataSource(wasm: MagiaWasm): WasmDataSource {
+  let cachedSource: string | null = null;
+  let listCache: FunctionMeta[] | null = null;
+  const spellCache = new Map<string, HobbySpellResponse>();
+  function ensureSource(source: string): void {
+    if (source === cachedSource) return;
+    cachedSource = source;
+    listCache = null;
+    spellCache.clear();
+  }
   return {
     list(source) {
-      const parsed = JSON.parse(wasm.list(source)) as { functions: FunctionMeta[] };
-      return parsed.functions;
+      ensureSource(source);
+      if (listCache === null) {
+        listCache = (JSON.parse(wasm.list(source)) as { functions: FunctionMeta[] }).functions;
+      }
+      return listCache;
     },
     spell(source, fnName) {
-      return JSON.parse(wasm.spell(source, fnName)) as HobbySpellResponse;
+      ensureSource(source);
+      const hit = spellCache.get(fnName);
+      if (hit !== undefined) return hit;
+      const parsed = JSON.parse(wasm.spell(source, fnName)) as HobbySpellResponse;
+      spellCache.set(fnName, parsed);
+      return parsed;
     },
   };
 }
 
-/** 生成 wasm を初期化して DataSource を返す (ブラウザ実行時の入口)。
- *  動的 import なので、本関数を呼ばない限り wasm はロードされない
- *  (単体テストは `makeWasmDataSource` をフェイクで叩き、ここは通らない)。 */
-export async function loadWasmDataSource(): Promise<WasmDataSource> {
-  const glue = await import("./wasm/magia_hobby.js");
-  const wasmUrl = (await import("./wasm/magia_hobby_bg.wasm?url")).default;
-  await glue.default(wasmUrl);
-  return makeWasmDataSource({ list: glue.list, spell: glue.spell });
-}
+// 生成 wasm を初期化する入口 (loadWasmDataSource) は wasmLoader.ts に分離してある —
+// 生成物 (src/hobby/wasm/、.gitignore 済み) への import を持つモジュールをテストが
+// 触らないようにするため (未生成のチェックアウトでも単体テストが走る)。

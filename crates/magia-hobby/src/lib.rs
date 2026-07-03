@@ -18,67 +18,45 @@
 
 use magia_core::layout::layout;
 use magia_core::render::belka::belka_ir;
-use magia_core::render::ir_export::spell_ir;
+use magia_core::render::ir_export::{SpellResponseBase, spell_ir};
 use magia_core::transcript::transcribe;
-use magia_rust::{function_index, parse_function};
+use magia_rust::{FunctionEntry, function_index, parse_function_with_entry};
 
 /// ファイル内の関数一覧 (JSON 文字列) を返す。
 ///
-/// 形は serve `/state` の `functions` 要素のサブセット
-/// (`qualified` / `name` / `impl_context` / `signature` / `start_line` / `end_line`)。
+/// 要素の形は `FunctionEntry::summary_json` — serve `/state` の `functions` と
+/// 同一実装の共有契約 (Phase 4.12 レビューで一点化)。
 /// パース失敗 (構文エラー等) は `Err` にメッセージを返す — UI 側で案内に畳む。
 ///
 /// # Errors
 /// ソースが Rust として解釈できない場合、または JSON 直列化に失敗した場合。
 pub fn list_json(source: &str) -> Result<String, String> {
     let entries = function_index(source).map_err(|e| e.to_string())?;
-    let functions: Vec<_> = entries
-        .into_iter()
-        .map(|entry| {
-            serde_json::json!({
-                "qualified": entry.qualified,
-                "name": entry.name,
-                "impl_context": entry.impl_context,
-                "signature": entry.signature,
-                "start_line": entry.start_line,
-                "end_line": entry.end_line,
-            })
-        })
-        .collect();
+    let functions: Vec<_> = entries.iter().map(FunctionEntry::summary_json).collect();
     serde_json::to_string(&serde_json::json!({ "functions": functions })).map_err(|e| e.to_string())
 }
 
 /// 関数1つを魔法陣 IR (JSON 文字列) に変換する。
 ///
-/// `fn_name` は `list_json` が返す `qualified` (`Foo::bar`) か素の名前。形は serve
-/// `/spell/` のサブセット — `qualified` / `signature` / `ir` (SpellIr) / `transcript`
-/// (アクセシビリティ用テキスト) / `belka_ir` (データフロー三角力場ビュー)。
+/// `fn_name` は `list_json` が返す `qualified` (`Foo::bar`) か素の名前。形は
+/// `SpellResponseBase` — serve `/spell/` の共通部と同一 struct の共有契約で、
 /// neighbors / excerpts / diff / source_html はデモでは出さない (計画 (a) 案)。
+/// パースは `parse_function_with_entry` の1回だけ (wasm の syn は遅いので効く)。
 ///
 /// # Errors
 /// 関数が見つからない・構文エラー・JSON 直列化失敗のいずれか。
 pub fn spell_json(source: &str, fn_name: &str) -> Result<String, String> {
-    // シグネチャ表示のため index から該当エントリを引く (qualified 優先・素名フォールバック)。
-    let entry = function_index(source)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|e| e.qualified == fn_name || e.name == fn_name)
-        .ok_or_else(|| format!("関数 {fn_name} が見つかりません"))?;
-
-    let graph = parse_function(source, &entry.qualified).map_err(|e| e.to_string())?;
+    let (entry, graph) = parse_function_with_entry(source, fn_name).map_err(|e| e.to_string())?;
     let placed = layout(&graph);
-
-    let ir = serde_json::to_value(spell_ir(&graph, &placed)).map_err(|e| e.to_string())?;
-    let belka = serde_json::to_value(belka_ir(&graph)).map_err(|e| e.to_string())?;
-    serde_json::to_string(&serde_json::json!({
-        "qualified": entry.qualified,
-        "signature": entry.signature,
-        "ir": ir,
-        "belka_ir": belka,
-        "transcript": transcribe(&graph),
-        "start_line": entry.start_line,
-    }))
-    .map_err(|e| e.to_string())
+    let base = SpellResponseBase {
+        ir: spell_ir(&graph, &placed),
+        belka_ir: belka_ir(&graph),
+        transcript: transcribe(&graph),
+        qualified: entry.qualified,
+        signature: entry.signature,
+        start_line: entry.start_line,
+    };
+    serde_json::to_string(&base).map_err(|e| e.to_string())
 }
 
 /// WASM (ブラウザ) 向けエクスポート。`&str` を受け `String` (JSON) を返す薄い境界。
@@ -150,6 +128,14 @@ mod tests {
     #[test]
     fn spell_json_resolves_qualified_method() {
         let json = spell_json(SAMPLE, "Counter::bump").expect("メソッドも解決できる");
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["qualified"], "Counter::bump");
+    }
+
+    #[test]
+    fn spell_json_resolves_bare_method_name() {
+        // 手打ちの共有リンク (`fn=bump`) 相当 — 素名でも qualified に解決される。
+        let json = spell_json(SAMPLE, "bump").expect("素名フォールバックが効く");
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["qualified"], "Counter::bump");
     }

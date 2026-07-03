@@ -397,8 +397,9 @@ export type SpellResponse = {
  *  `SpellResponse` の**サブセット** — `source_html` / excerpts / `focus_layout` /
  *  diff 系は持たない (デモは list + 素の spell に絞る、計画 (a) 案)。`Pick` で明示し、
  *  本体 `SpellResponse` の該当フィールドが変わったら型エラーで drift を検出する。
- *  `qualified` / `start_line` は現状 UI 未使用だが M3 (`#code=` 共有リンク・行表示) で使う
- *  ため含める (wasm の `spell_json` も返している)。 */
+ *  フィールド構成は Rust 側の共有契約 `SpellResponseBase` (magia-core ir_export) と
+ *  1:1 — serve / hobby の両方がこの struct から直列化するため、`qualified` /
+ *  `start_line` も契約の一部として含める (UI が読むかどうかとは独立)。 */
 export type HobbySpellResponse = Pick<
   SpellResponse,
   "qualified" | "signature" | "ir" | "belka_ir" | "transcript" | "start_line"

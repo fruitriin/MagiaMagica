@@ -15,6 +15,13 @@ describe("share encode/decode", () => {
     expect(code).not.toMatch(/[+/=]/);
     expect(decodeShare(code)).toBe(src);
   });
+
+  it("壊れた UTF-8 (途中切断リンク) は例外になる — U+FFFD 置換で成功しない", () => {
+    // "あ" (3バイト = base64url 4文字) を3文字に切ると多バイト列の途中で切れる。
+    // SNS やチャットで URL が切り詰められたケースの再現。
+    const truncated = encodeShare("あ").slice(0, 3);
+    expect(() => decodeShare(truncated)).toThrow();
+  });
 });
 
 describe("buildShareUrl / parseShareHash", () => {
@@ -40,5 +47,23 @@ describe("buildShareUrl / parseShareHash", () => {
     // atob が投げる不正 base64。
     const parsed = parseShareHash("#code=!!!not-base64!!!");
     expect(parsed.source).toBeUndefined();
+  });
+
+  it("途中切断された code も全体を捨てて prefill フォールバックに倒れる", () => {
+    const truncated = encodeShare("あ").slice(0, 3);
+    expect(parseShareHash(`#code=${truncated}&fn=g`)).toEqual({});
+  });
+
+  it("style (ベルカ式) を載せて往復できる", () => {
+    const url = buildShareUrl("https://x.test/", "fn g() {}", "g", "belka");
+    const parsed = parseShareHash(url.slice(url.indexOf("#")));
+    expect(parsed.style).toBe("belka");
+    expect(parsed.fn).toBe("g");
+  });
+
+  it("style が null (既定のミッドチルダ式) なら載せない", () => {
+    const url = buildShareUrl("https://x.test/", "fn g() {}", "g");
+    expect(url).not.toContain("style=");
+    expect(parseShareHash(url.slice(url.indexOf("#"))).style).toBeUndefined();
   });
 });
