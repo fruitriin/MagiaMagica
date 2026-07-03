@@ -7,9 +7,14 @@ Phase 4.12 M3。`magia serve` を立てずに、**静的ホスティングへ上
 > この手順は「実行ではなく手順を成果にする」方針 (オーナー指示 2026-06-27)。実デプロイは
 > オーナーのアカウント・認証で行う。下記コマンドをそのままなぞれば再現できる。
 
+> **採用方式はC案** (オーナー判定 2026-07-03): 事前ビルド成果物 `web/dist-hobby/` を
+> **リポジトリにコミットする**。ホスト側は Output Directory にこのディレクトリを指定して
+> Build Command を空にするだけ — デプロイ環境に Rust / Bun は一切不要で、push が
+> そのままデプロイになる。A/B 案 (ホスト側ビルド) は参考として残す。
+
 ## 成果物
 
-`web/dist-hobby/` 一式 (静的ファイル):
+`web/dist-hobby/` 一式 (静的ファイル、**コミット済み**):
 
 ```
 dist-hobby/
@@ -52,17 +57,36 @@ bun run build:hobby    # = wasm 生成 → vue-tsc → vite build → index.html
 3. `vp build --config vite.config.hobby.ts` — `dist-hobby/` へバンドル (`base: "./"`)
 4. `dist-hobby/hobby.html` → `dist-hobby/index.html` にリネーム
 
+**更新ワークフロー (C案の運用ルール)**: hobby に効くソース (`web/src/hobby/` /
+`crates/magia-hobby/` / 流用している `circle/*` 等) を変えたら、`bun run build:hobby` を
+回して **`dist-hobby/` を同じコミットに含める**。ビルドし忘れるとデプロイが古いままになる
+(成果物とソースの drift はレビューで `dist-hobby` の差分有無を見れば気づける)。
+
 ## デプロイ先別の手順
 
-> **推奨は C 案 (事前ビルド)**。A/B 案はデプロイのたびに `cargo install wasm-bindgen-cli` を
-> ソースから再ビルドする (約2〜5分) うえ、Vercel / CF Pages は `~/.cargo` を必ずしも
-> キャッシュしない。Rust ツールチェインをビルド環境に入れる手間も要る。**ローカル or GitHub
-> Actions で `dist-hobby/` を作って上げる C 案が速く・再現性が高い**。
+> **採用はC案 (事前ビルド成果物のコミット)**。A/B 案 (ホスト側ビルド) はデプロイのたびに
+> `cargo install wasm-bindgen-cli` をソースから再ビルドする (約2〜5分) うえ、Vercel /
+> CF Pages は `~/.cargo` を必ずしもキャッシュしない — 参考として残すが使わない。
 >
-> 注: `build:hobby` は `bash` と `mv` を使う (Linux / macOS / WSL 前提)。CI は全て Linux なので
-> デプロイ経路では問題ない。Windows ネイティブでローカルビルドするなら WSL を使う。
+> 注: `build:hobby` は `bash` と `mv` を使う (Linux / macOS / WSL 前提)。Windows ネイティブで
+> ローカルビルドするなら WSL を使う。
 
-### A. Vercel
+### C. コミット済み成果物を指す (採用)
+
+`web/dist-hobby/` はコミット済みなので、ホスト側はビルドせずディレクトリを指すだけ。
+
+- **Vercel**: New Project → リポジトリ import →
+  **Root Directory**: `web/dist-hobby` / **Build Command**: 空 (Framework Preset: Other) /
+  **Output Directory**: `.` → Deploy。以後は push のたびに自動デプロイ
+- **Cloudflare Pages**: Create application → Pages → リポジトリ接続 →
+  **Build command**: 空 / **Build output directory**: `web/dist-hobby`
+- **GitHub Pages**: Actions の `actions/upload-pages-artifact` に `path: web/dist-hobby` を
+  渡して `actions/deploy-pages` へ (チェックアウトするだけ — ビルドステップ不要)。
+  サブパス (`/<repo>/`) 配信でも `base: "./"` なのでアセットは解決する
+- **手動 (ワンショット)**: `bunx wrangler pages deploy web/dist-hobby` (ランタイムは Bun 統一 —
+  CLAUDE.repo.md)
+
+### A. Vercel でソースからビルドする場合 (参考・不採用)
 
 **ダッシュボードで設定する場合** (推奨 — モノレポなので Root Directory に注意):
 
